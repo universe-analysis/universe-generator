@@ -99,16 +99,19 @@ def main() -> None:
     print("sphere-collision dumps:")
     sphere_ts, sphere_mean, sphere_sem = collect(args.sphere_dumps, args.seeds)
 
+    # Labels name the fixed probe first, then the generation geometry, so this
+    # chart is never confused with the probe-comparison charts (where
+    # "cube/sphere" is the measurement neighborhood, not the packing exclusion).
     # (T grid, mean, sem, color, marker, label, label y-offset in points)
     series = [
         (cube_ts, cube_mean["corr"], cube_sem["corr"],
-         "tab:blue", "o-", "correlation D2 -- cube collision", 9),
+         "tab:blue", "o-", "correlation D2 (L2 probe), cube-generated", 9),
         (sphere_ts, sphere_mean["corr"], sphere_sem["corr"],
-         "tab:cyan", "o--", "correlation D2 -- sphere collision", 9),
+         "tab:cyan", "o--", "correlation D2 (L2 probe), sphere-generated", 9),
         (cube_ts, cube_mean["box"], cube_sem["box"],
-         "tab:orange", "^-", "box-counting D0 -- cube collision", -13),
+         "tab:orange", "^-", "box-counting D0 (cube cells), cube-generated", -13),
         (sphere_ts, sphere_mean["box"], sphere_sem["box"],
-         "tab:red", "^--", "box-counting D0 -- sphere collision", -13),
+         "tab:red", "^--", "box-counting D0 (cube cells), sphere-generated", -13),
     ]
 
     fig, ax = plt.subplots(figsize=(14, 6.5))
@@ -127,11 +130,21 @@ def main() -> None:
     ax.set_xlabel("T (resolution)")
     ax.set_ylabel("dimension")
     ax.set_title(
-        "Collision geometry: cube vs sphere for correlation AND box-counting (3+1)"
+        "Collision geometry: cube- vs sphere-GENERATED packing, probe fixed (3+1)"
     )
     ax.legend(loc="lower right", fontsize=9)
     ax.grid(True, alpha=0.3)
-    fig.tight_layout()
+    fig.text(
+        0.5,
+        0.005,
+        "Probe held fixed (correlation = L2 ball, box-counting = cube cells); "
+        "only the generation collision shape varies. In the probe-comparison "
+        "charts, 'cube/sphere' instead means the measurement neighborhood.",
+        ha="center",
+        fontsize=7.5,
+        color="gray",
+    )
+    fig.tight_layout(rect=(0, 0.03, 1, 1))
     args.out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.out, dpi=130)
 
