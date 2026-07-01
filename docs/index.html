@@ -40,10 +40,24 @@
     .card h3 { margin: 0 0 .3rem; font-size: 1.05rem; }
     .card p { margin: 0; color: var(--muted); font-size: .9rem; }
     .figure { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-    .figure img { width: 100%; display: block; background: #fff; }
+    .figure img { width: 100%; display: block; background: #fff; cursor: zoom-in; }
     .figure figcaption { padding: .7rem .9rem; color: var(--muted); font-size: .88rem; }
     footer { margin-top: 4rem; color: var(--muted); font-size: .85rem; }
     code { background: #23262f; padding: .1rem .35rem; border-radius: 4px; }
+
+    /* Click-to-expand lightbox for the result figures. */
+    .lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(0, 0, 0, .85);
+      cursor: zoom-out;
+      padding: 2rem;
+    }
+    .lightbox.open { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .lightbox img { max-width: 95vw; max-height: 85vh; background: #fff; border-radius: 6px; }
+    .lightbox .caption { color: var(--ink); margin-top: 1rem; font-size: .95rem; max-width: 70ch; text-align: center; }
   </style>
 </head>
 <body>
@@ -113,5 +127,48 @@
       with &plusmn;SEM error bars. &mdash; The Braided Universe project.
     </footer>
   </div>
+
+  <!-- Full-size overlay shown when a result figure is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+
+  <script>
+    const lightbox = document.getElementById("lightbox");
+    const lightboxImg = document.getElementById("lightbox-img");
+    const lightboxCaption = document.getElementById("lightbox-caption");
+
+    function openLightbox(imageSrc, captionText) {
+      lightboxImg.src = imageSrc;
+      lightboxImg.alt = captionText;
+      lightboxCaption.textContent = captionText;
+      lightbox.classList.add("open");
+    }
+
+    function closeLightbox() {
+      lightbox.classList.remove("open");
+      lightboxImg.src = "";
+    }
+
+    // Wire up every figure image in the results gallery.
+    const figureImages = document.querySelectorAll(".figure img");
+    figureImages.forEach(function (image) {
+      image.addEventListener("click", function () {
+        const figure = image.closest("figure");
+        const caption = figure.querySelector("figcaption");
+        const captionText = caption ? caption.textContent.trim() : "";
+        openLightbox(image.src, captionText);
+      });
+    });
+
+    // Close on background click or Escape.
+    lightbox.addEventListener("click", closeLightbox);
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") {
+        closeLightbox();
+      }
+    });
+  </script>
 </body>
 </html>
