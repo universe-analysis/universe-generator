@@ -60,6 +60,61 @@
       </p>
     </article>
 
+    <article class="entry" id="boundary-and-wrapped">
+      <h2>Boundary handling: the sphere/cube gap is an edge artifact — and a wrapped-measurement preview</h2>
+      <p class="meta">
+        Investigation prompted by a question on the correlation numbers &middot;
+        code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/494940e"><code>494940e</code></a>
+      </p>
+      <p>
+        The correlation dimension was reported two ways — a sphere (L2) probe
+        giving D2 &approx; 2.79 and a cube (L&infin;) probe giving &approx; 2.71.
+        Digging into why they differ turned up something more basic: the standard
+        <em>C(r) = pairs-within-r / all-pairs</em> estimator silently assumes the
+        sample is either periodic or edge-corrected, and our packing is
+        <strong>neither</strong> — the engine treats <code>|X| = 1</code> as a hard
+        wall and an edge-weighted sampler piles density right against it. So every
+        boundary point is missing the neighbors that would sit outside the box,
+        which suppresses C(r) at larger r and drags the fitted slope down.
+      </p>
+      <p>
+        Two controls nail it. On a uniform cloud whose true dimension is exactly 3,
+        the naive estimator returns 2.87 (sphere) / 2.82 (cube) — both wrong, split
+        by ~0.045 — purely from the boundary. Removing the boundary (interior-only
+        centers, or periodic wrapping) restores <strong>3.00 for both probes, gap
+        &rarr; 0</strong>. So the sphere/cube difference is a finite-window edge
+        artifact, not structure: the dimension of a set does not depend on the
+        shape of the ruler once the boundary is handled.
+      </p>
+      <p>
+        As a preview of the estimator we'll use once a genuinely periodic space
+        exists, we ran the wrapped (toroidal minimum-image) correlation dimension
+        on the current data:
+      </p>
+      <figure class="plot">
+        <img src="periodic_corrdim.png"
+             alt="Periodic (wrapped) correlation dimension vs T: sphere and cube both converge onto D=3, with the non-periodic 2.79 line as reference." />
+        <figcaption>
+          Wrapped correlation dimension D2 vs T (3+1), sphere and cube probes,
+          seed-averaged. Both converge onto the space-filling D = 3 line, on top of
+          each other (gap ~0.01), while the non-periodic reference sits at 2.79.
+        </figcaption>
+      </figure>
+      <p>
+        <strong>Caveat, loudly:</strong> this wrapped measurement is run on the
+        <em>hard-wall</em> packing, which is not periodic. Because the sampler
+        stacks density on both walls, wrapping glues those sheets together and
+        invents spurious cross-seam pairs that homogenize the cloud — which is why
+        the wrapped value (2.997) sits almost exactly on the uniform control
+        (3.000). So the <strong>3.0 here is not the packing's real dimension</strong>;
+        it is a method preview. The takeaway that <em>is</em> solid: the 2.79/2.71
+        split and the sub-3 value were boundary effects, and the true dimension is
+        still bracketed and pending a boundary-controlled measurement (edge-corrected
+        on the bounded model, or wrapped on a genuinely periodic one).
+      </p>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
