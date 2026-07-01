@@ -1,0 +1,17 @@
+[package]
+name = "braid_engine"
+version = "0.1.0"
+edition = "2021"
+description = "Command-line RSA packing engine for the 2+1 braided-universe model"
+
+[[bin]]
+name = "braid_engine"
+path = "src/main.rs"
+
+# No external dependencies — builds fully offline.
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

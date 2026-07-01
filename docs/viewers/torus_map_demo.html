@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Flat ↔ Torus mapping demo</title>
+    <style>
+        :root { color-scheme: dark; }
+        html,body { margin:0; height:100%; background:#05060c; color:#aeb8cc; font-family:sans-serif; overflow:hidden; }
+        #panel {
+            position:fixed; top:0; left:0; right:0; z-index:10;
+            display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px;
+            padding:9px 13px; background:rgba(4,5,12,.85); border-bottom:1px solid #161c2c;
+        }
+        #panel label { font-size:12px; display:inline-flex; align-items:center; gap:5px; }
+        #panel input[type=range]{ width:120px; }
+        button { background:#141c30; color:#dce4f4; border:1px solid #29344f; border-radius:5px; padding:5px 10px; cursor:pointer; font-size:12px; }
+        button:hover { background:#1d2742; }
+        button.on { background:#2f6f4f; border-color:#3f9f6f; }
+        #wrap { position:fixed; top:46px; left:0; right:0; bottom:0; display:flex; }
+        #leftPane { width:42%; min-width:300px; display:flex; flex-direction:column; align-items:center; justify-content:center;
+                    border-right:1px solid #161c2c; gap:8px; }
+        #flat { background:#000; border:1px solid #222b40; border-radius:4px; touch-action:none; }
+        #rightPane { flex:1; position:relative; }
+        #gl { display:block; }
+        .cap { font-size:12px; color:#7d8aa6; }
+        .cap b { color:#aeb8cc; }
+        #readout { font-size:12px; color:#8fa0c0; min-height:14px; }
+    </style>
+</head>
+<body>
+    <div id="panel">
+        <b style="font-size:13px;color:#cdd6e4">Flat&nbsp;square&nbsp;↔&nbsp;Torus</b>
+        <span class="cap">— hover either side</span>
+        <label>Circle radius <input type="range" id="radRange" min="0" max="0.5" step="0.005" value="0.12"></label>
+        <button id="spinBtn" class="on">Auto-spin</button>
+        <button id="wireBtn">Cell wireframe</button>
+        <button id="resetBtn">Reset view</button>
+        <span id="readout"></span>
+    </div>
+    <div id="wrap">
+        <div id="leftPane">
+            <div class="cap"><b>2D world</b> — one fundamental domain (edges glued: A↔A, B↔B)</div>
+            <canvas id="flat" width="480" height="480"></canvas>
+            <div class="cap">A flat circle here becomes the looped curve on the torus →</div>
+        </div>
+        <div id="rightPane">
+            <canvas id="gl"></canvas>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+    /* ================================================================
+       Flat ↔ Torus mapping demo.
+       The flat domain is the unit square (s,t) ∈ [0,1]² with opposite
+       edges identified — a 2-torus. The SAME checkerboard texture is
+       shown flat (left) and wrapped on a donut (right) via
+         u = 2π·s   (around the big loop),   v = 2π·t   (around the tube)
+         P = ((R + r·cos v)·cos u, (R + r·cos v)·sin u, r·sin v)
+       A hover probe shows the corresponding point on both sides, plus a
+       flat circle and its (distorted, wrapping) image on the torus.
+    ================================================================ */
+    const COLS = 16, ROWS = 16;              // checkerboard cells (even → seamless wrap)
+    const R = 4, TUBE = 1.5;                 // torus major radius / tube radius
+
+    /* ---- build the checkerboard texture: hue around the loop, checker brightness ---- */
+    const TEX = 1024;
+    const checkerCanvas = document.createElement('canvas');
+    checkerCanvas.width = checkerCanvas.height = TEX;
+    (function paintChecker(){
+        const g = checkerCanvas.getContext('2d');
+        const cw = TEX/COLS, ch = TEX/ROWS;
+        for (let i=0;i<ROWS;i++) for (let j=0;j<COLS;j++){
+            const hue = (j/COLS)*360;                 // column → hue (so left edge ≡ right edge)
+            const lit = ((i+j)&1) ? 60 : 38;          // checker brightness
+            g.fillStyle = `hsl(${hue},70%,${lit}%)`;
+            g.fillRect(j*cw, i*ch, cw+1, ch+1);
+        }
+        g.strokeStyle = 'rgba(0,0,0,0.30)'; g.lineWidth = 1.5;
+        for (let j=0;j<=COLS;j++){ g.beginPath(); g.moveTo(j*cw,0); g.lineTo(j*cw,TEX); g.stroke(); }
+        for (let i=0;i<=ROWS;i++){ g.beginPath(); g.moveTo(0,i*ch); g.lineTo(TEX,i*ch); g.stroke(); }
+    })();
+
+    /* ================================================================
+       RIGHT SIDE — Three.js torus carrying the checkerboard
+    ================================================================ */
+    const glCanvas = document.getElementById('gl');
+    const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true });
+    renderer.setPixelRatio(devicePixelRatio);
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x05060c);
+
+    let camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
+    const camHome = new THREE.Vector3(0, -10, 9);
+    camera.position.copy(camHome); camera.up.set(0,0,1);
+    const controls = new THREE.OrbitControls(camera, glCanvas);
+    controls.enableDamping = true; controls.autoRotate = true; controls.autoRotateSpeed = 0.7;
+
+    const tex = new THREE.CanvasTexture(checkerCanvas);
+    tex.flipY = false;                                  // texture row 0 (canvas top) → t = 0
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.anisotropy = 4;
+    tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter;  // avoid mip moiré of the grid lines
+
+    // TorusGeometry UVs: uv.x runs around the big loop (→ s), uv.y around the tube (→ t)
+    const torusGeo = new THREE.TorusGeometry(R, TUBE, 160, 280);
+    const torusMesh = new THREE.Mesh(torusGeo, new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+    scene.add(torusMesh);
+
+    const wire = new THREE.Mesh(
+        new THREE.TorusGeometry(R, TUBE, ROWS, COLS),   // coarse → one quad per checker cell
+        new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true, transparent:true, opacity:0.35,
+            polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2 }));  // ride on top, no z-fight
+    wire.visible = false; scene.add(wire);
+
+    // probe marker + its mapped circle (points avoid false chords across the seam)
+    const marker = new THREE.Mesh(new THREE.SphereGeometry(0.16, 20, 20),
+                                  new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    marker.visible = false; scene.add(marker);
+    const NCIRC = 256;
+    const circleGeo = new THREE.BufferGeometry();
+    circleGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(NCIRC*3), 3));
+    const circlePts = new THREE.Points(circleGeo,
+        new THREE.PointsMaterial({ color: 0xfff2c0, size: 0.13 }));
+    circlePts.visible = false; scene.add(circlePts);
+
+    // (s,t) → 3D point on the torus  (matches THREE.TorusGeometry's parametrization)
+    function torusPoint(s, t, out){
+        const u = 2*Math.PI*s, v = 2*Math.PI*t, rad = R + TUBE*Math.cos(v);
+        out.set(rad*Math.cos(u), rad*Math.sin(u), TUBE*Math.sin(v));
+        return out;
+    }
+
+    /* ================================================================
+       LEFT SIDE — flat square + probe overlay
+    ================================================================ */
+    const flat = document.getElementById('flat');
+    const fctx = flat.getContext('2d');
+    let probe = null, radius = 0.12;            // probe = {s,t} in [0,1], radius in s-units
+
+    function drawFlat(){
+        const W = flat.width, H = flat.height, ctx = fctx;
+        ctx.clearRect(0,0,W,H);
+        ctx.drawImage(checkerCanvas, 0, 0, W, H);
+
+        // edge-identification labels: left≡right = "A", top≡bottom = "B"
+        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px sans-serif';
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText('A', 11, H/2);  ctx.fillText('A', W-11, H/2);     // glued vertical edges
+        ctx.fillText('B', W/2, 11);  ctx.fillText('B', W/2, H-11);     // glued horizontal edges
+
+        if (probe){
+            const cx = probe.s*W, cy = probe.t*H, pr = radius*W;
+            // circle, tiled across the periodic edges (3×3 copies)
+            ctx.lineWidth = 2; ctx.strokeStyle = '#fff2c0';
+            for (let di=-1;di<=1;di++) for (let dj=-1;dj<=1;dj++){
+                const ax = cx+di*W, ay = cy+dj*H;
+                if (ax+pr<0||ax-pr>W||ay+pr<0||ay-pr>H) continue;
+                ctx.beginPath(); ctx.arc(ax, ay, pr, 0, Math.PI*2); ctx.stroke();
+            }
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI*2); ctx.fill();
+        }
+    }
+
+    /* ---- shared: set the probe and update both views ---- */
+    const _p = new THREE.Vector3();
+    function setProbe(s, t){
+        probe = { s: ((s%1)+1)%1, t: ((t%1)+1)%1 };
+        marker.visible = circlePts.visible = true;
+        torusPoint(probe.s, probe.t, _p); marker.position.copy(_p);
+        const arr = circleGeo.attributes.position.array;
+        for (let k=0;k<NCIRC;k++){
+            const a = (k/NCIRC)*2*Math.PI;
+            torusPoint(probe.s + radius*Math.cos(a), probe.t + radius*Math.sin(a), _p);  // angles wrap automatically
+            arr[k*3]=_p.x; arr[k*3+1]=_p.y; arr[k*3+2]=_p.z;
+        }
+        circleGeo.attributes.position.needsUpdate = true;
+        document.getElementById('readout').textContent =
+            `s=${probe.s.toFixed(3)}  t=${probe.t.toFixed(3)}   →   u=${(probe.s*360).toFixed(0)}°  v=${(probe.t*360).toFixed(0)}°`;
+        drawFlat();
+    }
+
+    /* ---- input: hover the flat square ---- */
+    function flatHover(e){
+        const r = flat.getBoundingClientRect();
+        setProbe((e.clientX-r.left)/r.width, (e.clientY-r.top)/r.height);
+    }
+    flat.addEventListener('pointermove', flatHover);
+    flat.addEventListener('pointerdown', flatHover);
+
+    /* ---- input: hover the torus (raycast → uv → s,t) ---- */
+    const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+    glCanvas.addEventListener('pointermove', e=>{
+        const r = glCanvas.getBoundingClientRect();
+        ndc.x = ((e.clientX-r.left)/r.width)*2 - 1;
+        ndc.y = -((e.clientY-r.top)/r.height)*2 + 1;
+        raycaster.setFromCamera(ndc, camera);
+        const hit = raycaster.intersectObject(torusMesh)[0];
+        if (hit && hit.uv) setProbe(hit.uv.x, hit.uv.y);
+    });
+
+    /* ---- controls ---- */
+    document.getElementById('radRange').addEventListener('input', e=>{
+        radius = parseFloat(e.target.value); if (probe) setProbe(probe.s, probe.t);
+    });
+    const spinBtn = document.getElementById('spinBtn');
+    spinBtn.addEventListener('click', ()=>{ controls.autoRotate=!controls.autoRotate; spinBtn.classList.toggle('on', controls.autoRotate); });
+    const wireBtn = document.getElementById('wireBtn');
+    wireBtn.addEventListener('click', ()=>{ wire.visible=!wire.visible; wireBtn.classList.toggle('on', wire.visible); });
+    document.getElementById('resetBtn').addEventListener('click', ()=>{
+        camera.position.copy(camHome); controls.target.set(0,0,0); controls.update();
+    });
+
+    /* ---- sizing ---- */
+    function resize(){
+        const pane = document.getElementById('rightPane');
+        renderer.setSize(pane.clientWidth, pane.clientHeight, false);
+        camera.aspect = pane.clientWidth / Math.max(1,pane.clientHeight); camera.updateProjectionMatrix();
+        const lp = document.getElementById('leftPane');
+        const sz = Math.max(200, Math.min(lp.clientWidth-24, lp.clientHeight-70));
+        flat.style.width = flat.style.height = sz+'px';     // CSS size; bitmap stays 480 for crispness
+        drawFlat();
+    }
+    addEventListener('resize', resize);
+
+    drawFlat(); resize();
+    (function tick(){ requestAnimationFrame(tick); controls.update(); renderer.render(scene, camera); })();
+    </script>
+</body>
+</html>

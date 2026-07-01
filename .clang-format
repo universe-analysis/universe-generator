@@ -1,0 +1,11 @@
+# Formatting for the CUDA engines. clang-format treats .cu as C++.
+#   clang-format -i cuda/*.cu
+BasedOnStyle: Google
+IndentWidth: 4
+ColumnLimit: 96
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortBlocksOnASingleLine: Empty
+BinPackParameters: false
+SpacesBeforeTrailingComments: 2

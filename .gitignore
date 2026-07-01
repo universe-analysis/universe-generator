@@ -1,0 +1,22 @@
+# Generated artifacts (regenerable) -- anchored to the repo root so the curated
+# docs/figures/ used by the GitHub Pages site stays committable.
+/figures/
+/data/
+/*.png
+report_*.html
+.runner_*.sh
+*.db
+*.sub.csv
+
+# Rust build
+/target/
+
+# Python / tooling caches
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+# OS
+.DS_Store
