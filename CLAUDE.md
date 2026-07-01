@@ -86,6 +86,33 @@ dimension, Dq spectrum, structure factor, knot analysis, etc. all read those.
 The correlation dimension is the trustworthy estimator; box-counting is noisy and
 point-count sensitive (measure it on the full cloud, not a subsample).
 
+## Lab notes (daily campaign log)
+
+The site publishes a running lab notebook under `docs/lab-notes/` — a dated,
+reverse-chronological log of every campaign run and the plots it produced, each
+tied to the commit that generated it so any figure can be reproduced. When you
+run a campaign or make a plot worth keeping, log it:
+
+1. **Day directory.** That day's plots live in `docs/lab-notes/<YYYY-MM-DD>/`.
+   Create it on the day's first plot.
+2. **Commit the code first.** Commit the generating change (analysis script /
+   engine tweak) on its own, then grab the short hash: `git rev-parse --short HEAD`.
+3. **Generate the plot** into the day directory.
+4. **Write the entry.** On the day's first entry, create
+   `docs/lab-notes/<YYYY-MM-DD>/index.html` by copying the previous day's page as
+   a template (it links `../notes.css` + `../notes.js` and carries the lightbox
+   markup). Append an `<article class="entry">` saying what the plot is, what it
+   shows, and the takeaway, with a `.meta` provenance line citing the code commit
+   as a link to `https://github.com/universe-analysis/universe-generator/commit/<hash>`.
+   Entries are chronological — newest appended at the bottom, above the
+   `<!-- NEW ENTRIES APPEND ABOVE THIS LINE -->` marker.
+5. **Index the day.** On the day's first entry, add a `.day` link at the top
+   (newest first) of the list in `docs/lab-notes/index.html`.
+6. **Commit the note + plot(s)** as a second commit, separate from the code.
+
+Lab-note plots **are** committed (they're site content) — the exception to the
+"keep figures out of git" rule below, which still applies to top-level `figures/`.
+
 ## Conventions
 
 - **Python:** type hints on all code; docstrings on public APIs; 88-char lines;

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-07-01</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-07-01</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="collision-geometry">
+      <h2>Collision geometry: cube vs sphere, both estimators</h2>
+      <p class="meta">
+        Campaign <code>corrdim3d_euclid</code> (95 sphere-collision dumps,
+        T = 20&ndash;200, 5 seeds) &middot; code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/bb362fe"><code>bb362fe</code></a>
+      </p>
+      <p>
+        The packing engine excludes overlapping worldlines using a distance test.
+        By default that test is a Chebyshev cube (an axis-aligned L&infin; box);
+        the &ldquo;euclid&rdquo; variant swaps it for an L2 sphere. The question:
+        does the shape of the exclusion region change the packing dimension?
+        This chart holds each estimator (and its probe) fixed and varies only the
+        collision geometry the data was generated with &mdash; the honest
+        apples-to-apples test.
+      </p>
+      <figure class="plot">
+        <img src="collision_geometry.png"
+             alt="Correlation D2 and box-counting D0 vs T, for cube and sphere collision geometries; the cube and sphere curves overlap." />
+        <figcaption>
+          Correlation D2 (L2 probe) and box-counting D0 (cube cells), each measured
+          on cube-collision and sphere-collision dumps, seed-averaged vs resolution
+          T (3+1). Solid = cube collision, dashed = sphere collision. Shaded band =
+          low T where the packing cell intrudes on the fit window.
+        </figcaption>
+      </figure>
+      <p>
+        <strong>Result: collision geometry does not matter.</strong> Converged
+        over T &ge; 100:
+      </p>
+      <ul>
+        <li>correlation D2 &mdash; cube 2.795, sphere 2.791 (&Delta; 0.004)</li>
+        <li>box-counting D0 &mdash; cube 2.677, sphere 2.674 (&Delta; 0.003)</li>
+      </ul>
+      <p>
+        Both differences are well inside the seed error bars; the solid and dashed
+        curves are visually indistinguishable above the shaded band. The ~0.11
+        gap that remains is between the two <em>estimators</em> (D2 vs D0 of a
+        mildly multifractal object) &mdash; a q-moment effect, not a collision-shape
+        effect. Correlation converges from above and box-counting from below, so
+        they sandwich the D &approx; 2.79 line. This closes the loop: switching the
+        packing exclusion from cubes to spheres leaves the dimension unchanged.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
