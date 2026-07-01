@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-from braid_overlay import braid_rate_points
+from plots.braid_overlay import braid_rate_points
 
 
 def rate_vs_attempts(paths: list[str]) -> tuple[list[float], list[float]]:

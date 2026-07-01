@@ -24,9 +24,10 @@ worldline across all of conformal time.
 |---|---|
 | `braidlab/` | Python orchestration suite: campaigns, resumable SSH fleet runner, SQLite store, correlation-dimension analysis. |
 | `cuda/` | GPU packing engines (`braid_cuda3d.cu` for 3+1, `braid_cuda.cu` for 2+1) + `Makefile`. |
-| `analyze_*.py`, `plot_*.py` | Standalone analysis / plotting tools (correlation dimension, Dq spectrum, equation of state, knots, …). |
+| `analysis/` | Current analysis tools (correlation dimension, Dq spectrum, equation of state, knots, box geometry, …). Run from the repo root as modules: `uv run python -m analysis.analyze_correlation_dim …`. |
+| `plots/` | Charting / overlay scripts (packing count vs T, approach curves, coupon-collector cells, …), same `-m` invocation. |
 | `docs/` | GitHub Pages site — `viewers/` (interactive HTML) + `figures/` (curated charts). |
-| `braid_solver/` | Early Python prototypes (pre-CUDA), kept for reference. |
+| `legacy/` | Superseded pre-braidlab tooling (`analyze_campaign`, `plot_campaign`, `make_report`) and the early `braid_solver/` prototypes (pre-CUDA), kept for reference. |
 | `*.md` | Findings and design notes (`PHYSICS_FINDINGS`, `EXPERIMENTS_QUEUE`, `INVESTIGATION_menger`, …). |
 
 Engine operations (the heterogeneous CUDA fleet, GPU-memory T-ceilings, the

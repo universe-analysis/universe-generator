@@ -23,7 +23,15 @@ result and the physics that emerges. Headline: **D ≈ 2.79 (3+1)**, **≈ 1.82
   `braidlab/ORCHESTRATOR.md` for how the fleet runner works.
 - `cuda/` — GPU packing engines (`braid_cuda3d.cu` 3+1, `braid_cuda.cu` 2+1) +
   `Makefile`.
-- `analyze_*.py`, `plot_*.py` — standalone analysis / plotting tools.
+- `analysis/` — current analysis tools (`analyze_correlation_dim`,
+  `analyze_spectral_dims`, `analyze_knots`, `analyze_box_geometry`,
+  `analyze_eos_history`, …). Run from the repo root as modules so `braidlab`
+  and `data/` resolve: `uv run python -m analysis.analyze_correlation_dim …`.
+- `plots/` — charting / overlay scripts (`plot_nvt`, `plot_approach`,
+  `coupon_cells`, …), same `-m` invocation.
+- `legacy/` — superseded pre-braidlab tooling (`analyze_campaign`,
+  `plot_campaign`, `make_report`) and the early `braid_solver/` Python
+  prototypes (pre-CUDA), kept for reference.
 - `docs/` — the GitHub Pages site (`viewers/` interactive HTML + curated
   `figures/`).
 - `*.md` — findings and notes (`PHYSICS_FINDINGS`, `EXPERIMENTS_QUEUE`,
