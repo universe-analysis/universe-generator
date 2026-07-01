@@ -1,0 +1,81 @@
+/* Shared styles for the lab-notes pages. Matches the dark theme of the main
+   site (docs/index.html) so the notebook feels like part of the same site. */
+:root {
+  --bg: #0e0f13;
+  --panel: #171922;
+  --ink: #e8e8ea;
+  --muted: #a7abb6;
+  --accent: #6ea8fe;
+  --line: #2a2d3a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.6;
+}
+
+.wrap { max-width: 900px; margin: 0 auto; padding: 2.5rem 1.25rem 5rem; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.crumb { color: var(--muted); font-size: .9rem; margin: 0 0 1.5rem; }
+
+h1 { font-size: 2rem; margin: 0 0 .3rem; }
+p.lead { color: var(--muted); font-size: 1.05rem; margin: 0 0 2rem; max-width: 70ch; }
+
+/* Day list on the lab-notes landing page. */
+.day {
+  display: block;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem 1.2rem;
+  margin: 0 0 1rem;
+  color: var(--ink);
+}
+.day:hover { border-color: var(--accent); text-decoration: none; }
+.day .date { font-size: 1.1rem; font-weight: 600; }
+.day .summary { color: var(--muted); font-size: .92rem; margin-top: .25rem; }
+
+/* A single note entry within a day. */
+.entry {
+  border-top: 1px solid var(--line);
+  padding-top: 1.8rem;
+  margin-top: 1.8rem;
+}
+.entry:first-of-type { border-top: none; }
+.entry h2 { font-size: 1.3rem; margin: 0 0 .4rem; }
+.entry .meta { color: var(--muted); font-size: .88rem; margin: 0 0 1rem; }
+.entry .meta code { background: #23262f; padding: .1rem .35rem; border-radius: 4px; }
+
+.plot {
+  margin: 1.2rem 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.plot img { width: 100%; display: block; background: #fff; cursor: zoom-in; }
+.plot figcaption { padding: .7rem .9rem; color: var(--muted); font-size: .88rem; }
+
+code { background: #23262f; padding: .1rem .35rem; border-radius: 4px; }
+
+/* Click-to-expand lightbox (behaviour in notes.js). */
+.lightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, .85);
+  cursor: zoom-out;
+  padding: 2rem;
+}
+.lightbox.open { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.lightbox img { max-width: 95vw; max-height: 85vh; background: #fff; border-radius: 6px; }
+.lightbox .caption { color: var(--ink); margin-top: 1rem; font-size: .95rem; max-width: 70ch; text-align: center; }
