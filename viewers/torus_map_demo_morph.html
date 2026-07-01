@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Flat ↔ Torus mapping demo — MORPH (isotropic) approach</title>
+    <style>
+        :root { color-scheme: dark; }
+        html,body { margin:0; height:100%; background:#05060c; color:#aeb8cc; font-family:sans-serif; overflow:hidden; }
+        #panel {
+            position:fixed; top:0; left:0; right:0; z-index:10;
+            display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px;
+            padding:9px 13px; background:rgba(4,5,12,.85); border-bottom:1px solid #161c2c;
+        }
+        #panel label { font-size:12px; display:inline-flex; align-items:center; gap:5px; }
+        #panel input[type=range]{ width:120px; }
+        button { background:#141c30; color:#dce4f4; border:1px solid #29344f; border-radius:5px; padding:5px 10px; cursor:pointer; font-size:12px; }
+        button:hover { background:#1d2742; }
+        button.on { background:#2f6f4f; border-color:#3f9f6f; }
+        #wrap { position:fixed; top:46px; left:0; right:0; bottom:0; display:flex; }
+        #leftPane { width:42%; min-width:300px; display:flex; flex-direction:column; align-items:center; justify-content:center;
+                    border-right:1px solid #161c2c; gap:8px; }
+        #flat { background:#000; border:1px solid #222b40; border-radius:4px; touch-action:none; }
+        #rightPane { flex:1; position:relative; }
+        #gl { display:block; }
+        .cap { font-size:12px; color:#7d8aa6; }
+        .cap b { color:#aeb8cc; }
+        #readout { font-size:12px; color:#8fa0c0; min-height:14px; }
+    </style>
+</head>
+<body>
+    <div id="panel">
+        <b style="font-size:13px;color:#cdd6e4">MORPH approach</b>
+        <span class="cap">— chart is square (L∞), torus is the isotropic true space</span>
+        <label>Ring radius <input type="range" id="radRange" min="0" max="0.6" step="0.005" value="0.18"></label>
+        <button id="morphBtn" class="on">Mapping: Morph</button>
+        <button id="spinBtn" class="on">Auto-spin</button>
+        <button id="resetBtn">Reset view</button>
+        <span id="readout"></span>
+    </div>
+    <div id="wrap">
+        <div id="leftPane">
+            <div class="cap"><b>2D chart</b> — <span id="leftcap">a true ring is a <b>square-ish</b> shape here</span></div>
+            <canvas id="flat" width="480" height="480"></canvas>
+            <div class="cap">↑ reverse-mapped (circle→square) &nbsp;·&nbsp; round on the torus →</div>
+        </div>
+        <div id="rightPane">
+            <canvas id="gl"></canvas>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+    /* ================================================================
+       MORPH-approach mapping demo.
+       The 2D chart is SQUARE (L∞) coordinates (a,b) ∈ [-1,1]² — the
+       "computational" space. The torus is the ISOTROPIC "true" space,
+       reached by the square→circle morph:
+         (c,d) = squareToCircle(a,b)         // L∞ ball → L2 ball
+         u = π·c,  v = π·d                    // isotropic coords → torus angles
+         P = ((R + r·cos v)·cos u, (R + r·cos v)·sin u, r·sin v)
+       A light "ring" is a TRUE CIRCLE in the isotropic space: round on
+       the torus, but its reverse map (circle→square) is a square-ish
+       shape on the chart. Note: the isotropic disk doesn't reach the
+       torus's diagonal corners, so a faint base torus shows through.
+    ================================================================ */
+    const COLS = 16, ROWS = 16, R = 4, TUBE = 1.5;
+
+    // square ↔ circle morph (exact inverses)
+    function sq2ci(a,b){ const m=Math.max(Math.abs(a),Math.abs(b)), l=Math.hypot(a,b); return l>1e-6?[a*m/l,b*m/l]:[a,b]; }
+    function ci2sq(c,d){ const m=Math.max(Math.abs(c),Math.abs(d)), l=Math.hypot(c,d); return m>1e-6?[c*l/m,d*l/m]:[c,d]; }
+    function hsl(h,s,l){ h/=360; const a=s*Math.min(l,1-l);
+        const f=n=>{ const k=(n+h*12)%12; return l-a*Math.max(-1,Math.min(k-3,9-k,1)); }; return [f(0),f(8),f(4)]; }
+    function checker(a,b){                          // (a,b)∈[-1,1] → [r,g,b]
+        const ai=Math.min(COLS-1,Math.floor((a+1)/2*COLS)), bj=Math.min(ROWS-1,Math.floor((b+1)/2*ROWS));
+        return hsl((ai/COLS)*360, 0.7, ((ai+bj)&1)?0.60:0.38);
+    }
+    function torusPoint(u,v,out){ const rad=R+TUBE*Math.cos(v);
+        out.set(rad*Math.cos(u), rad*Math.sin(u), TUBE*Math.sin(v)); return out; }
+    let morphMode = true;                          // true = square→circle morph, false = linear wrap
+    function chartToCircle(a,b){ return morphMode ? sq2ci(a,b) : [a,b]; }   // chart → isotropic coords
+    function chartToTorus(a,b,out){ const cd=chartToCircle(a,b); return torusPoint(Math.PI*cd[0], Math.PI*cd[1], out); }
+
+    /* ---- 2D chart checkerboard (square coords) ---- */
+    const TEX = 1024;
+    const checkerCanvas = document.createElement('canvas'); checkerCanvas.width = checkerCanvas.height = TEX;
+    (function(){ const g=checkerCanvas.getContext('2d'), cw=TEX/COLS, ch=TEX/ROWS;
+        for(let i=0;i<ROWS;i++) for(let j=0;j<COLS;j++){
+            const c=hsl((j/COLS)*360,0.7,((i+j)&1)?0.60:0.38);
+            g.fillStyle=`rgb(${c[0]*255|0},${c[1]*255|0},${c[2]*255|0})`; g.fillRect(j*cw,i*ch,cw+1,ch+1); }
+        g.strokeStyle='rgba(0,0,0,0.30)'; g.lineWidth=1.5;
+        for(let j=0;j<=COLS;j++){ g.beginPath(); g.moveTo(j*cw,0); g.lineTo(j*cw,TEX); g.stroke(); }
+        for(let i=0;i<=ROWS;i++){ g.beginPath(); g.moveTo(0,i*ch); g.lineTo(TEX,i*ch); g.stroke(); }
+    })();
+
+    /* ================================================================
+       RIGHT — Three.js: morph-packed checkerboard donut + dark base
+    ================================================================ */
+    const glCanvas = document.getElementById('gl');
+    const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true });
+    renderer.setPixelRatio(devicePixelRatio);
+    const scene = new THREE.Scene(); scene.background = new THREE.Color(0x05060c);
+    let camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
+    const camHome = new THREE.Vector3(0, -10, 9); camera.position.copy(camHome); camera.up.set(0,0,1);
+    const controls = new THREE.OrbitControls(camera, glCanvas);
+    controls.enableDamping = true; controls.autoRotate = true; controls.autoRotateSpeed = 0.7;
+
+    // faint full torus so the un-reached diagonal corners aren't just holes.
+    // polygonOffset pushes it *behind* the morph mesh so the two coincident surfaces don't z-fight.
+    scene.add(new THREE.Mesh(new THREE.TorusGeometry(R, TUBE, 60, 120),
+        new THREE.MeshBasicMaterial({ color: 0x10141f, side: THREE.DoubleSide,
+            polygonOffset: true, polygonOffsetFactor: 4, polygonOffsetUnits: 4 })));
+
+    // morph-packed checkerboard: grid over the square chart (a,b), each vertex placed via the morph
+    const GN = 90, _v = new THREE.Vector3();
+    let morphMesh;
+    (function buildMorphMesh(){
+        const pos = new Float32Array(GN*GN*3), col = new Float32Array(GN*GN*3), uv = new Float32Array(GN*GN*2);
+        for(let i=0;i<GN;i++) for(let j=0;j<GN;j++){
+            const a=-1+2*j/(GN-1), b=-1+2*i/(GN-1), o=(i*GN+j);
+            chartToTorus(a,b,_v); pos[o*3]=_v.x; pos[o*3+1]=_v.y; pos[o*3+2]=_v.z;
+            const c=checker(a,b); col[o*3]=c[0]; col[o*3+1]=c[1]; col[o*3+2]=c[2];
+            uv[o*2]=(a+1)/2; uv[o*2+1]=(b+1)/2;
+        }
+        const idx=[];
+        for(let i=0;i<GN-1;i++) for(let j=0;j<GN-1;j++){ const o=i*GN+j;
+            idx.push(o,o+1,o+GN, o+1,o+GN+1,o+GN); }
+        const g=new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+        g.setAttribute('color', new THREE.BufferAttribute(col,3));
+        g.setAttribute('uv', new THREE.BufferAttribute(uv,2));
+        g.setIndex(idx); g.computeVertexNormals();
+        morphMesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors:true, side:THREE.DoubleSide }));
+        scene.add(morphMesh);
+    })();
+
+    const marker = new THREE.Mesh(new THREE.SphereGeometry(0.16, 20, 20),
+        new THREE.MeshBasicMaterial({ color: 0xffffff })); marker.visible=false; scene.add(marker);
+    const NCIRC = 240;
+    const circleGeo = new THREE.BufferGeometry();
+    circleGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(NCIRC*3),3));
+    const circlePts = new THREE.Points(circleGeo, new THREE.PointsMaterial({ color:0xfff2c0, size:0.13 }));
+    circlePts.visible=false; scene.add(circlePts);
+
+    /* ================================================================
+       LEFT — square chart + reverse-mapped (square-ish) ring
+    ================================================================ */
+    const flat = document.getElementById('flat'), fctx = flat.getContext('2d');
+    let probe = null, radius = 0.18;               // probe = {a,b}; radius in isotropic-space units
+
+    function drawFlat(){
+        const W=flat.width, H=flat.height, ctx=fctx;
+        ctx.clearRect(0,0,W,H); ctx.drawImage(checkerCanvas,0,0,W,H);
+        ctx.fillStyle='#fff'; ctx.font='bold 16px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText('A',11,H/2); ctx.fillText('A',W-11,H/2); ctx.fillText('B',W/2,11); ctx.fillText('B',W/2,H-11);
+        if(probe){
+            const cd0=chartToCircle(probe.a, probe.b);   // emitter in isotropic space
+            ctx.lineWidth=2.5; ctx.strokeStyle='#fff2c0'; ctx.beginPath();
+            for(let k=0;k<=NCIRC;k++){ const t=(k/NCIRC)*2*Math.PI;
+                const rp=[cd0[0]+radius*Math.cos(t), cd0[1]+radius*Math.sin(t)];   // true circle (isotropic)
+                const ab=morphMode ? ci2sq(rp[0],rp[1]) : rp;                       // morph → square-ish; linear → circle
+                const px=(ab[0]+1)/2*W, py=(ab[1]+1)/2*H;
+                if(k===0) ctx.moveTo(px,py); else ctx.lineTo(px,py); }
+            ctx.stroke();
+            const cx=(probe.a+1)/2*W, cy=(probe.b+1)/2*H;
+            ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(cx,cy,5,0,Math.PI*2); ctx.fill();
+        }
+    }
+
+    function setProbe(a,b){
+        probe = { a: Math.max(-1,Math.min(1,a)), b: Math.max(-1,Math.min(1,b)) };
+        marker.visible = circlePts.visible = true;
+        const cd0 = chartToCircle(probe.a, probe.b);
+        torusPoint(Math.PI*cd0[0], Math.PI*cd0[1], _v); marker.position.copy(_v);
+        const arr = circleGeo.attributes.position.array;
+        for(let k=0;k<NCIRC;k++){ const t=(k/NCIRC)*2*Math.PI;   // TRUE circle in isotropic space
+            torusPoint(Math.PI*(cd0[0]+radius*Math.cos(t)), Math.PI*(cd0[1]+radius*Math.sin(t)), _v);
+            arr[k*3]=_v.x; arr[k*3+1]=_v.y; arr[k*3+2]=_v.z; }
+        circleGeo.attributes.position.needsUpdate = true;
+        document.getElementById('readout').textContent =
+            `chart (a,b)=(${probe.a.toFixed(2)},${probe.b.toFixed(2)})  →  isotropic (c,d)=(${cd0[0].toFixed(2)},${cd0[1].toFixed(2)})`;
+        drawFlat();
+    }
+
+    /* ---- input ---- */
+    function flatHover(e){ const r=flat.getBoundingClientRect();
+        setProbe(((e.clientX-r.left)/r.width)*2-1, ((e.clientY-r.top)/r.height)*2-1); }
+    flat.addEventListener('pointermove', flatHover); flat.addEventListener('pointerdown', flatHover);
+
+    const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+    glCanvas.addEventListener('pointermove', e=>{
+        const r=glCanvas.getBoundingClientRect();
+        ndc.x=((e.clientX-r.left)/r.width)*2-1; ndc.y=-((e.clientY-r.top)/r.height)*2+1;
+        raycaster.setFromCamera(ndc, camera);
+        const hit = raycaster.intersectObject(morphMesh)[0];
+        if(hit && hit.uv) setProbe(hit.uv.x*2-1, hit.uv.y*2-1);
+    });
+
+    function rebuildMeshPositions(){               // re-place the checkerboard grid for the current mode
+        const pos = morphMesh.geometry.attributes.position.array;
+        for(let i=0;i<GN;i++) for(let j=0;j<GN;j++){
+            const a=-1+2*j/(GN-1), b=-1+2*i/(GN-1), o=(i*GN+j);
+            chartToTorus(a,b,_v); pos[o*3]=_v.x; pos[o*3+1]=_v.y; pos[o*3+2]=_v.z; }
+        morphMesh.geometry.attributes.position.needsUpdate = true;
+        morphMesh.geometry.computeVertexNormals();
+    }
+    document.getElementById('morphBtn').addEventListener('click', e=>{
+        morphMode = !morphMode;
+        e.target.textContent = 'Mapping: ' + (morphMode ? 'Morph' : 'Linear');
+        e.target.classList.toggle('on', morphMode);
+        document.getElementById('leftcap').innerHTML = morphMode
+            ? 'a true ring is a <b>square-ish</b> shape here'
+            : 'a true ring is a <b>circle</b> here (distorted on the torus)';
+        rebuildMeshPositions();
+        if(probe) setProbe(probe.a, probe.b);
+    });
+    document.getElementById('radRange').addEventListener('input', e=>{ radius=parseFloat(e.target.value); if(probe) setProbe(probe.a, probe.b); });
+    const spinBtn=document.getElementById('spinBtn');
+    spinBtn.addEventListener('click', ()=>{ controls.autoRotate=!controls.autoRotate; spinBtn.classList.toggle('on', controls.autoRotate); });
+    document.getElementById('resetBtn').addEventListener('click', ()=>{ camera.position.copy(camHome); controls.target.set(0,0,0); controls.update(); });
+
+    function resize(){
+        const pane=document.getElementById('rightPane');
+        renderer.setSize(pane.clientWidth, pane.clientHeight, false);
+        camera.aspect=pane.clientWidth/Math.max(1,pane.clientHeight); camera.updateProjectionMatrix();
+        const lp=document.getElementById('leftPane'), sz=Math.max(200, Math.min(lp.clientWidth-24, lp.clientHeight-70));
+        flat.style.width=flat.style.height=sz+'px'; drawFlat();
+    }
+    addEventListener('resize', resize);
+    drawFlat(); resize();
+    (function tick(){ requestAnimationFrame(tick); controls.update(); renderer.render(scene, camera); })();
+    </script>
+</body>
+</html>

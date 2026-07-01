@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>2+1 Universe — 2-Torus (GPU point cloud)</title>
+    <style>
+        :root { color-scheme: dark; }
+        html,body { margin:0; height:100%; background:#000006; color:#aeb8cc; font-family:sans-serif; overflow:hidden; }
+        #panel {
+            position:fixed; top:0; left:0; right:0; z-index:10;
+            display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px;
+            padding:9px 13px; background:rgba(4,5,12,.82);
+            border-bottom:1px solid #161c2c; backdrop-filter:blur(4px);
+        }
+        #panel label { font-size:12px; display:inline-flex; align-items:center; gap:5px; }
+        #panel input[type=number]{ width:64px; background:#0c1018; color:#cdd6e4; border:1px solid #232c40; border-radius:4px; padding:3px 5px; }
+        #panel input[type=range]{ width:104px; }
+        button { background:#141c30; color:#dce4f4; border:1px solid #29344f; border-radius:5px; padding:5px 10px; cursor:pointer; font-size:12px; }
+        button:hover { background:#1d2742; }
+        button.on { background:#2f6f4f; border-color:#3f9f6f; }
+        #status { font-size:12px; color:#7d8aa6; margin-left:auto; }
+        canvas { display:block; }
+        #hud { position:fixed; right:12px; bottom:12px; width:240px; height:240px; z-index:9;
+               border:1px solid #222b40; border-radius:6px; background:rgba(2,3,8,0.55); }
+        .sep { width:1px; height:20px; background:#222b40; }
+    </style>
+</head>
+<body>
+    <div id="panel">
+        <label>Groups <input type="number" id="groupInput" value="250" min="1"></label>
+        <label>Time-steps <input type="number" id="timeInput" value="180" min="2"></label>
+        <button id="generateBtn">Generate</button>
+        <button id="abortBtn">Abort</button>
+        <button id="smartFreqBtn" class="on">Smart freqs</button>
+        <span class="sep"></span>
+        <button id="mapBtn" class="on">Map: Surface</button>
+        <button id="cloudBtn">Cloud</button>
+        <button id="sweepBtn" class="on">Sweep ▶</button>
+        <button id="gridBtn" class="on">Torus grid</button>
+        <button id="spinBtn">Auto-spin</button>
+        <button id="viewBtn" class="on">View: Ortho</button>
+        <button id="hudBtn" class="on">Slice 2D</button>
+        <button id="coneBtn" class="on">Light cones</button>
+        <label>Rings <input type="range" id="coneRingsRange" min="1" max="60" step="1" value="3"><span id="coneRingsVal" style="width:18px;display:inline-block;color:#9fb0d0">3</span></label>
+        <label>Emit rate <input type="range" id="coneRateRange" min="0.5" max="50" step="0.5" value="1.7"></label>
+        <label>Cone speed <input type="number" id="coneSpeedRange" min="0" step="0.05" value="1"></label>
+        <label>Cone fade <input type="range" id="coneFadeRange" min="0" max="0.6" step="0.01" value="0.3"></label>
+        <button id="coneFoldBtn">Fold</button>
+        <label>Cone paths <input type="number" id="coneMaxInput" value="1" min="1"></label>
+        <button id="coneColorBtn" class="on">Cone: Track</button>
+        <label>Redshift <input type="range" id="redGainRange" min="0.5" max="6" step="0.1" value="2.5"></label>
+        <span class="sep"></span>
+        <button id="paintBtn" class="on">Paint: Speed·local</button>
+        <button id="normBtn">Norm: Per-particle</button>
+        <button id="logBtn" class="on">Log</button>
+        <button id="localBtn" class="on">Local geom</button>
+        <span class="sep"></span>
+        <button id="playBtn" class="on">Play ▶</button>
+        <label>Speed <input type="range" id="speedRange" min="0.05" max="5" step="0.05" value="1"><span id="speedVal" style="width:34px;display:inline-block;color:#9fb0d0">1.0×</span></label>
+        <label>Time <input type="range" id="timeScrub" min="0" max="1" step="0.001" value="0"></label>
+        <label>Glow <input type="range" id="sizeRange" min="0.05" max="4" step="0.01" value="0.7"></label>
+        <label>Cone glow <input type="range" id="coneSizeRange" min="0.05" max="4" step="0.01" value="0.7"></label>
+        <label>Loop R <input type="range" id="rRange" min="4" max="24" step="0.5" value="6"></label>
+        <label>Spread <input type="range" id="sRange" min="1" max="12" step="0.5" value="5"></label>
+        <span id="status">Idle — press Generate</span>
+    </div>
+    <canvas id="hud" width="240" height="240"></canvas>
+
+    <!-- Three.js classic UMD builds — load from file:// without CORS issues -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+    /* ================================================================
+       PART 1 — PATH GENERATION  (collision-checked "unique groups")
+         x(z) = ax·sin(bx·z) + ax2·sin(z)
+         y(z) = ay·sin(by·z) + ay2·sin(z)        z∈(0,π) is time
+       Kept only if never within a time-scaled threshold of an accepted
+       path. The test runs in COMOVING coords (÷ sin z), where the
+       threshold sin(z)·2/T collapses to the constant 2/T → one uniform
+       spatial hash per time-step makes it O(N·T) instead of O(N²·T).
+    ================================================================ */
+    const groupInput = document.getElementById('groupInput');
+    const timeInput  = document.getElementById('timeInput');
+    const statusEl   = document.getElementById('status');
+
+    let functions = [];
+    let Z_cache = [];
+    let time_steps, modulation_Max, targetGroups, groupIDcount = 0, abort_gen = false;
+    const maxAttemptsPerFunction = 50;
+
+    function bakeZValues() {
+        const zStart = 0.01, zEnd = Math.PI - 0.01;
+        const step = (zEnd - zStart) / (time_steps - 1);
+        Z_cache = Array.from({ length: time_steps }, (_, i) => zStart + i * step);
+    }
+
+    // ---- per-time-step uniform spatial hash (comoving, cell = 2/T) ----
+    let CELL = 1, gridByT = [], saturated = false;
+    const KOFF = 1<<20, KSTR = 1<<21;
+    function cellKey(cx, cy){ return (cx + KOFF) * KSTR + (cy + KOFF); }
+    function resetGrid(){
+        CELL = 2 / time_steps;
+        gridByT = Array.from({ length: Z_cache.length }, () => new Map());
+    }
+    function comovingTraj(ax, ay, bx, by, ax2, ay2) {
+        const n = Z_cache.length, X = new Float32Array(n), Y = new Float32Array(n);
+        for (let i = 0; i < n; i++) {
+            const z = Z_cache[i], inv = 1 / Math.sin(z);
+            X[i] = (ax * Math.sin(bx * z) + ax2 * Math.sin(z)) * inv;
+            Y[i] = (ay * Math.sin(by * z) + ay2 * Math.sin(z)) * inv;
+        }
+        return { X, Y };
+    }
+    function collides(traj) {
+        const n = Z_cache.length;
+        for (let i = 0; i < n; i++) {
+            const Xi = traj.X[i], Yi = traj.Y[i], m = gridByT[i];
+            const cx = Math.floor(Xi / CELL), cy = Math.floor(Yi / CELL);
+            for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+                const arr = m.get(cellKey(cx + dx, cy + dy));
+                if (!arr) continue;
+                for (let j = 0; j < arr.length; j += 2)
+                    if (Math.abs(Xi - arr[j]) <= CELL && Math.abs(Yi - arr[j+1]) <= CELL) return true;
+            }
+        }
+        return false;
+    }
+    function insertTraj(traj) {
+        const n = Z_cache.length;
+        for (let i = 0; i < n; i++) {
+            const Xi = traj.X[i], Yi = traj.Y[i], m = gridByT[i];
+            const k = cellKey(Math.floor(Xi / CELL), Math.floor(Yi / CELL));
+            let arr = m.get(k); if (!arr) { arr = []; m.set(k, arr); }
+            arr.push(Xi, Yi);
+        }
+    }
+
+    // ---- frequency selection (Smart = coprime + high-frequency bias → ~40% denser packing) ----
+    let smartFreq = true;
+    function gcd(a, b){ while (b){ const t = a % b; a = b; b = t; } return a; }
+    function drawFreqs(){
+        if (!smartFreq)
+            return [ Math.floor(Math.random()*modulation_Max)+2,
+                     Math.floor(Math.random()*modulation_Max)+2 ];
+        // high-frequency bias: max of two uniform draws favours finer, nearly
+        // stationary paths that pack more orderly; coprime(bx,by) avoids
+        // degenerate orbits.
+        const hi = () => Math.max(Math.floor(Math.random()*modulation_Max),
+                                  Math.floor(Math.random()*modulation_Max)) + 2;
+        let bx, by, guard = 0;
+        do { bx = hi(); by = hi(); } while (gcd(bx, by) !== 1 && ++guard < 24);
+        return [bx, by];
+    }
+
+    function generateFunction() {
+        for (let attempt = 0; attempt < maxAttemptsPerFunction; attempt++) {
+            const x_split = Math.random(), y_split = Math.random();
+            const [bx, by] = drawFreqs();
+            let ax2 = x_split, ay2 = y_split;          // bx2 = by2 = 1
+            let ax  = (1 - x_split) / bx, ay = (1 - y_split) / by;
+            if (Math.random() > 0.5) ax  *= -1;
+            if (Math.random() > 0.5) ay  *= -1;
+            if (Math.random() > 0.5) ax2 *= -1;
+            if (Math.random() > 0.5) ay2 *= -1;
+
+            const traj = comovingTraj(ax, ay, bx, by, ax2, ay2);
+            if (!collides(traj)) {
+                insertTraj(traj);
+                return { ax, ay, bx, by, ax2, ay2, groupID: groupIDcount };
+            }
+        }
+        return null;
+    }
+
+    function make_groups() {
+        const t0 = performance.now();
+        let consecFails = 0;
+        while (functions.length < targetGroups && !abort_gen) {
+            const nf = generateFunction();
+            if (nf) { functions.push(nf); groupIDcount++; consecFails = 0; }
+            else if (++consecFails > 500) { saturated = true; break; }
+            if (performance.now() - t0 > 12) break;          // yield to keep UI live
+        }
+        if (functions.length < targetGroups && !abort_gen && !saturated) {
+            statusEl.textContent = `Generating… ${functions.length}/${targetGroups}`;
+            setTimeout(make_groups, 0);
+        } else {
+            const note = saturated ? ' (space saturated)' : '';
+            statusEl.textContent = `Generated ${functions.length} paths${note} — uploading…`;
+            setTimeout(() => {
+                buildBuffers(); rebuildGPU();
+                hudDirty = true;          // refresh the 2D slice even while paused
+                statusEl.textContent = `${functions.length} paths${note} · ${time_steps} steps · ${(functions.length*time_steps).toLocaleString()} GPU points`;
+            }, 0);
+        }
+    }
+
+    /* ================================================================
+       PART 2 — GPU RENDERING
+       Each path = 6 params uploaded once as INSTANCED attributes. A
+       vertex shader expands instance×time-step into points analytically
+       and embeds them on the 2-torus. Time, geometry mode, colour mode,
+       R/S, glow — all uniforms, so nothing rebuilds except on Generate.
+         θ = 2z,  P = ((R+S·x)·cosθ, (R+S·x)·sinθ, S·y)
+       Raw (x,y)→0 at z=0,π → every path meets at the Bang/Crunch pinch.
+    ================================================================ */
+    let R = 6, S = 5, geoLocal = true, mapMode = 'surface';   // R≈S → loops near-equal circumference
+
+    function embed(x, y, z, out) {            // CPU copy, used only for the wireframe guide
+        if (geoLocal) { const s = Math.sin(z); x /= s; y /= s; }
+        const theta = 2 * z, radial = R + S * x;
+        out[0] = radial * Math.cos(theta); out[1] = radial * Math.sin(theta); out[2] = S * y;
+    }
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000006);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(devicePixelRatio);
+    renderer.setSize(innerWidth, innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // ---- swappable camera: 55° perspective (3/4 view) ↔ orthographic (edge-on) ----
+    let viewMode = 'ortho', autoRotateOn = false;
+    let camera, controls;
+    function makeCamera(){
+        const aspect = innerWidth/innerHeight;
+        if (viewMode === 'ortho'){
+            const h = R*1.9;                                   // half-height of the ortho frustum
+            const c = new THREE.OrthographicCamera(-h*aspect, h*aspect, h, -h, -2000, 4000);
+            c.position.set(R*2.6, 0, 0.001);                   // in the donut's plane, looking across
+            c.up.set(0,0,1);                                   // hole axis → screen-vertical
+            return c;
+        }
+        const c = new THREE.PerspectiveCamera(55, aspect, 0.1, 4000);
+        c.position.set(0.2*R, -1.55*R, 1.85*R); c.up.set(0,1,0);
+        return c;
+    }
+    function rebuildControls(){
+        const tgt = controls ? controls.target.clone() : new THREE.Vector3();
+        if (controls) controls.dispose();
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; controls.autoRotate = autoRotateOn; controls.autoRotateSpeed = 0.6;
+        controls.target.copy(tgt); controls.update();
+    }
+    function setView(mode){ viewMode = mode; camera = makeCamera(); rebuildControls(); }
+    camera = makeCamera(); rebuildControls();
+
+    function makeGlow() {
+        const c = document.createElement('canvas'); c.width = c.height = 64;
+        const g = c.getContext('2d');
+        const grd = g.createRadialGradient(32,32,0, 32,32,32);
+        grd.addColorStop(0.0,'rgba(255,255,255,1)');
+        grd.addColorStop(0.16,'rgba(255,255,255,0.85)');
+        grd.addColorStop(0.45,'rgba(255,255,255,0.18)');
+        grd.addColorStop(1.0,'rgba(255,255,255,0)');
+        g.fillStyle = grd; g.fillRect(0,0,64,64);
+        const t = new THREE.Texture(c); t.needsUpdate = true; return t;
+    }
+    const glowTex = makeGlow();
+    const LOG_TMAX = Math.log(1 / Math.sin(0.01));
+
+    /* ---- shared uniforms (one object; cloud & sweep reference these) ---- */
+    const U = {
+        uZ0:{value:0}, uStep:{value:1}, uT:{value:1},
+        uR:{value:R}, uS:{value:S}, uGeoLocal:{value:1},
+        uMode:{value:2}, uLog:{value:1}, uPecGlobal:{value:0}, uMapMode:{value:1}, uAngK:{value:1},
+        uGMin:{value:0}, uGMax:{value:1}, uLogTmax:{value:LOG_TMAX},
+        uConeRate:{value:0.6}, uConeBase:{value:0.0}, uConeRings:{value:3}, uRedNorm:{value:1.2}, uConeColor:{value:1}, uConeSpeed:{value:1.0},
+        uConeFadeW:{value:0.3}, uConeFold:{value:0},
+        uConeOn:{value:1}, uConeMax:{value:1},
+        uSize:{value:parseFloat(sizeRange().value)}, uConeSize:{value:0.7}, uOpacity:{value:0.6}, uTex:{value:glowTex}
+    };
+    function sizeRange(){ return document.getElementById('sizeRange'); }
+
+    const VERT = `
+        precision highp float;
+        uniform mat4 modelViewMatrix, projectionMatrix;
+        attribute vec3 position;     // position.x = time-step index i
+        attribute vec4 aAmp;         // ax, ay, ax2, ay2
+        attribute vec2 aFreq;        // bx, by
+        attribute vec2 aPec;         // per-particle comoving speed min, max
+        attribute float aIndex;      // instance index 0..N-1 (for emitter highlight)
+        uniform float uZ0, uStep, uT, uR, uS, uLogTmax, uSize, uGMin, uGMax, uTime, uAngK, uConeMax;
+        uniform int uGeoLocal, uMode, uLog, uPecGlobal, uSliceMode, uMapMode, uConeOn;
+        varying vec3 vColor;
+        vec2 comov(float z){
+            float s = sin(z);
+            return vec2(aAmp.x*sin(aFreq.x*z) + aAmp.z*sin(z),
+                        aAmp.y*sin(aFreq.y*z) + aAmp.w*sin(z)) / s;
+        }
+        vec3 ramp(float t){
+            t = clamp(t,0.0,1.0);
+            vec3 c0=vec3(0.10,0.18,0.55), c1=vec3(0.30,0.55,0.95),
+                 c2=vec3(0.55,0.85,0.75), c3=vec3(1.0,0.82,0.35), c4=vec3(1.0,0.97,0.92);
+            if(t<0.35) return mix(c0,c1, t/0.35);
+            if(t<0.6 ) return mix(c1,c2,(t-0.35)/0.25);
+            if(t<0.8 ) return mix(c2,c3,(t-0.6)/0.2);
+            return mix(c3,c4,(t-0.8)/0.2);
+        }
+        void main(){
+            float i = position.x;
+            float z = (uSliceMode==1) ? uTime : (uZ0 + i*uStep);
+            float s = sin(z);
+            vec2 cm = comov(z);
+            vec2 pos2 = (uGeoLocal==1) ? cm : cm*s;     // local = comoving, global = raw
+            vec3 P;
+            if (uMapMode==1){                            // SURFACE: both space dims → torus angles
+                float u = uAngK*pos2.x, v = uAngK*pos2.y;
+                float radial = uR + uS*cos(v);
+                P = vec3(radial*cos(u), radial*sin(u), uS*sin(v));
+            } else {                                     // WORLDLINE: time wraps the major loop
+                float theta = 2.0*z, radial = uR + uS*pos2.x;
+                P = vec3(radial*cos(theta), radial*sin(theta), uS*pos2.y);
+            }
+            float hl = (uConeOn==1 && aIndex < uConeMax) ? 1.0 : 0.0;   // emitting particle?
+            vec4 mv = modelViewMatrix * vec4(P,1.0);
+            gl_Position = projectionMatrix * mv;
+            float sz = uSize * (uSliceMode==1 ? 1.7 : 1.0) * (1.0 + 1.6*hl);
+            gl_PointSize = clamp(sz * 300.0 / -mv.z, 1.0, 90.0);
+            if(uMode==0){ vColor = vec3(0.78,0.85,1.0); }
+            else if(uMode==1){ vColor = ramp(log(1.0/s)/uLogTmax); }
+            else {
+                float zN = (uSliceMode==1) ? z+uStep : (i < uT-1.0 ? z+uStep : z-uStep);
+                float v = length(comov(zN)-cm) / abs(uStep);
+                float lo = (uPecGlobal==1)? uGMin : aPec.x;
+                float hi = (uPecGlobal==1)? uGMax : aPec.y;
+                float t = (uLog==1)
+                    ? (log(v+1e-6)-log(lo+1e-6)) / max(1e-6, log(hi+1e-6)-log(lo+1e-6))
+                    : (v-lo) / max(1e-6, hi-lo);
+                vColor = ramp(t);
+            }
+            if(uSliceMode==1) vColor = min(vColor*1.25, vec3(1.0));
+            vColor = mix(vColor, min(vColor*2.4 + vec3(0.30), vec3(1.0)), hl);   // emitters glow
+        }`;
+    const FRAG = `
+        precision highp float;
+        uniform sampler2D uTex; uniform float uOpacity;
+        varying vec3 vColor;
+        void main(){
+            float a = texture2D(uTex, gl_PointCoord).a;
+            if(a < 0.01) discard;
+            gl_FragColor = vec4(vColor, a*uOpacity);
+        }`;
+
+    function makeMat(sliceMode, time){
+        return new THREE.RawShaderMaterial({
+            uniforms: Object.assign({}, U, { uSliceMode:{value:sliceMode}, uTime:{value:time} }),
+            vertexShader: VERT, fragmentShader: FRAG,
+            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+        });
+    }
+    const cloudMat = makeMat(0, 0);
+    const sweepMat = makeMat(1, 0);
+
+    /* ---- LIGHT CONES: comoving causal wavefronts (rings) on the surface ----
+       χ travels at dχ/dz = 1/sin z, accumulating to conformal time η=ln(tan z/2).
+       dη/dz is minimal at z=π/2, so rings expand slowest mid-time, fastest at the
+       Bang/Crunch. A new wavefront is emitted every Δz of cosmic time; ring m was
+       emitted at z_emit=(⌊z/Δz⌋−m)·Δz and has comoving radius η(z)−η(z_emit) — born at
+       the centre, expanding outward, centred on the particle's present position. Each
+       ring is tinted by cosmological redshift: light reaching the observer "now" was
+       emitted when the scale factor was a_emit=sin(z_emit); 1+Z = a_obs/a_emit. Light
+       from when the universe was smaller arrives redshifted (red); during the collapse
+       phase, light from the larger past arrives blueshifted (blue). */
+    const VERT_RING = `
+        precision highp float;
+        uniform mat4 modelViewMatrix, projectionMatrix;
+        attribute vec3 position;     // x = ring angle (rad), y = ring index m
+        attribute vec4 aAmp;         // ax, ay, ax2, ay2
+        attribute vec2 aFreq;        // bx, by
+        uniform float uTime, uR, uS, uSize, uConeSize, uAngK, uConeRate, uConeBase, uConeRings, uRedNorm, uConeSpeed, uConeFadeW;
+        uniform int uGeoLocal, uMapMode, uConeColor, uConeFold;
+        varying vec3 vColor; varying float vFade;
+        vec2 comov(float z){
+            float s = sin(z);
+            return vec2(aAmp.x*sin(aFreq.x*z) + aAmp.z*sin(z),
+                        aAmp.y*sin(aFreq.y*z) + aAmp.w*sin(z)) / s;
+        }
+        vec3 hsv2rgb(float h, float s, float v){
+            vec3 p = abs(fract(h + vec3(0.0,2.0/3.0,1.0/3.0))*6.0 - 3.0);
+            return v * mix(vec3(1.0), clamp(p-1.0, 0.0, 1.0), s);
+        }
+        void main(){
+            float alpha = position.x, m = position.y;
+            float z = uTime, s = sin(z);
+            float eta = log(tan(z*0.5));                 // conformal time; slow near π/2
+            vec2 cm = comov(z);
+            float k = floor(z/uConeRate) - m;            // emission index (rings per unit z), stable id
+            float zEmit = k * uConeRate;                 // cosmic time of this wavefront's emission
+            float travel = eta - log(tan(max(zEmit,1e-4)*0.5));  // comoving radius = conformal gap
+            float r = uConeBase + uConeSpeed*travel;             // uConeSpeed = tunable expansion scalar
+            float rmax = 3.14159265 / max(uAngK,1e-6);           // antipode = half-way round the loop
+            float coneFade;
+            if (uConeFold==1){                                   // refocus: bounce off the antipode and re-converge
+                float per = 2.0*rmax, q = mod(r, per);
+                r = (q <= rmax) ? q : per - q;
+                coneFade = 1.0;
+            } else {                                             // fade out near the far side (window = uConeFadeW)
+                coneFade = clamp((rmax - r)/(max(uConeFadeW,1e-3)*rmax), 0.0, 1.0);
+            }
+            vec3 P;
+            if (uMapMode==1){                            // SURFACE: ring is a circle in the chosen space
+                vec2 center = (uGeoLocal==1) ? cm : cm*s;
+                vec2 p2 = center + r*vec2(cos(alpha), sin(alpha));
+                float u = uAngK*p2.x, v = uAngK*p2.y;
+                float radial = uR + uS*cos(v);
+                P = vec3(radial*cos(u), radial*sin(u), uS*sin(v));
+            } else {                                     // WORLDLINE: plain circle
+                vec2 p2 = cm + r*vec2(cos(alpha), sin(alpha));
+                vec2 pos2 = (uGeoLocal==1) ? p2 : p2*s;
+                float theta = 2.0*z, radial = uR + uS*pos2.x;
+                P = vec3(radial*cos(theta), radial*sin(theta), uS*pos2.y);
+            }
+            vec4 mv = modelViewMatrix * vec4(P,1.0);
+            gl_Position = projectionMatrix * mv;
+            gl_PointSize = clamp(uConeSize*1.2 * 300.0 / -mv.z, 1.0, 40.0);
+            float age = m / max(1.0, uConeRings-1.0);
+            if (uConeColor==1){                          // TRACK: stable hue keyed to emission event
+                vColor = hsv2rgb(fract(k*0.61803399), 0.7, 1.0);   // golden-ratio hue spread
+            } else {                                     // REDSHIFT: 1+Z = sin(z)/sin(z_emit)
+                float f = log(s + 1e-6) - log(sin(zEmit) + 1e-6); // >0 redshift, <0 blueshift
+                float t = clamp(f / uRedNorm, -1.0, 1.0);
+                t = sign(t)*pow(abs(t), 0.6);             // boost: small shifts still colour strongly
+                vec3 rest = vec3(1.0,1.0,1.0);            // unshifted = white
+                vColor = (t >= 0.0) ? mix(rest, vec3(1.0,0.05,0.02), t)    // white→deep red (redshift)
+                                    : mix(rest, vec3(0.06,0.32,1.0), -t);  // white→deep blue (blueshift)
+            }
+            vFade = (zEmit <= 0.0) ? 0.0 : (1.0 - 0.35*age);//*coneFade;  // hide pre-Bang; fade out at antipode
+        }`;
+    const FRAG_RING = `
+        precision highp float;
+        uniform sampler2D uTex; uniform float uOpacity;
+        varying vec3 vColor; varying float vFade;
+        void main(){
+            float a = texture2D(uTex, gl_PointCoord).a;
+            if(a < 0.01) discard;
+            gl_FragColor = vec4(vColor, a*uOpacity*vFade);
+        }`;
+    const coneMat = new THREE.RawShaderMaterial({
+        uniforms: Object.assign({}, U, { uTime: sweepMat.uniforms.uTime }),
+        vertexShader: VERT_RING, fragmentShader: FRAG_RING,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+    });
+
+    /* ---- instance param buffers (built once per Generate) ---- */
+    let instAmp=null, instFreq=null, instPec=null;
+    let maxRaw=1, maxComov=1;          // slice extents for the 2D HUD / surface wrap
+    // wrap the spatial plane onto the torus so its full extent spans one loop (−π..π)
+    function setAngK(){ const ext=(geoLocal?maxComov:maxRaw)||1; U.uAngK.value = Math.PI/ext; }
+    function buildBuffers(){
+        const N = functions.length, n = Z_cache.length;
+        instAmp = new Float32Array(N*4); instFreq = new Float32Array(N*2); instPec = new Float32Array(N*2);
+        let gmn = Infinity, gmx = -Infinity, mr = 0, mc = 0;
+        for (let p=0;p<N;p++){
+            const f = functions[p];
+            instAmp[p*4]=f.ax; instAmp[p*4+1]=f.ay; instAmp[p*4+2]=f.ax2; instAmp[p*4+3]=f.ay2;
+            instFreq[p*2]=f.bx; instFreq[p*2+1]=f.by;
+            let mn=Infinity, mx=-Infinity, pcx=0, pcy=0;       // per-particle comoving speed range
+            for (let i=0;i<n;i++){
+                const z=Z_cache[i], inv=1/Math.sin(z);
+                const cx=(f.ax*Math.sin(f.bx*z)+f.ax2*Math.sin(z))*inv;
+                const cy=(f.ay*Math.sin(f.by*z)+f.ay2*Math.sin(z))*inv;
+                const acx=Math.abs(cx), acy=Math.abs(cy), s=1/inv;     // s = sin(z)
+                if(acx>mc)mc=acx; if(acy>mc)mc=acy;                    // comoving extent
+                if(acx*s>mr)mr=acx*s; if(acy*s>mr)mr=acy*s;            // raw extent
+                if (i>0){ const v=Math.hypot(cx-pcx,cy-pcy)/(z-Z_cache[i-1]); if(v<mn)mn=v; if(v>mx)mx=v; }
+                pcx=cx; pcy=cy;
+            }
+            instPec[p*2]=mn; instPec[p*2+1]=mx; if(mn<gmn)gmn=mn; if(mx>gmx)gmx=mx;
+        }
+        U.uGMin.value=gmn; U.uGMax.value=gmx;
+        maxRaw = mr||1; maxComov = mc||1; setAngK();
+        U.uZ0.value=Z_cache[0]; U.uStep.value=(Z_cache[n-1]-Z_cache[0])/(n-1); U.uT.value=n;
+    }
+
+    let cloud=null, sweep=null, showCloud=false, showSweep=true;   // start in Surface (one instant)
+    let cones=null, showCones=true, coneRings=3, coneMax=1;
+    function disposeObj(o){ if(o){ scene.remove(o); o.geometry.dispose(); } }
+    function rebuildGPU(){
+        disposeObj(cloud); disposeObj(sweep); cloud=sweep=null;
+        if (!functions.length) { disposeObj(cones); cones=null; return; }
+        const N = functions.length, n = Z_cache.length;
+        const ampA  = new THREE.InstancedBufferAttribute(instAmp,4);
+        const freqA = new THREE.InstancedBufferAttribute(instFreq,2);
+        const pecA  = new THREE.InstancedBufferAttribute(instPec,2);
+        const idx = new Float32Array(N); for (let p=0;p<N;p++) idx[p]=p;
+        const idxA = new THREE.InstancedBufferAttribute(idx,1);
+
+        const baseC = new Float32Array(n*3);            // one vertex per time-step (carries index i)
+        for (let i=0;i<n;i++) baseC[i*3]=i;
+        const gc = new THREE.InstancedBufferGeometry();
+        gc.setAttribute('position', new THREE.Float32BufferAttribute(baseC,3));
+        gc.setAttribute('aAmp', ampA); gc.setAttribute('aFreq', freqA); gc.setAttribute('aPec', pecA);
+        gc.setAttribute('aIndex', idxA);
+        gc.instanceCount = N;
+        cloud = new THREE.Points(gc, cloudMat); cloud.frustumCulled=false; cloud.visible=showCloud; scene.add(cloud);
+
+        const gs = new THREE.InstancedBufferGeometry();  // sweep = one vertex (the present moment)
+        gs.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(3),3));
+        gs.setAttribute('aAmp', ampA); gs.setAttribute('aFreq', freqA); gs.setAttribute('aPec', pecA);
+        gs.setAttribute('aIndex', idxA);
+        gs.instanceCount = N;
+        sweep = new THREE.Points(gs, sweepMat); sweep.frustumCulled=false; sweep.visible=showSweep; scene.add(sweep);
+
+        rebuildCones();
+    }
+
+    /* ---- light-cone rings: K points per ring × coneRings rings, instanced per path ---- */
+    function rebuildCones(){
+        disposeObj(cones); cones=null;
+        if (!functions.length) return;
+        const N = functions.length, M = coneRings;
+        const KBASE = 140, KPER = 44;                          // points/ring; outer rings get more
+        const counts = []; let total = 0;
+        for (let m=0;m<M;m++){ const Km = KBASE + KPER*m; counts.push(Km); total += Km; }
+        const base = new Float32Array(total*3);
+        for (let m=0, o=0; m<M; m++){ const Km = counts[m];
+            for (let j=0; j<Km; j++, o+=3){ base[o] = (j/Km)*Math.PI*2; base[o+1] = m; }  // angle, ring index
+        }
+        const gc = new THREE.InstancedBufferGeometry();
+        gc.setAttribute('position', new THREE.Float32BufferAttribute(base,3));
+        gc.setAttribute('aAmp',  new THREE.InstancedBufferAttribute(instAmp,4));
+        gc.setAttribute('aFreq', new THREE.InstancedBufferAttribute(instFreq,2));
+        gc.instanceCount = Math.min(N, coneMax);           // follow one path or many
+        cones = new THREE.Points(gc, coneMat); cones.frustumCulled=false; cones.visible=showCones; scene.add(cones);
+    }
+
+    /* ---- faint torus wireframe guide (CPU; tiny) ---- */
+    let grid=null, showGrid=true;
+    function torusPt(u,v,r,out){ const rad=R+r*Math.cos(v); out[0]=rad*Math.cos(u); out[1]=rad*Math.sin(u); out[2]=r*Math.sin(v); }
+    function rebuildGrid(){
+        disposeObj(grid); grid=null;
+        const segs=[], addSeg=(p,q)=>segs.push(p[0],p[1],p[2],q[0],q[1],q[2]);
+        if (mapMode==='surface'){                         // plain donut (space is the surface)
+            const r=S, out=[0,0,0]; let prev;
+            for (let j=0;j<12;j++){ const u=(j/12)*Math.PI*2; prev=null;     // tube rings (const u)
+                for (let i=0;i<=48;i++){ const v=(i/48)*Math.PI*2; torusPt(u,v,r,out); if(prev)addSeg(prev,out); prev=out.slice(); } }
+            for (let j=0;j<10;j++){ const v=(j/10)*Math.PI*2; prev=null;     // major rings (const v)
+                for (let i=0;i<=96;i++){ const u=(i/96)*Math.PI*2; torusPt(u,v,r,out); if(prev)addSeg(prev,out); prev=out.slice(); } }
+        } else {                                          // pinched worldline torus (time is the loop)
+            const A=1.0, TT=220, LON=10;
+            for (let j=0;j<LON;j++){ const phi=(j/LON)*Math.PI*2, cphi=Math.cos(phi), sphi=Math.sin(phi); let prev=null;
+                for (let i=0;i<=TT;i++){ const z=(i/TT)*Math.PI, s=Math.sin(z), out=[0,0,0];
+                    embed(A*s*cphi, A*s*sphi, z, out); if(prev) addSeg(prev,out); prev=out.slice(); } }
+            const LAT=[0.18,0.4,0.6,0.9,1.2,1.5,Math.PI-1.5,Math.PI-1.2,Math.PI-0.9,Math.PI-0.6,Math.PI-0.4,Math.PI-0.18];
+            for (const z of LAT){ const s=Math.sin(z); let prev=null;
+                for (let i=0;i<=64;i++){ const phi=(i/64)*Math.PI*2, out=[0,0,0];
+                    embed(A*s*Math.cos(phi), A*s*Math.sin(phi), z, out); if(prev) addSeg(prev,out); prev=out.slice(); } }
+        }
+        const geo=new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(segs,3));
+        grid=new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color:0x2a3450, transparent:true, opacity:0.4 }));
+        grid.visible=showGrid; scene.add(grid);
+    }
+
+    /* ================================================================
+       PART 3 — UI + RENDER LOOP
+    ================================================================ */
+    let frame = 0, framePos = 0, playSpeed = 1, playing = true;   // framePos = fractional time index
+
+    document.getElementById('generateBtn').addEventListener('click', () => {
+        abort_gen = false; saturated = false; groupIDcount = 0; frame = 0; framePos = 0;
+        time_steps = parseInt(timeInput.value);
+        modulation_Max = Math.max(2, Math.floor(time_steps/2));
+        targetGroups = parseInt(groupInput.value);
+        functions = [];
+        bakeZValues(); resetGrid();
+        make_groups();
+    });
+    document.getElementById('abortBtn').addEventListener('click', () => abort_gen = true);
+
+    function toggle(id, get, set){ const el=document.getElementById(id);
+        el.addEventListener('click', ()=>{ set(!get()); el.classList.toggle('on', get()); }); }
+    toggle('cloudBtn', ()=>showCloud, v=>{ showCloud=v; if(cloud) cloud.visible=v; });
+    toggle('sweepBtn', ()=>showSweep, v=>{ showSweep=v; if(sweep) sweep.visible=v; });
+    toggle('gridBtn',  ()=>showGrid,  v=>{ showGrid=v; if(grid) grid.visible=v; });
+    toggle('smartFreqBtn', ()=>smartFreq, v=>{ smartFreq=v; });   // applies on next Generate
+    toggle('spinBtn',  ()=>autoRotateOn, v=>{ autoRotateOn=v; controls.autoRotate=v; });
+    document.getElementById('viewBtn').addEventListener('click', e=>{
+        setView(viewMode==='persp' ? 'ortho' : 'persp');
+        e.currentTarget.textContent = 'View: ' + (viewMode==='ortho'?'Ortho':'Persp');
+        e.currentTarget.classList.toggle('on', viewMode==='ortho');
+    });
+
+    const paintOrder=['mono','temp','pec'], paintLabel={mono:'Mono',temp:'Temp (1/sin z)',pec:'Speed·local'};
+    let paintMode='pec';
+    document.getElementById('paintBtn').addEventListener('click', e=>{
+        paintMode = paintOrder[(paintOrder.indexOf(paintMode)+1)%3];
+        U.uMode.value = paintOrder.indexOf(paintMode);
+        e.currentTarget.textContent = 'Paint: ' + paintLabel[paintMode];
+        e.currentTarget.classList.toggle('on', paintMode!=='mono');
+        hudDirty=true;
+    });
+    let pecGlobal=false;
+    document.getElementById('normBtn').addEventListener('click', e=>{
+        pecGlobal=!pecGlobal; U.uPecGlobal.value = pecGlobal?1:0;
+        e.currentTarget.textContent = 'Norm: ' + (pecGlobal?'Global':'Per-particle');
+        e.currentTarget.classList.toggle('on', pecGlobal);
+        hudDirty=true;
+    });
+    let logColor=true;
+    toggle('logBtn', ()=>logColor, v=>{ logColor=v; U.uLog.value = v?1:0; hudDirty=true; });
+    document.getElementById('localBtn').addEventListener('click', e=>{
+        geoLocal=!geoLocal; U.uGeoLocal.value = geoLocal?1:0;
+        e.currentTarget.classList.toggle('on', geoLocal);
+        setAngK(); rebuildGrid();                   // wireframe is CPU-side
+        hudDirty=true;
+    });
+    document.getElementById('mapBtn').addEventListener('click', e=>{
+        mapMode = mapMode==='worldline' ? 'surface' : 'worldline';
+        U.uMapMode.value = mapMode==='surface' ? 1 : 0;
+        e.currentTarget.textContent = 'Map: ' + (mapMode==='surface'?'Surface':'Worldline');
+        e.currentTarget.classList.toggle('on', mapMode==='surface');
+        // Surface = one instant at a time → show the sweep slice, hide the all-times cloud
+        showCloud = (mapMode!=='surface'); if(cloud) cloud.visible=showCloud;
+        document.getElementById('cloudBtn').classList.toggle('on', showCloud);
+        if (mapMode==='surface'){ showSweep=true; if(sweep) sweep.visible=true;
+            document.getElementById('sweepBtn').classList.add('on'); }
+        setAngK(); rebuildGrid();
+    });
+
+    toggle('playBtn', ()=>playing, v=>{ playing=v;
+        document.getElementById('playBtn').textContent = v?'Play ▶':'Paused'; });
+    const timeScrub = document.getElementById('timeScrub');
+    timeScrub.addEventListener('input', e=>{
+        playing=false; document.getElementById('playBtn').classList.remove('on');
+        document.getElementById('playBtn').textContent='Paused';
+        if (Z_cache.length){ frame = Math.round(parseFloat(e.target.value)*(Z_cache.length-1));
+            framePos = frame;
+            sweepMat.uniforms.uTime.value = Z_cache[frame]; }
+        hudDirty=true;
+    });
+    document.getElementById('speedRange').addEventListener('input', e=>{
+        playSpeed = parseFloat(e.target.value);
+        document.getElementById('speedVal').textContent = playSpeed.toFixed(2).replace(/0$/,'') + '×';
+    });
+
+    toggle('coneBtn', ()=>showCones, v=>{ showCones=v; U.uConeOn.value=v?1:0; if(cones) cones.visible=v; });
+    document.getElementById('coneRingsRange').addEventListener('input', e=>{
+        coneRings = parseInt(e.target.value); U.uConeRings.value = coneRings;
+        document.getElementById('coneRingsVal').textContent = coneRings;
+        rebuildCones();
+    });
+    document.getElementById('coneRateRange').addEventListener('input', e=>{
+        U.uConeRate.value = 1 / parseFloat(e.target.value);    // slider = rings per unit z → Δz spacing
+    });
+    document.getElementById('coneSpeedRange').addEventListener('input', e=>{
+        const v = parseFloat(e.target.value);                  // scalar on cone expansion radius
+        if (!isNaN(v)) U.uConeSpeed.value = v;
+    });
+    document.getElementById('coneFadeRange').addEventListener('input', e=>{
+        U.uConeFadeW.value = parseFloat(e.target.value);       // fade window before the antipode (0 = hard meet)
+    });
+    document.getElementById('coneFoldBtn').addEventListener('click', e=>{
+        const on = U.uConeFold.value = U.uConeFold.value ? 0 : 1;   // bounce/refocus at the antipode
+        e.currentTarget.classList.toggle('on', !!on);
+    });
+    document.getElementById('redGainRange').addEventListener('input', e=>{
+        U.uRedNorm.value = 3.0 / parseFloat(e.target.value);   // higher slider = stronger red/blue
+        hudDirty = true;
+    });
+    document.getElementById('coneMaxInput').addEventListener('input', e=>{
+        coneMax = Math.max(1, parseInt(e.target.value) || 1);
+        U.uConeMax.value = coneMax;
+        if (cones) cones.geometry.instanceCount = Math.min(functions.length, coneMax);
+    });
+    document.getElementById('coneColorBtn').addEventListener('click', e=>{
+        const track = U.uConeColor.value = U.uConeColor.value ? 0 : 1;
+        e.currentTarget.textContent = 'Cone: ' + (track ? 'Track' : 'Redshift');
+        e.currentTarget.classList.toggle('on', !!track);
+    });
+
+    sizeRange().addEventListener('input', e=>{ U.uSize.value = parseFloat(e.target.value); });
+    document.getElementById('coneSizeRange').addEventListener('input', e=>{ U.uConeSize.value = parseFloat(e.target.value); });
+    document.getElementById('rRange').addEventListener('input', e=>{ R=parseFloat(e.target.value); U.uR.value=R; rebuildGrid(); });
+    document.getElementById('sRange').addEventListener('input', e=>{ S=parseFloat(e.target.value); U.uS.value=S; rebuildGrid(); });
+
+    addEventListener('resize', ()=>{
+        const aspect=innerWidth/innerHeight;
+        if (camera.isOrthographicCamera){ const h=R*1.9; camera.left=-h*aspect; camera.right=h*aspect; camera.top=h; camera.bottom=-h; }
+        else camera.aspect=aspect;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+    });
+
+    /* ---- 2D slice HUD: the universe at the selected instant ---- */
+    const hud = document.getElementById('hud');
+    const hudDPR = Math.min(2, window.devicePixelRatio || 1);
+    hud.width = 240 * hudDPR; hud.height = 240 * hudDPR;
+    const hudCtx = hud.getContext('2d');
+    let showHUD = true, hudDirty = true;
+
+    function ramp(t){                              // JS twin of the shader colour ramp
+        t = t<0?0:t>1?1:t;
+        const C=[[0.10,0.18,0.55],[0.30,0.55,0.95],[0.55,0.85,0.75],[1.0,0.82,0.35],[1.0,0.97,0.92]];
+        let a,b,f;
+        if(t<0.35){a=C[0];b=C[1];f=t/0.35;}
+        else if(t<0.6){a=C[1];b=C[2];f=(t-0.35)/0.25;}
+        else if(t<0.8){a=C[2];b=C[3];f=(t-0.6)/0.2;}
+        else{a=C[3];b=C[4];f=(t-0.8)/0.2;}
+        return [a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f, a[2]+(b[2]-a[2])*f];
+    }
+    function hsv2rgb(h,s,v){                       // JS twin of the shader hue helper
+        const f=n=>{ let p=Math.abs((((h+n)%1)+1)%1*6-3); p=p<1?0:p>2?1:p-1; return v*(1+(p-1)*s); };
+        return [f(0), f(2/3), f(1/3)];
+    }
+    // light-cone ring colour, matching VERT_RING (track = hue per emission, else redshift)
+    function coneColorJS(k, sinz, zEmit){
+        if (U.uConeColor.value === 1) return hsv2rgb((((k*0.61803399)%1)+1)%1, 0.7, 1.0);
+        const f = Math.log(sinz+1e-6) - Math.log(Math.sin(zEmit)+1e-6);
+        let t = Math.max(-1, Math.min(1, f/U.uRedNorm.value));
+        t = Math.sign(t)*Math.pow(Math.abs(t), 0.6);          // match shader boost
+        const tgt = t>=0 ? [1.0,0.05,0.02] : [0.06,0.32,1.0], a=Math.abs(t);
+        return [1+(tgt[0]-1)*a, 1+(tgt[1]-1)*a, 1+(tgt[2]-1)*a];
+    }
+    function sliceColor(f,p,z,zN){                 // matches the GPU paint modes
+        if(paintMode==='mono') return [0.78,0.85,1.0];
+        if(paintMode==='temp') return ramp(Math.log(1/Math.sin(z))/LOG_TMAX);
+        const s=Math.sin(z), sN=Math.sin(zN);
+        const cx=(f.ax*Math.sin(f.bx*z)+f.ax2*Math.sin(z))/s,   cy=(f.ay*Math.sin(f.by*z)+f.ay2*Math.sin(z))/s;
+        const cxN=(f.ax*Math.sin(f.bx*zN)+f.ax2*Math.sin(zN))/sN, cyN=(f.ay*Math.sin(f.by*zN)+f.ay2*Math.sin(zN))/sN;
+        const v=Math.hypot(cxN-cx,cyN-cy)/Math.abs(zN-z);
+        const lo=pecGlobal?U.uGMin.value:instPec[p*2], hi=pecGlobal?U.uGMax.value:instPec[p*2+1];
+        const t = logColor ? (Math.log(v+1e-6)-Math.log(lo+1e-6))/Math.max(1e-6,Math.log(hi+1e-6)-Math.log(lo+1e-6))
+                           : (v-lo)/Math.max(1e-6,hi-lo);
+        return ramp(t);
+    }
+    function drawHUD(fr){
+        const W=hud.width, H=hud.height, ctx=hudCtx;
+        ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,W,H);
+        ctx.strokeStyle='rgba(120,140,180,0.14)'; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.moveTo(0,H/2); ctx.lineTo(W,H/2); ctx.stroke();
+        const z=Z_cache[fr], zN=Z_cache[fr<Z_cache.length-1?fr+1:fr-1], sinz=Math.sin(z);
+        const range=(geoLocal?maxComov:maxRaw) || 1;   // box = exactly one universe (period), so edges wrap
+        const sc=(Math.min(W,H)/2 - 8*hudDPR)/range, cx0=W/2, cy0=H/2, r=1.5*hudDPR, d=r*2;
+        ctx.globalCompositeOperation='lighter';
+        for(let p=0;p<functions.length;p++){
+            const f=functions[p];
+            let x=f.ax*Math.sin(f.bx*z)+f.ax2*Math.sin(z), y=f.ay*Math.sin(f.by*z)+f.ay2*Math.sin(z);
+            if(geoLocal){ x/=sinz; y/=sinz; }
+            const c=sliceColor(f,p,z,zN);
+            ctx.fillStyle='rgb('+((c[0]*255)|0)+','+((c[1]*255)|0)+','+((c[2]*255)|0)+')';
+            ctx.fillRect(cx0+x*sc-r, cy0-y*sc-r, d, d);
+        }
+        if (showCones && functions.length){           // true (undistorted) light cones in flat 2D
+            const dz=U.uConeRate.value, eta=Math.log(Math.tan(z/2)), spd=U.uConeSpeed.value,
+                  base=U.uConeBase.value, rmax=Math.PI/Math.max(U.uAngK.value,1e-6),
+                  M=coneRings, emit=Math.min(functions.length, coneMax), kz=Math.floor(z/dz);
+            const ext=(geoLocal?maxComov:maxRaw)||1, Ppx=2*ext*sc;
+            ctx.lineWidth=1.3*hudDPR;
+            for(let p=0;p<emit;p++){
+                const f=functions[p];
+                let cx=f.ax*Math.sin(f.bx*z)+f.ax2*Math.sin(z), cy=f.ay*Math.sin(f.by*z)+f.ay2*Math.sin(z);
+                if(geoLocal){ cx/=sinz; cy/=sinz; }
+                const px=cx0+cx*sc, py=cy0-cy*sc;
+                for(let m=0;m<M;m++){
+                    const k=kz-m, zEmit=k*dz;
+                    if(zEmit<=0) continue;
+                    let rr=base+spd*(eta-Math.log(Math.tan(Math.max(zEmit,1e-4)/2)));
+                    let cf;
+                    if(U.uConeFold.value){ const per=2*rmax, q=((rr%per)+per)%per; rr=(q<=rmax)?q:per-q; cf=1; }
+                    else cf=Math.max(0,Math.min(1,(rmax-rr)/(Math.max(U.uConeFadeW.value,1e-3)*rmax)));
+                    cf=0.8;
+                    if(cf<=0) continue;                       // faded out near the antipode
+                    const col=coneColorJS(k,sinz,zEmit);
+                    ctx.strokeStyle='rgb('+((col[0]*255)|0)+','+((col[1]*255)|0)+','+((col[2]*255)|0)+')';
+                    ctx.globalAlpha=(1.0-0.35*(m/Math.max(1,M-1)))*cf;
+                    const pr=(geoLocal?rr:rr*sinz)*sc;        // plain circle on the chart
+                    for(let di=-1;di<=1;di++) for(let dj=-1;dj<=1;dj++){
+                        const ax=px+di*Ppx, ay=py+dj*Ppx;
+                        if(ax+pr<0||ax-pr>W||ay+pr<0||ay-pr>H) continue;
+                        ctx.beginPath(); ctx.arc(ax,ay,pr,0,Math.PI*2); ctx.stroke(); }
+                }
+            }
+            ctx.globalAlpha=1;
+        }
+        ctx.globalCompositeOperation='source-over';
+        ctx.fillStyle='rgba(170,184,204,0.85)'; ctx.font=(11*hudDPR)+'px sans-serif';
+        ctx.fillText('t = '+(z/Math.PI).toFixed(3)+'π   a = '+sinz.toFixed(3), 8*hudDPR, H-8*hudDPR);
+        ctx.fillStyle='rgba(120,140,180,0.6)';
+        ctx.fillText(geoLocal?'local (comoving)':'global (raw)', 8*hudDPR, 16*hudDPR);
+    }
+    toggle('hudBtn', ()=>showHUD, v=>{ showHUD=v; hud.style.display=v?'block':'none'; hudDirty=true; });
+
+    rebuildGrid();
+    setTimeout(() => document.getElementById('generateBtn').click(), 60);   // auto-render on load
+
+    function tick(){
+        requestAnimationFrame(tick);
+        controls.update();
+        if (playing && showSweep && Z_cache.length){
+            framePos = (framePos + playSpeed) % Z_cache.length;
+            frame = Math.floor(framePos) % Z_cache.length;
+            sweepMat.uniforms.uTime.value = Z_cache[frame];
+            timeScrub.value = (frame/(Z_cache.length-1)).toFixed(3);
+        }
+        if (showHUD && functions.length && (playing || hudDirty)){ drawHUD(frame); hudDirty=false; }
+        renderer.render(scene, camera);
+    }
+    tick();
+    </script>
+</body>
+</html>
