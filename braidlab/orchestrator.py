@@ -19,9 +19,15 @@ from pathlib import Path
 
 from braidlab.config import Job
 from braidlab.engine import binary_name, build_command
+from braidlab.notify import DiscordNotifier
 from braidlab.store import Store
 
 REMOTE_DIR = "~/braidlab_run"
+
+#: Post a progress ping each time this fraction of jobs completes (25/50/75%).
+PROGRESS_STEP = 0.25
+#: Consecutive polls a host must look dead-with-work before we flag a stall.
+STALL_POLLS = 2
 
 
 def plan_assignment(
@@ -223,6 +229,10 @@ def run_campaign(
     deploy: bool = True,
     dump: bool = False,
     host_max_t: dict[str, int] | None = None,
+    notifier: DiscordNotifier | None = None,
+    campaign_name: str = "campaign",
+    start_description: str = "",
+    start_fields: dict[str, object] | None = None,
 ) -> None:
     """Drive a campaign to completion, resuming from the store.
 
@@ -230,7 +240,13 @@ def run_campaign(
     Safe to interrupt and re-run. When ``dump`` is set, each finished job's
     subsampled parameter dump is collected into ``store.dumps_dir``.
     ``host_max_t`` caps each host's largest T (GPU memory).
+
+    If a ``notifier`` is given (or ``BRAIDLAB_DISCORD_WEBHOOK`` is set) it posts
+    Discord updates: a pre-flight summary, progress pings every
+    ``PROGRESS_STEP`` of completion, host-stall warnings, and a completion
+    summary. Notifications are best-effort and never affect the run.
     """
+    notifier = notifier or DiscordNotifier()
     for job in jobs:
         store.register(job)
     pending = store.pending(jobs)
@@ -239,16 +255,33 @@ def run_campaign(
     by_name = {j.name: j for j in jobs}
     assignment = plan_assignment(pending, hosts, host_max_t)
     dims = {j.dim for j in pending}
+    total = len(pending)
+
+    fields = dict(start_fields or {})
+    fields.setdefault("Pending jobs", total)
+    notifier.campaign_start(campaign_name, start_description, fields)
+    started = time.monotonic()
 
     for host, host_jobs in assignment.items():
         if not host_jobs:
             continue
-        if deploy:
-            fleet.deploy(host, dims)
-        if not fleet.runner_alive(host):
-            fleet.launch(host, host_jobs, dump=dump)
+        try:
+            if deploy:
+                fleet.deploy(host, dims)
+            if not fleet.runner_alive(host):
+                fleet.launch(host, host_jobs, dump=dump)
+        except Exception as exc:  # surface to Discord, then abort as before
+            notifier.campaign_failed(
+                campaign_name, f"deploy/launch failed on {host}: {exc}"
+            )
+            raise
 
     remaining = {j.key for j in pending}
+    host_keys = {host: {j.key for j in hjobs} for host, hjobs in assignment.items()}
+    next_progress = PROGRESS_STEP  # completion fraction of the next ping
+    stalled_polls = {h: 0 for h in hosts}
+    warned: set[str] = set()
+
     while remaining:
         time.sleep(poll_seconds)
         for host in hosts:
@@ -269,3 +302,35 @@ def run_campaign(
                     host=host,
                 )
                 remaining.discard(job.key)
+
+        done_count = total - len(remaining)
+        if remaining and done_count / total >= next_progress:
+            notifier.campaign_progress(
+                campaign_name, done_count, total, time.monotonic() - started
+            )
+            while done_count / total >= next_progress:
+                next_progress += PROGRESS_STEP
+
+        # Host-stall detection: a host whose runner has died while it still owns
+        # unfinished jobs is stuck. Require two consecutive polls to avoid a
+        # false alarm in the gap between a job finishing and being collected.
+        for host in hosts:
+            host_remaining = host_keys.get(host, set()) & remaining
+            if host_remaining and not fleet.runner_alive(host):
+                stalled_polls[host] += 1
+            else:
+                stalled_polls[host] = 0
+            if stalled_polls[host] >= STALL_POLLS and host not in warned:
+                warned.add(host)
+                notifier.campaign_failed(
+                    campaign_name,
+                    f"host **{host}** looks stalled — its runner is gone with "
+                    f"{len(host_remaining)} job(s) unfinished. Re-run to resume.",
+                )
+
+    notifier.campaign_done(
+        campaign_name,
+        total,
+        time.monotonic() - started,
+        str(store.dumps_dir if dump else store.curves_dir),
+    )

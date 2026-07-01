@@ -10,10 +10,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from braidlab import campaigns, corrdim
 from braidlab.analyze import measure_d
+from braidlab.notify import COLORS, ENV_WEBHOOK, DiscordNotifier
 from braidlab.orchestrator import Fleet, plan_assignment, run_campaign
 from braidlab.report import build_report
 from braidlab.store import Store
@@ -41,6 +43,28 @@ def _cmd_plan(args: argparse.Namespace) -> None:
         print(f"  {host}: {len(hjobs)} jobs  (T={sorted({j.t for j in hjobs})})")
 
 
+def _campaign_summary(camp, hosts: list[str], db: str) -> tuple[str, dict]:
+    """Build the human description + field table for the pre-flight Discord post."""
+    ts = camp.t_values
+    t_range = f"{min(ts)}–{max(ts)}"
+    if len(ts) > 1:
+        t_range += f" (step {ts[1] - ts[0]})"
+    description = (
+        f"{camp.dim}+1D RSA packing to jamming · band={camp.band} · "
+        f"cutoff={camp.accept_rate:g}"
+    )
+    if getattr(camp, "euclid", False):
+        description += " · sphere (L2) collision"
+    fields = {
+        "Hosts": ", ".join(hosts),
+        "T range": t_range,
+        "Seeds/T": len(camp.seeds),
+        "Dumps": "yes" if camp.dump else "no",
+        "DB": db,
+    }
+    return description, fields
+
+
 def _cmd_run(args: argparse.Namespace) -> None:
     camp = campaigns.get(args.campaign)
     hosts = args.hosts.split(",")
@@ -49,6 +73,7 @@ def _cmd_run(args: argparse.Namespace) -> None:
     host_max_t = _parse_host_max(args.host_max) if args.host_max else None
     print(f"running {camp.name}: {len(camp.jobs())} jobs over {hosts}"
           f"{' (dumps)' if camp.dump else ''}")
+    description, fields = _campaign_summary(camp, hosts, args.db)
     run_campaign(
         camp.jobs(),
         store,
@@ -58,8 +83,25 @@ def _cmd_run(args: argparse.Namespace) -> None:
         deploy=not args.no_deploy,
         dump=camp.dump,
         host_max_t=host_max_t,
+        campaign_name=camp.name,
+        start_description=description,
+        start_fields=fields,
     )
     print("campaign complete")
+
+
+def _cmd_notify(args: argparse.Namespace) -> None:
+    notifier = DiscordNotifier()
+    if not notifier.enabled:
+        print(f"no Discord webhook configured; set {ENV_WEBHOOK}", file=sys.stderr)
+        raise SystemExit(1)
+    if args.title:
+        ok = notifier.send_embed(args.title, args.message, color=COLORS[args.color])
+    else:
+        ok = notifier.send_text(args.message)
+    print("posted" if ok else "post failed")
+    if not ok:
+        raise SystemExit(1)
 
 
 def _cmd_corrdim(args: argparse.Namespace) -> None:
@@ -138,6 +180,13 @@ def main(argv: list[str] | None = None) -> None:
     sc.add_argument("--labels", action="store_true",
                     help="annotate each point with its value")
     sc.set_defaults(func=_cmd_corrdim)
+
+    sn = sub.add_parser("notify", help="post a message to the Discord webhook")
+    sn.add_argument("--message", "-m", required=True, help="message body")
+    sn.add_argument("--title", default="", help="embed title (omit for plain text)")
+    sn.add_argument("--color", default="info", choices=sorted(COLORS),
+                    help="embed color: start|progress|done|fail|info")
+    sn.set_defaults(func=_cmd_notify)
 
     args = p.parse_args(argv)
     args.func(args)

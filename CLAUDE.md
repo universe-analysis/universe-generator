@@ -69,6 +69,16 @@ Predefined campaigns (`braidlab/campaigns.py`): `corrdim3d` / `corrdim2d`
 (the dimension studies), `corrdim3d_e6` (cutoff check), `corrdim3d_euclid`
 (sphere-collision variant), plus the older `3plus1` / `2plus1`.
 
+### Discord notifications
+
+If `BRAIDLAB_DISCORD_WEBHOOK` is set, `braidlab run` posts campaign lifecycle
+events to Discord: a pre-flight summary, progress pings at 25/50/75%,
+host-stall warnings, and a completion summary. Posting is best-effort — a down
+Discord never affects the run — and stdlib-only (no extra deps). The webhook
+URL is a secret; it lives in `CLAUDE.local.md`, never committed. Post an
+ad-hoc message with `python -m braidlab notify --title … --message … --color
+start|progress|done|fail|info` (also exposed as the `discord-update` skill).
+
 Key gotchas (full list in `braidlab/ORCHESTRATOR.md`):
 - **Heterogeneous CUDA toolchains** — `deploy()` tries every candidate nvcc ×
   {default, `-ccbin g++-11`} until one links. Never copy a binary between hosts
