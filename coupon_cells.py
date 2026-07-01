@@ -61,8 +61,8 @@ def mean_attempts_to_fill(cells: int) -> float:
 def simulate_cell_fill(cells: int, seed: int) -> tuple[np.ndarray, np.ndarray]:
     """Run the exact process: random pick, accept if unseen, until all seen.
 
-    Returns (attempts, empty_fraction) sampled once per attempt. This is the
-    "show, don't tell" check that the closed form above is right.
+    Returns (attempts, empty_fraction) sampled once per attempt. This is a
+    direct numerical check that the closed form above is right.
     """
     rng = np.random.default_rng(seed)
     seen = np.zeros(cells, dtype=bool)

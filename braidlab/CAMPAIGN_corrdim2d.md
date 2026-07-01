@@ -44,12 +44,12 @@ count-scaling 1.6 is **cutoff-suppressed**, and the true 2+1 packing dimension i
 
 ```bash
 # 1. (Optional) preview the job split
-uv run python -m braidlab plan corrdim2d --hosts mother,kitt,deep-thought
+uv run python -m braidlab plan corrdim2d --hosts host1,host2,host3
 
 # 2. Build + run. No --host-max needed (2D is memory-cheap). Pick whatever
 #    hosts are free -- do NOT contend with a running corrdim3d campaign.
 uv run python -m braidlab run corrdim2d \
-    --hosts mother,kitt,deep-thought \
+    --hosts host1,host2,host3 \
     --db data/corrdim2d/run.db \
     --poll 120
 

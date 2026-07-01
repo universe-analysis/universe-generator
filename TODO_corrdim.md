@@ -7,7 +7,7 @@ than building from scratch.
 
 Scope (agreed): fine grid **T = 20..200 step 10** (19 values) x **5 seeds**
 (~95 runs), full Nyquist band, smart + edge (angle) sampler, 1e-7 acceptance
-cutoff. Hosts: deep-thought (3090, high-T tail), mother + kitt (3080s).
+cutoff. Hosts: host3 (3090, high-T tail), host1 + host2 (3080s).
 
 ## Phase 1 — Param-dump generation in the fleet  [code, no GPU]  DONE
 - [x] `config.py`: `angle` on Job/Campaign, `dump` on Campaign.
@@ -34,8 +34,8 @@ cutoff. Hosts: deep-thought (3090, high-T tail), mother + kitt (3080s).
 
 ## Phase 5 — Launch the campaign  [GPU fleet]  DONE
 - [x] Hosts reachable; engine builds on all three (robust multi-candidate nvcc).
-- [x] Dispatched: 95 jobs, deep-thought T=170-200, mother/kitt T=20-160.
-- [x] Runners alive, GPUs packing (deep-thought T=200 -> 17.6GB, fits 3090).
+- [x] Dispatched: 95 jobs, host3 T=170-200, host1/host2 T=20-160.
+- [x] Runners alive, GPUs packing (host3 T=200 -> 17.6GB, fits 3090).
 - [x] Ran 02:15 -> 13:20 (~11h); 95/95 done, 95 dumps collected, no stragglers.
 
 ## Phase 6 — Collect, report, commit  [local]  DONE

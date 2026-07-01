@@ -30,13 +30,13 @@ tested without hardware); `Fleet` is the only thing that touches SSH.
 
 ```bash
 # Dry run — see the job split (no launch):
-uv run python -m braidlab plan corrdim3d --hosts deep-thought,mother,kitt
+uv run python -m braidlab plan corrdim3d --hosts host3,host1,host2
 
 # Launch (resumable; safe to Ctrl-C and re-run):
 uv run python -m braidlab run corrdim3d \
-    --hosts deep-thought,mother,kitt \
+    --hosts host3,host1,host2 \
     --db data/corrdim/run.db \
-    --host-max mother=160,kitt=160 \
+    --host-max host1=160,host2=160 \
     --poll 120
 
 # If binaries are already built and verified, skip the rebuild:
@@ -57,17 +57,17 @@ working compiler, nor that the newest CUDA works.** What we found:
 
 | Host | GPU (arch) | Working nvcc | Notes |
 |---|---|---|---|
-| mother | RTX 3080 (sm_86) | `/usr/bin/nvcc` | default host compiler links fine |
-| kitt | RTX 3080 (sm_86) | `/usr/local/cuda/bin/nvcc` | **nvcc not on PATH**; lives under `/usr/local/cuda*/bin` |
-| deep-thought | RTX 3090 (sm_86) | `/usr/local/cuda/bin/nvcc` (CUDA 12.4) | **`/usr/bin/nvcc` is too new and fails** |
+| host1 | RTX 3080 (sm_86) | `/usr/bin/nvcc` | default host compiler links fine |
+| host2 | RTX 3080 (sm_86) | `/usr/local/cuda/bin/nvcc` | **nvcc not on PATH**; lives under `/usr/local/cuda*/bin` |
+| host3 | RTX 3090 (sm_86) | `/usr/local/cuda/bin/nvcc` (CUDA 12.4) | **`/usr/bin/nvcc` is too new and fails** |
 
-deep-thought's PATH `nvcc` fails to compile the engine with:
+host3's PATH `nvcc` fails to compile the engine with:
 
 ```
 /usr/include/c++/11/bits/std_function.h:530: error: parameter packs not expanded with '...'
 ```
 
-That signature = **CUDA front-end vs. host libstdc++ mismatch**. On deep-thought
+That signature = **CUDA front-end vs. host libstdc++ mismatch**. On host3
 neither `/usr/bin/nvcc` (default) nor `/usr/bin/nvcc -ccbin g++-11` works; only
 the older CUDA at `/usr/local/cuda` (12.4) links. So `-ccbin g++-11` alone is not
 enough — sometimes you need a *different CUDA*.
@@ -92,7 +92,7 @@ Notes:
 - All three cards are **sm_86** (Ampere). `deploy()` derives arch from
   `nvidia-smi --query-gpu=compute_cap`, defaulting to `sm_86`.
 - **Never copy a binary between hosts.** They have different glibc; a binary
-  built on deep-thought fails on mother with a `GLIBC_2.xx not found` error.
+  built on host3 fails on host1 with a `GLIBC_2.xx not found` error.
   Always build per host.
 
 ## SSH / launch gotchas
@@ -106,7 +106,7 @@ Notes:
   `pgrep -f '[r]un_braidlab.sh'`. Without the bracket, pgrep matches the SSH
   shell running the very command (its cmdline contains the pattern) and reports a
   false "alive"; `pkill` would kill its own SSH session (exit 255).
-- **mother's forwarding noise.** SSH to mother prints
+- **host1's forwarding noise.** SSH to host1 prints
   `bind [::1]:NNNNN: Address already in use` / `channel_setup_fwd_listener_tcpip`
   / `Could not request local forwarding`. This is a local-forward clash in the
   SSH config and is **harmless** — the command still runs. Filter it when
@@ -125,10 +125,10 @@ the safe T ceiling is set by card VRAM:
 | RTX 3080 | 10 GB | **160** (≈5.6 GB grid + ~0.7 GB points + context); T≥170 risks OOM |
 | RTX 3090 | 24 GB | **~215** (grid is 19.8 GB at T=220, 27.9 GB at T=240) |
 
-Pass caps with `--host-max mother=160,kitt=160`. `plan_assignment` only assigns a
+Pass caps with `--host-max host1=160,host2=160`. `plan_assignment` only assigns a
 job to hosts whose cap it fits, and **raises** if no host can run some T (so a
 typo that strands the high-T jobs fails loudly instead of silently dropping
-them). With these caps the high-T tail (T=170–200) lands only on deep-thought.
+them). With these caps the high-T tail (T=170–200) lands only on host3.
 
 ### VRAM breakdown (where it actually goes)
 

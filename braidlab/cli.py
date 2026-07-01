@@ -1,7 +1,7 @@
 """Command-line interface for braidlab.
 
 Usage:
-    python -m braidlab run 3plus1 --hosts mother,kitt --db data/run.db
+    python -m braidlab run 3plus1 --hosts host1,host2 --db data/run.db
     python -m braidlab analyze --db data/run.db
     python -m braidlab report  --db data/run.db --out report.html
     python -m braidlab plan 3plus1            # dry-run: list jobs, no launch
@@ -20,7 +20,7 @@ from braidlab.store import Store
 
 
 def _parse_host_max(text: str) -> dict[str, int]:
-    """Parse ``mother=160,kitt=160`` into a host -> max-T cap dict."""
+    """Parse ``host1=160,host2=160`` into a host -> max-T cap dict."""
     caps: dict[str, int] = {}
     for item in text.split(","):
         if item.strip():
@@ -118,7 +118,7 @@ def main(argv: list[str] | None = None) -> None:
     sr.add_argument("--poll", type=int, default=120)
     sr.add_argument("--no-deploy", action="store_true", help="skip engine build")
     sr.add_argument("--host-max", default="",
-                    help="per-host max T, e.g. mother=160,kitt=160")
+                    help="per-host max T, e.g. host1=160,host2=160")
     sr.set_defaults(func=_cmd_run)
 
     sa = sub.add_parser("analyze", help="print D for all completed (dim, band)")
