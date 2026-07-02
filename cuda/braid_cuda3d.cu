@@ -5,6 +5,11 @@
 // Flat dense 3D grid per time-step (comoving coords bounded to [-1,1]); fits a
 // 24GB 3090 for the low/moderate T we need for the convergence question.
 //
+// --torus switches to the new-dogma model: the slope-1 budget binds the wiggle
+// term alone (|a*b| = 1), the sin1 term is a free comoving offset, and the
+// comoving domain is a period-2 torus (wrapped positions, minimum-image
+// collision, no wall).
+//
 // Build:  nvcc -O3 -arch=sm_86 -o braid_cuda3d braid_cuda3d.cu
 // Run:    ./braid_cuda3d -t 80 --attempts 5e9 --seed 1 --curve out.csv
 
@@ -90,7 +95,23 @@ __host__ __device__ inline double angle_magnitude(Rng& r) {
     return 1.0 - TWO_OVER_PI * asin(rng_f64(r));
 }
 
-__host__ __device__ inline Path propose(Rng& r, uint32_t modmax, bool smart, bool angle) {
+// Torus (new-dogma) model helpers. The comoving domain is periodic with period
+// 2: a coordinate is wrapped onto the fundamental domain [-1, 1), and
+// separations use the minimum image on the circle.
+__host__ __device__ inline double torus_wrap(double x) {
+    return x - 2.0 * floor((x + 1.0) * 0.5);
+}
+__host__ __device__ inline double torus_delta(double d) {
+    // Inputs are wrapped, so |d| < 2 and one shift suffices.
+    if (d > 1.0)
+        return d - 2.0;
+    if (d < -1.0)
+        return d + 2.0;
+    return d;
+}
+
+__host__ __device__ inline Path propose(
+    Rng& r, uint32_t modmax, bool smart, bool angle, bool torus) {
     double xs, ys, ws;
     if (angle) {
         xs = angle_magnitude(r);
@@ -124,9 +145,19 @@ __host__ __device__ inline Path propose(Rng& r, uint32_t modmax, bool smart, boo
     p.ax2 = xs;
     p.ay2 = ys;
     p.aw2 = ws;
-    p.ax = (1.0 - xs) / bx;
-    p.ay = (1.0 - ys) / by;
-    p.aw = (1.0 - ws) / bw;
+    if (torus) {
+        // New-dogma budget: the slope-1 constraint binds the wiggle term alone
+        // (|a*b| = 1); the sin1 term is a free comoving offset -- in comoving
+        // coordinates it is a CONSTANT, so a uniform draw makes the packing
+        // homogeneous on the torus by construction.
+        p.ax = 1.0 / bx;
+        p.ay = 1.0 / by;
+        p.aw = 1.0 / bw;
+    } else {
+        p.ax = (1.0 - xs) / bx;
+        p.ay = (1.0 - ys) / by;
+        p.aw = (1.0 - ws) / bw;
+    }
     p.bx = bx;
     p.by = by;
     p.bw = bw;
@@ -161,40 +192,52 @@ __device__ bool collides_dev(const Path& p,
                              const double* ptsY,
                              const double* ptsW,
                              const int* order,
-                             bool euclid) {
+                             bool euclid,
+                             bool torus) {
     const double edge = 1.0 - 0.5 * cell;  // path radius CELL/2 hits the wall at |X|=1
 
     for (int oi = 0; oi < T; oi++) {
         const int i = order[oi];
 
         // Comoving position of the candidate path at this timestep (X = x / sin z).
-        const double X = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
-        const double Y = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
-        const double W = (p.aw * sin(p.bw * z[i]) + p.aw2 * sinz[i]) * invz[i];
+        double X = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
+        double Y = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
+        double W = (p.aw * sin(p.bw * z[i]) + p.aw2 * sinz[i]) * invz[i];
 
-        // (1) Edge collision: the boundary |X| = 1 is a hard wall; a path whose
-        //     centre is within radius CELL/2 of it has its body crossing the wall.
-        if (fabs(X) > edge || fabs(Y) > edge || fabs(W) > edge)
-            return true;
+        int cx, cy, cw;
+        if (torus) {
+            // Periodic domain: wrap onto [-1, 1); there is no wall.
+            X = torus_wrap(X);
+            Y = torus_wrap(Y);
+            W = torus_wrap(W);
+            cx = (int)floor((X + 1.0) / cell);
+            cy = (int)floor((Y + 1.0) / cell);
+            cw = (int)floor((W + 1.0) / cell);
+        } else {
+            // (1) Edge collision: the boundary |X| = 1 is a hard wall; a path whose
+            //     centre is within radius CELL/2 of it has its body crossing the wall.
+            if (fabs(X) > edge || fabs(Y) > edge || fabs(W) > edge)
+                return true;
+            cx = (int)floor(X / cell);
+            cy = (int)floor(Y / cell);
+            cw = (int)floor(W / cell);
+        }
 
         // (2) Path-path collision: scan the 3x3x3 neighbourhood of grid cells and
-        //     test every accepted point for Chebyshev distance <= CELL.
-        const int cx = (int)floor(X / cell);
-        const int cy = (int)floor(Y / cell);
-        const int cw = (int)floor(W / cell);
-
+        //     test every accepted point for Chebyshev distance <= CELL. On the
+        //     torus the neighbourhood wraps modulo the grid.
         for (int dx = -1; dx <= 1; dx++) {
-            const int gx = cx + dx + off;
+            int gx = torus ? (cx + dx + gw) % gw : cx + dx + off;
             if (gx < 0 || gx >= gw)
                 continue;
 
             for (int dy = -1; dy <= 1; dy++) {
-                const int gy = cy + dy + off;
+                int gy = torus ? (cy + dy + gw) % gw : cy + dy + off;
                 if (gy < 0 || gy >= gw)
                     continue;
 
                 for (int dz = -1; dz <= 1; dz++) {
-                    const int gz = cw + dz + off;
+                    int gz = torus ? (cw + dz + gw) % gw : cw + dz + off;
                     if (gz < 0 || gz >= gw)
                         continue;
 
@@ -203,9 +246,14 @@ __device__ bool collides_dev(const Path& p,
                     const int ln = cellLen[gc];
 
                     for (int k = 0; k < ln; k++) {
-                        const double dX = X - ptsX[st + k];
-                        const double dY = Y - ptsY[st + k];
-                        const double dW = W - ptsW[st + k];
+                        double dX = X - ptsX[st + k];
+                        double dY = Y - ptsY[st + k];
+                        double dW = W - ptsW[st + k];
+                        if (torus) {
+                            dX = torus_delta(dX);
+                            dY = torus_delta(dY);
+                            dW = torus_delta(dW);
+                        }
                         bool hit;
                         if (euclid)
                             hit = dX * dX + dY * dY + dW * dW <= cell * cell;
@@ -228,6 +276,7 @@ __global__ void test_kernel(uint64_t baseSeed,
                             bool smart,
                             bool angle,
                             bool euclid,
+                            bool torus,
                             int T,
                             const double* z,
                             const double* sinz,
@@ -252,9 +301,9 @@ __global__ void test_kernel(uint64_t baseSeed,
     Rng r;
     rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
-    Path p = propose(r, modmax, smart, angle);
+    Path p = propose(r, modmax, smart, angle, torus);
     if (!collides_dev(p, T, z, sinz, invz, cell, gw, off, gw2, gw3, cellStart, cellLen, ptsX,
-                      ptsY, ptsW, order, euclid)) {
+                      ptsY, ptsW, order, euclid, torus)) {
         int slot = atomicAdd(survCount, 1);
         if (slot < survCap)
             survOut[slot] = p;
@@ -271,6 +320,7 @@ int main(int argc, char** argv) {
     double acceptThresh = 0;  // 0 = run to --attempts; >0 = stop when accept-rate < thresh
     bool angle = false;       // edge-weighted sin1 sampling (vs flat uniform)
     bool euclid = false;      // L2-ball exclusion (vs the default Chebyshev cube)
+    bool torus = false;       // new-dogma model: |a*b|=1, free sin1 offset, periodic domain
     const char* diagPrefix = nullptr;  // if set, write occupancy + probe diagnostics
     long long probeN = 5000000;        // fresh proposals fired at the final state
     const char* paramPath = nullptr;   // if set, dump accepted worldline parameters
@@ -295,6 +345,8 @@ int main(int argc, char** argv) {
             angle = true;
         else if (!strcmp(argv[i], "--euclid-collision"))
             euclid = true;
+        else if (!strcmp(argv[i], "--torus"))
+            torus = true;
         else if (!strcmp(argv[i], "--diag"))
             diagPrefix = argv[++i];
         else if (!strcmp(argv[i], "--probe-n"))
@@ -313,7 +365,9 @@ int main(int argc, char** argv) {
     double cell = 2.0 / T;
     uint32_t modmax =
         (maxfreq > 2) ? (uint32_t)(maxfreq - 1) : (uint32_t)(T / 2 > 2 ? T / 2 : 2);
-    int gw = T + 4, off = gw / 2;
+    // Torus grid: exactly T cells of width CELL span [-1, 1), so the modular
+    // neighbour scan wraps cleanly at the seam. Hard-wall grid keeps its margin.
+    int gw = torus ? T : T + 4, off = torus ? 0 : (T + 4) / 2;
     long gw2 = (long)gw * gw, gw3 = gw2 * gw;
     std::vector<double> z(T), sinz(T), invz(T);
     std::vector<int> order(T);
@@ -339,8 +393,8 @@ int main(int argc, char** argv) {
     CK(cudaMemcpy(dorder, order.data(), T * 4, cudaMemcpyHostToDevice));
 
     size_t ncell = (size_t)T * gw3;
-    fprintf(stderr, "3+1: T=%d  modmax=%u (maxfreq=%u)  grid cells=%.2e  (~%.1f GB)\n", T,
-            modmax, modmax + 1, (double)ncell, ncell * 8.0 / 1e9);
+    fprintf(stderr, "3+1%s: T=%d  modmax=%u (maxfreq=%u)  grid cells=%.2e  (~%.1f GB)\n",
+            torus ? " (torus)" : "", T, modmax, modmax + 1, (double)ncell, ncell * 8.0 / 1e9);
     // cellStart holds cumulative point offsets (< N*T, well within int32 even at
     // T=300), so a 32-bit grid index halves device memory vs a 64-bit one.
     std::vector<int> cellStart(ncell);
@@ -357,23 +411,34 @@ int main(int argc, char** argv) {
         return ((long)cx * 100003L + cy) * 100003L + cw;
     };
     double edge = 1.0 - 0.5 * cell;  // path radius CELL/2 hits the hard wall at |X|=1
+    // Host hash-grid cell index. Torus: wrapped positions live in [-1,1), so the
+    // index is periodic in [0, gw); neighbours wrap modulo gw. Hard wall: raw
+    // floor(v/cell) (the hash key handles negatives).
+    auto hix = [&](double v) -> int {
+        return torus ? (int)floor((v + 1.0) / cell) : (int)floor(v / cell);
+    };
+    auto hnb = [&](int c, int d) -> int { return torus ? (c + d + gw) % gw : c + d; };
     auto host_collides = [&](const double* X, const double* Y, const double* W) -> bool {
         for (int oi = 0; oi < T; oi++) {
             int i = order[oi];
-            if (fabs(X[i]) > edge || fabs(Y[i]) > edge || fabs(W[i]) > edge)
+            if (!torus && (fabs(X[i]) > edge || fabs(Y[i]) > edge || fabs(W[i]) > edge))
                 return true;  // edge collision
-            int cx = (int)floor(X[i] / cell), cy = (int)floor(Y[i] / cell),
-                cw = (int)floor(W[i] / cell);
+            int cx = hix(X[i]), cy = hix(Y[i]), cw = hix(W[i]);
             for (int dx = -1; dx <= 1; dx++)
                 for (int dy = -1; dy <= 1; dy++)
                     for (int dz = -1; dz <= 1; dz++) {
-                        auto it = hgrid[i].find(key3(cx + dx, cy + dy, cw + dz));
+                        auto it = hgrid[i].find(key3(hnb(cx, dx), hnb(cy, dy), hnb(cw, dz)));
                         if (it == hgrid[i].end())
                             continue;
                         for (auto& pt : it->second) {
-                            const double dX = X[i] - pt[0];
-                            const double dY = Y[i] - pt[1];
-                            const double dW = W[i] - pt[2];
+                            double dX = X[i] - pt[0];
+                            double dY = Y[i] - pt[1];
+                            double dW = W[i] - pt[2];
+                            if (torus) {
+                                dX = torus_delta(dX);
+                                dY = torus_delta(dY);
+                                dW = torus_delta(dW);
+                            }
                             bool hit;
                             if (euclid)
                                 hit = dX * dX + dY * dY + dW * dW <= cell * cell;
@@ -385,6 +450,10 @@ int main(int argc, char** argv) {
                     }
         }
         return false;
+    };
+    // Device-grid cell index for the CSR rebuild (must mirror collides_dev).
+    auto gix = [&](double v) -> long {
+        return torus ? (long)floor((v + 1.0) / cell) : (long)((int)floor(v / cell) + off);
     };
 
     int survCap = 1 << 20;
@@ -413,9 +482,8 @@ int main(int argc, char** argv) {
             std::fill(cellLen.begin(), cellLen.end(), 0);
             for (int i = 0; i < T; i++)
                 for (size_t j = 0; j < px[i].size(); j++) {
-                    long gc = (long)i * gw3 + (long)((int)floor(px[i][j] / cell) + off) * gw2 +
-                              (long)((int)floor(py[i][j] / cell) + off) * gw +
-                              ((int)floor(pw[i][j] / cell) + off);
+                    long gc = (long)i * gw3 + gix(px[i][j]) * gw2 + gix(py[i][j]) * gw +
+                              gix(pw[i][j]);
                     cellLen[gc]++;
                 }
             long acc = 0;
@@ -438,9 +506,8 @@ int main(int argc, char** argv) {
             std::vector<int> cur(cellStart);
             for (int i = 0; i < T; i++)
                 for (size_t j = 0; j < px[i].size(); j++) {
-                    long gc = (long)i * gw3 + (long)((int)floor(px[i][j] / cell) + off) * gw2 +
-                              (long)((int)floor(py[i][j] / cell) + off) * gw +
-                              ((int)floor(pw[i][j] / cell) + off);
+                    long gc = (long)i * gw3 + gix(px[i][j]) * gw2 + gix(py[i][j]) * gw +
+                              gix(pw[i][j]);
                     long s = cur[gc]++;
                     ptsXh[s] = px[i][j];
                     ptsYh[s] = py[i][j];
@@ -459,7 +526,7 @@ int main(int argc, char** argv) {
         CK(cudaMemset(dSurvCount, 0, 4));
         int threads = 256, blocks = (int)((batch + threads - 1) / threads);
         test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, smart, angle, euclid,
-                                         T, dz, dsinz, dinvz, cell, gw, off, gw2, gw3,
+                                         torus, T, dz, dsinz, dinvz, cell, gw, off, gw2, gw3,
                                          dCellStart, dCellLen, dPtsX, dPtsY, dPtsW, dorder,
                                          dSurv, dSurvCount, survCap);
         CK(cudaDeviceSynchronize());
@@ -478,6 +545,11 @@ int main(int argc, char** argv) {
                 Xb[i] = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
                 Yb[i] = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
                 Wb[i] = (p.aw * sin(p.bw * z[i]) + p.aw2 * sinz[i]) * invz[i];
+                if (torus) {
+                    Xb[i] = torus_wrap(Xb[i]);
+                    Yb[i] = torus_wrap(Yb[i]);
+                    Wb[i] = torus_wrap(Wb[i]);
+                }
             }
             if (host_collides(Xb.data(), Yb.data(), Wb.data()))
                 continue;
@@ -485,9 +557,8 @@ int main(int argc, char** argv) {
                 px[i].push_back(Xb[i]);
                 py[i].push_back(Yb[i]);
                 pw[i].push_back(Wb[i]);
-                hgrid[i][key3((int)floor(Xb[i] / cell), (int)floor(Yb[i] / cell),
-                              (int)floor(Wb[i] / cell))]
-                    .push_back({Xb[i], Yb[i], Wb[i]});
+                hgrid[i][key3(hix(Xb[i]), hix(Yb[i]), hix(Wb[i]))].push_back(
+                    {Xb[i], Yb[i], Wb[i]});
             }
             if (paramPath)
                 acceptedPaths.push_back(p);
@@ -576,11 +647,16 @@ int main(int argc, char** argv) {
         rng_seed(pr, seed ^ 0xABCDEF1234567890ULL);
         std::vector<double> X(T), Y(T), W(T);
         for (long long t = 0; t < probeN; t++) {
-            Path p = propose(pr, modmax, smart, angle);
+            Path p = propose(pr, modmax, smart, angle, torus);
             for (int i = 0; i < T; i++) {
                 X[i] = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
                 Y[i] = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
                 W[i] = (p.aw * sin(p.bw * z[i]) + p.aw2 * sinz[i]) * invz[i];
+                if (torus) {
+                    X[i] = torus_wrap(X[i]);
+                    Y[i] = torus_wrap(Y[i]);
+                    W[i] = torus_wrap(W[i]);
+                }
             }
             int b = bin_of(p.ax2);  // bin by the X-centre of the proposal
             prop[b]++;

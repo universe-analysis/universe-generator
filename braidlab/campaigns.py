@@ -92,6 +92,35 @@ CAMPAIGNS: dict[str, Campaign] = {
         dump=True,
         tag="e6",
     ),
+    # Torus (new-dogma) model, 3+1: |a*b|=1 budget on the wiggle term, free sin1
+    # comoving offset, periodic comoving domain (wrap + minimum image, no wall).
+    # Uniform sin1 sampler -- on the torus uniform IS the homogeneous measure;
+    # the edge-weighted sampler existed to fight the hard wall, which is gone.
+    "torus3d": Campaign(
+        name="torus3d",
+        dim=3,
+        band="nyq",
+        t_values=CORRDIM_T,
+        seeds=CORRDIM_SEEDS,
+        accept_rate=ACCEPT_RATE,
+        max_attempts=MAX_ATTEMPTS,
+        angle=False,
+        dump=True,
+        torus=True,
+    ),
+    # Torus model, 2+1 (same long-T grid as corrdim2d -- the 2D grid is cheap).
+    "torus2d": Campaign(
+        name="torus2d",
+        dim=2,
+        band="nyq",
+        t_values=CORRDIM2D_T,
+        seeds=CORRDIM2D_SEEDS,
+        accept_rate=ACCEPT_RATE,
+        max_attempts=MAX_ATTEMPTS,
+        angle=False,
+        dump=True,
+        torus=True,
+    ),
     # Deep 2+1 box-counting vs correlation-dimension study (no edge sampler).
     "corrdim2d": Campaign(
         name="corrdim2d",

@@ -55,6 +55,8 @@ def _campaign_summary(camp, hosts: list[str], db: str) -> tuple[str, dict]:
     )
     if getattr(camp, "euclid", False):
         description += " · sphere (L2) collision"
+    if getattr(camp, "torus", False):
+        description += " · torus model (|a·b|=1, free sin1, periodic)"
     fields = {
         "Hosts": ", ".join(hosts),
         "T range": t_range,

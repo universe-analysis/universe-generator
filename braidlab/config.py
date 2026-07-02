@@ -49,6 +49,9 @@ class Job:
     angle: bool = False
     #: L2-ball exclusion (--euclid-collision) instead of Chebyshev cube.
     euclid: bool = False
+    #: Torus (new-dogma) model (--torus): |a*b|=1 budget on the wiggle term,
+    #: free sin1 comoving offset, periodic comoving domain.
+    torus: bool = False
     #: Free-form variant tag (e.g. "e6" for a different cutoff). Not part of the
     #: key; appended to the name so variant runs do not collide in the shared
     #: remote workspace.
@@ -71,6 +74,8 @@ class Job:
         base = f"d{self.dim}_{self.band}_T{self.t}_s{self.seed}"
         if self.euclid:
             base += "_eu"
+        if self.torus:
+            base += "_tor"
         if self.tag:
             base += f"_{self.tag}"
         return base
@@ -98,6 +103,8 @@ class Campaign:
     dump: bool = False
     #: Use the L2-ball exclusion instead of the Chebyshev cube.
     euclid: bool = False
+    #: Use the torus (new-dogma) model: |a*b|=1, free sin1, periodic domain.
+    torus: bool = False
     #: Variant tag appended to job names (e.g. "e6" for a different cutoff).
     tag: str = ""
 
@@ -121,6 +128,7 @@ class Campaign:
                 max_attempts=self.max_attempts,
                 angle=self.angle,
                 euclid=self.euclid,
+                torus=self.torus,
                 tag=self.tag,
             )
             for t in self.t_values

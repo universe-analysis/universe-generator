@@ -24,6 +24,36 @@ def test_job_identity() -> None:
     assert j.maxfreq == 44
 
 
+def test_torus_job_name_and_command() -> None:
+    """Torus jobs get the _tor suffix (workspace collision guard) and --torus."""
+    from braidlab.engine import build_command
+
+    j = Job(
+        dim=3,
+        band="nyq",
+        t=44,
+        seed=2,
+        accept_rate=1e-7,
+        max_attempts=3e12,
+        torus=True,
+    )
+    assert j.name == "d3_nyq_T44_s2_tor"
+    assert "--torus" in build_command(j, "bin", "curve.csv")
+
+
+def test_torus_campaign_expands_torus_jobs() -> None:
+    c = Campaign(
+        name="t",
+        dim=3,
+        band="nyq",
+        t_values=(20,),
+        seeds=(1,),
+        accept_rate=1e-7,
+        torus=True,
+    )
+    assert all(j.torus for j in c.jobs())
+
+
 def test_campaign_expands() -> None:
     c = Campaign(
         name="t",
