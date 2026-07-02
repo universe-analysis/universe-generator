@@ -115,6 +115,56 @@
       </p>
     </article>
 
+    <article class="entry" id="jam-scaling">
+      <h2>The direct packing dimension: jam-count scaling gives D &approx; 2.46 (3+1)</h2>
+      <p class="meta">
+        Chris: the packing dimension is the growth of the jam across
+        <em>total</em>-timestep counts, not a single-slice measure &middot; code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/9d64007"><code>9d64007</code></a>
+      </p>
+      <p>
+        The packing dimension we actually care about is how the jammed worldline
+        count grows with resolution: a 20-step universe and a 200-step universe
+        jam at very different counts, and the slope of <em>log N_sat</em> vs
+        <em>log T</em> is D. This is the direct measurement — no snapshot, no
+        boundary, no probe. Fitted across the T-ladder (weighted log-log slope +
+        seed bootstrap):
+      </p>
+      <ul>
+        <li><strong>3+1: D = 2.45 ± 0.00</strong> (full ladder), 2.47 for T ≥ 100</li>
+        <li><strong>2+1: D = 1.58 ± 0.00</strong></li>
+      </ul>
+      <figure class="plot">
+        <img src="jam_scaling.png"
+             alt="Jam count vs T on log-log axes: clean power laws at D=2.45 (3+1, both cutoffs) and 1.58 (2+1), with a flat local-slope panel below." />
+        <figcaption>
+          Jam count N_sat vs total resolution T (log-log), 3+1 at both stopping
+          cutoffs and 2+1, with T² / T³ reference guides. Lower panel: local slope
+          vs T — flat, confirming a clean power law.
+        </figcaption>
+      </figure>
+      <p>
+        Three things make this solid: it's a <strong>clean power law</strong> (the
+        local slope is flat across the ladder — low-T half and high-T half both
+        ≈ 2.46, the scatter is just seed noise, no crossover), it's
+        <strong>cutoff-robust</strong> (1e-7 vs 1e-6 move D by &lt; 0.02), and it
+        <strong>reproduces the original nvt analysis</strong> (~2.50). D &lt; 3 is
+        the cost of the joint across-time exclusion: pure spatial packing would give
+        T³, but avoiding every other worldline at every timestep suppresses it to
+        ~T².⁴⁶.
+      </p>
+      <p>
+        <strong>The reconciliation:</strong> the long-standing 2.79 headline was
+        always the <em>correlation</em> dimension (a single-slice measure), never
+        this count scaling. The direct packing dimension is ≈ 2.46, and the various
+        estimates do <em>not</em> agree — count 2.46, box-counting 2.65, correlation
+        2.79 (boundary-biased) / ~3.0 (boundary-free). They span 2.46 → 3.0 because
+        they measure genuinely different things; the count scaling is the direct,
+        robust one. Whether the geometry of the correct (spacetime, across-timestep)
+        object agrees with the count's 2.46 is the open cross-check.
+      </p>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
