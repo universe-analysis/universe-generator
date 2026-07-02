@@ -213,6 +213,90 @@
       </p>
     </article>
 
+    <article class="entry" id="spacetime-4d">
+      <h2>4D box-count (time as a spatial axis) &amp; in-universe uniformity over time</h2>
+      <p class="meta">
+        Two of Chris's questions: analyse the bundle with 4D boxes since time is
+        spatial, and characterise the uniformity distribution <em>over time within
+        one universe</em> (not across total-T) &middot; code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/0ed40ef"><code>0ed40ef</code></a>
+      </p>
+
+      <h3>The 4D box-count sharpens the cross-check &mdash; and reframes it</h3>
+      <p>
+        The earlier spacetime cross-check pooled the timesteps into a <em>3D</em>
+        cloud, dropping the time coordinate. Chris's point is right: these are 4D
+        waves with conformal time spatial, so the honest object is the full
+        <code>(x, y, w, z)</code> bundle. We box-count it in 4D under two time-axis
+        scalings: <strong>native</strong> (z on its real [0, &pi;] range) and
+        <strong>packed</strong> (z rescaled so one timestep equals one exclusion
+        cell, dz_step = CELL = 2/T &mdash; an isotropic 4D collision cell).
+      </p>
+      <figure class="plot">
+        <img src="spacetime_4d.png"
+             alt="Local 4D box-counting dimension vs scale for native and packed z; both sweep from 1 at fine scales to 4 at coarse, crossing 2.46 only transiently." />
+        <figcaption>
+          Local 4D box-counting dimension vs box scale, seed-averaged (T=200), for
+          the native and cell-packed time scalings. Both sweep from D &approx; 1 at
+          the finest scale (resolving individual worldline curves) up to D &approx; 4
+          at coarse scales (space-filling in 4D), crossing the count-scaling 2.46
+          (red) only in passing. The coarse-scale wiggle above ~0.1 is small-count
+          noise (few occupied boxes).
+        </figcaption>
+      </figure>
+      <p>
+        <strong>Same answer as the 3D projection, now confirmed in full 4D: no 2.46
+        plateau.</strong> The worldline bundle is a union of smooth 1D curves
+        threading 4D spacetime &mdash; at the cell scale only <strong>0.75% of the 4D
+        cells are occupied</strong>, so it is a thin near-1D set, not a solid. Its
+        <em>geometric</em> dimension therefore runs 1 &rarr; 4 with scale and has no
+        special value at 2.46.
+      </p>
+      <p>
+        But the 4D framing states the reconciliation more cleanly than before. The
+        count exponent <strong>is</strong> a box-counting dimension &mdash; just taken
+        along a different axis. Within one fixed universe, boxing the static bundle
+        gives its geometric dimension (1 &rarr; 4). Across the <em>family</em> of
+        universes, with the box tied to the exclusion cell (CELL = 2/T shrinking as
+        you refine), the occupied-object count grows as T².⁴⁶. Same box-counting
+        operation, different axis of refinement &mdash; exactly the two things Chris
+        kept separating: within-universe geometry vs across-resolution packing.
+      </p>
+
+      <h3>In-universe uniformity over time is flat</h3>
+      <p>
+        The second question fixes a single universe (one total-T) and asks how the
+        spatial slice changes from bang, through turnaround, to crunch. For each
+        timestep we reconstruct the comoving positions and measure the slice's rms
+        spread and its coarse box-counting dimension.
+      </p>
+      <figure class="plot">
+        <img src="uniformity_over_time.png"
+             alt="Per-slice box-dim and rms spread vs conformal time: both flat across the whole loop, with small deviations only at the very endpoints." />
+        <figcaption>
+          Per-slice comoving box-dimension (top) and rms spread (bottom) vs conformal
+          time z/&pi;, seed-averaged (T=200). Both are flat across essentially the
+          whole loop &mdash; box-dim &approx; 2.61, spread &approx; 0.623 &mdash; with
+          deviations only in the last ~2% at each end (box-dim dips to ~2.47, spread
+          rises to ~0.68).
+        </figcaption>
+      </figure>
+      <p>
+        <strong>The comoving slices are statistically identical at every conformal
+        time.</strong> This is the key point for Chris's worry that the correlation
+        &ldquo;just measures how uniform it is&rdquo;: in comoving coordinates there
+        is nothing to vary &mdash; every timestep looks like a ~2.6-dimensional
+        packing of the same spread, so a single-slice correlation returns one stable
+        number no matter which slice you sample. The dramatic bang/crunch collapse
+        lives entirely in <em>physical</em> coordinates
+        (<code>x = X&middot;sin z &rarr; 0</code> at the endpoints); the comoving
+        packing that the exclusion actually acts on does not collapse. And this is a
+        <em>separate</em> phenomenon from the low-total-T jam that saturates near 2D
+        &mdash; that one is across-universe, this one is within-universe, and they
+        should not be conflated.
+      </p>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
