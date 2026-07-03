@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-07-02</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-07-02</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="torus-model">
+      <h2>The torus model: freeing sin1 and closing the space</h2>
+      <p class="meta">
+        Engine change (<code>--torus</code>, both 2+1 and 3+1) &middot; code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/d642518"><code>d642518</code></a>
+      </p>
+      <p>
+        The model changed today. In the original (&ldquo;hard-wall&rdquo;) model
+        the slope-1 budget bound both terms jointly &mdash;
+        <code>|a&middot;b| + |a2| = 1</code> &mdash; and the comoving domain had
+        a hard wall at <code>|X| = 1</code>. The new model splits them: the
+        budget binds the wiggle term alone (<code>|a&middot;b| = 1</code>), and
+        the sin1 amplitude becomes a <em>free</em> comoving offset in (&minus;1, 1).
+        In comoving coordinates the sin1 term is a constant, so drawing it
+        uniform is exactly the homogeneous measure &mdash; and since a
+        full-budget wiggle plus a free offset excurses past <code>|X| = 1</code>,
+        the domain must close: comoving space becomes a period-2 torus (wrapped
+        positions, minimum-image exclusion, no wall). The wall and the
+        preferred center are not removed by hand; they become <em>unstatable</em>.
+      </p>
+      <p>
+        Two changes, one model: the old joint budget coupled a worldline&rsquo;s
+        position to its speed (far from center &rArr; slow) and the wall piled
+        density against the boundary. Both structures are gone by construction.
+        Verified before running: non-torus binaries reproduce HEAD behavior
+        within the documented atomic-ordering spread, and an independent
+        minimum-image recheck of a jammed torus packing finds zero exclusion
+        violations, with the minimum pair separation sitting just above CELL.
+      </p>
+      <p>
+        Campaigns: <code>torus3d_e6</code> (3+1, T = 20&ndash;200 step 10,
+        5 seeds, 1e-6 cutoff &mdash; the cutoff study showed a cutoff decade
+        moves D &lt; 0.02, and it is ~10&times; cheaper in the tail) and
+        <code>torus2d</code> (2+1, T = 40&ndash;400 step 20, 8 seeds, 1e-7).
+        Each is compared against the <em>same-cutoff</em> hard-wall dataset.
+      </p>
+    </article>
+
+    <article class="entry" id="torus-count-exponent">
+      <h2>Count exponent: 2.46 &rarr; 2.28 (3+1), 1.58 &rarr; 1.42 (2+1)</h2>
+      <p class="meta">
+        Campaigns <code>torus3d_e6</code> (95 jobs) + <code>torus2d</code>
+        (152 jobs) &middot; code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/0e12833"><code>0e12833</code></a>,
+        <a href="https://github.com/universe-analysis/universe-generator/commit/c86996c"><code>c86996c</code></a>
+      </p>
+      <p>
+        The direct packing dimension &mdash; the slope of log N_sat vs log T
+        &mdash; measured on the new model, beside all three hard-wall baselines
+        (which reproduce yesterday&rsquo;s values exactly after recollecting the
+        data from the fleet workspaces):
+      </p>
+      <ul>
+        <li>3+1: <strong>D = 2.28</strong> full ladder / 2.33 for T &ge; 100
+            (hard-wall at the same 1e-6 cutoff: 2.46 / 2.47)</li>
+        <li>2+1: <strong>D = 1.42</strong> full ladder / 1.42 for T &ge; 100
+            (hard-wall at the same 1e-7 cutoff: 1.58 / 1.58)</li>
+      </ul>
+      <figure class="plot">
+        <img src="jam_scaling_torus.png"
+             alt="Jam count vs T on log-log axes: torus-model power laws at D=2.28 (3+1) and 1.42 (2+1) run parallel-but-shallower beside the hard-wall baselines at 2.46 and 1.58." />
+        <figcaption>
+          Jam count N_sat vs total resolution T (log-log): torus model (red,
+          purple) beside the hard-wall baselines (blue, orange, green), with
+          T&sup2;/T&sup3; guides. Lower panel: local slope &mdash; flat for
+          both torus datasets, confirming clean power laws.
+        </figcaption>
+      </figure>
+      <p>
+        <strong>The exponent dropped by ~0.15 in both dimensions.</strong> The
+        mechanism reads off the model change: under the joint budget, a
+        worldline could buy a small wiggle by sitting far out (<code>|a2|</code>
+        large &rArr; swing <code>1 &minus; |a2|</code> small), and those
+        small-footprint worldlines padded the count. On the torus every
+        worldline carries the full unit swing &mdash; there are no cheap
+        wall-huggers &mdash; so the jam admits fewer objects and grows more
+        slowly with resolution. Same-size shifts in 2+1 and 3+1 (&minus;0.16,
+        &minus;0.14 at high T) suggest the drop is a property of the budget
+        change, not of the embedding dimension.
+      </p>
+      <p>
+        <strong>Caveat:</strong> the 3+1 torus local slope still drifts gently
+        upward at the top of the ladder (2.26 low-T half vs 2.32 high-T half,
+        scatter 0.11 vs the hard-wall&rsquo;s 0.09), so the converged 3+1 value
+        may sit nearer 2.33 than 2.28; the 2+1 fit is flat. A T &gt; 200 run on
+        the 3090 would pin it.
+      </p>
+    </article>
+
+    <article class="entry" id="torus-homogeneity">
+      <h2>Homogeneity is exact: D2 = 3.00, rms spread = &radic;&frac13;, flat over the whole loop</h2>
+      <p class="meta">
+        Same torus dumps; wrapped estimator now on genuinely periodic data
+        &middot; code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/0e12833"><code>0e12833</code></a>
+      </p>
+      <p>
+        Yesterday&rsquo;s boundary investigation ended with a promise: the
+        wrapped (minimum-image) correlation estimator was &ldquo;a preview for
+        a future genuinely periodic space.&rdquo; That space exists now, and on
+        it the wrapped estimator is the physically self-consistent measurement
+        &mdash; no wall, no seam, no edge depletion.
+      </p>
+      <figure class="plot">
+        <img src="periodic_corrdim_torus.png"
+             alt="Wrapped correlation dimension vs T on the torus packing: sphere and cube probes converge together onto D=3, gap ~0.005; the non-periodic estimator reads 2.89 on the same data." />
+        <figcaption>
+          Wrapped correlation D2 vs T (3+1 torus, seed-averaged): sphere
+          3.008 and cube 3.004 at T = 200, descending onto the space-filling
+          D = 3 line with the probe-shape gap collapsed. The non-periodic
+          estimator on the same data reads ~2.89 &mdash; the boundary artifact,
+          reproduced on demand.
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="uniformity_over_time_torus.png"
+             alt="Per-slice box-dim and rms spread vs conformal time for the torus model: both flat across the loop; spread pinned at 0.5774 with no endpoint deviations." />
+        <figcaption>
+          In-universe uniformity over conformal time (T = 200, 5 seeds): rms
+          comoving spread is 0.5774 across the <em>entire</em> loop (range
+          0.0004) &mdash; &radic;&frac13; &asymp; 0.57735 is the exact value
+          for a uniform torus. The old model&rsquo;s endpoint deviations are
+          gone.
+        </figcaption>
+      </figure>
+      <p>
+        <strong>The matter slices of the torus model are exactly homogeneous,
+        at every conformal time.</strong> The uniform-sin1 measure makes this
+        true of the <em>proposal</em> distribution by construction; the
+        measurement shows jamming preserves it (exclusion thins the cloud
+        without structuring it at these scales). Together with the count
+        result, the picture is now clean: <em>geometry</em> is featureless
+        (D2 = 3.00, no center, no wall), and all the nontrivial structure of
+        the model lives in the <em>packing-number exponent</em> &mdash; the
+        dynamical cost of threading worldlines through every timestep at once.
+        The old 2.79 was the hard-wall model&rsquo;s boundary structure talking,
+        not the packing.
+      </p>
+    </article>
+
+    <article class="entry" id="torus-spacetime">
+      <h2>Spacetime box-counts: no plateau at the count exponent &mdash; and a dust-fine bundle</h2>
+      <p class="meta">
+        3D + 4D box-counts of the torus worldline bundle (T = 200, 3 seeds)
+        &middot; code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/bc28c1f"><code>bc28c1f</code></a>
+      </p>
+      <figure class="plot">
+        <img src="spacetime_dim_torus.png"
+             alt="Local box-counting dimension vs scale for the pooled torus worldline cloud: runs from ~1.3 at fine scales to ~2.9 at coarse, crossing 2.33 only in passing." />
+        <figcaption>
+          Pooled 3D box-count of the torus bundle: local D runs 1.3 &rarr; 2.9
+          with scale, crossing the torus count exponent (2.33, red) only in
+          passing &mdash; the same non-plateau as the hard-wall model.
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="spacetime_4d_torus.png"
+             alt="Local 4D box-counting dimension vs scale for the torus bundle under native and packed time scalings: sweeps from ~0 at the finest scale to ~3.7 at coarse." />
+        <figcaption>
+          Full 4D box-count (time as a spatial axis, native and cell-packed z
+          scalings): the sweep crosses 2.33 in passing with no plateau;
+          cell-scale occupancy is 0.75% of 4D cells.
+        </figcaption>
+      </figure>
+      <p>
+        The cross-dimensional conclusion from yesterday survives the model
+        change: the count-scaling exponent is a packing-<em>number</em>
+        exponent, not the geometric dimension of any static cloud &mdash; on
+        the torus the bundle sweeps 1 &rarr; 3 (3D) and &rarr; 4 (4D) with no
+        plateau at 2.33.
+      </p>
+      <p>
+        One new feature: at the finest scale the 4D local dimension drops to
+        ~0 (the old model read ~1 there). This is real model physics, not an
+        artifact: torus worldlines carry the full unit swing, and the comoving
+        frame magnifies motion by 1/sin z near the endpoints, so consecutive
+        timestep samples of one worldline separate beyond the cell scale &mdash;
+        at that resolution the sampled bundle reads as dust rather than as
+        connected curves. The old model&rsquo;s position&ndash;speed coupling
+        kept wall-adjacent worldlines slow enough to resolve as curves.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
