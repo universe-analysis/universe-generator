@@ -269,7 +269,11 @@
         uConeRate:{value:0.6}, uConeBase:{value:0.0}, uConeRings:{value:3}, uRedNorm:{value:1.2}, uConeColor:{value:1}, uConeSpeed:{value:1.0},
         uConeFadeW:{value:0.3}, uConeFold:{value:0},
         uConeOn:{value:1}, uConeMax:{value:1},
-        uSize:{value:parseFloat(sizeRange().value)}, uConeSize:{value:0.7}, uOpacity:{value:0.6}, uTex:{value:glowTex}
+        uSize:{value:parseFloat(sizeRange().value)}, uConeSize:{value:0.7}, uOpacity:{value:0.6}, uTex:{value:glowTex},
+        // ortho cameras have no perspective attenuation: point size must come from
+        // camera.zoom, never from view depth (-mv.z), which goes through 0 at the
+        // camera plane (size blow-up in front, 1px collapse behind). 0 = perspective.
+        uOrthoScale:{value:0}
     };
     function sizeRange(){ return document.getElementById('sizeRange'); }
 
@@ -281,7 +285,7 @@
         attribute vec2 aFreq;        // bx, by
         attribute vec2 aPec;         // per-particle comoving speed min, max
         attribute float aIndex;      // instance index 0..N-1 (for emitter highlight)
-        uniform float uZ0, uStep, uT, uR, uS, uLogTmax, uSize, uGMin, uGMax, uTime, uAngK, uConeMax;
+        uniform float uZ0, uStep, uT, uR, uS, uLogTmax, uSize, uGMin, uGMax, uTime, uAngK, uConeMax, uOrthoScale;
         uniform int uGeoLocal, uMode, uLog, uPecGlobal, uSliceMode, uMapMode, uConeOn;
         varying vec3 vColor;
         vec2 comov(float z){
@@ -317,7 +321,8 @@
             vec4 mv = modelViewMatrix * vec4(P,1.0);
             gl_Position = projectionMatrix * mv;
             float sz = uSize * (uSliceMode==1 ? 1.7 : 1.0) * (1.0 + 1.6*hl);
-            gl_PointSize = clamp(sz * 300.0 / -mv.z, 1.0, 90.0);
+            float depth = (uOrthoScale > 0.0) ? uOrthoScale : max(-mv.z, 0.1);
+            gl_PointSize = clamp(sz * 300.0 / depth, 1.0, 90.0);
             if(uMode==0){ vColor = vec3(0.78,0.85,1.0); }
             else if(uMode==1){ vColor = ramp(log(1.0/s)/uLogTmax); }
             else {
@@ -369,7 +374,7 @@
         attribute vec3 position;     // x = ring angle (rad), y = ring index m
         attribute vec4 aAmp;         // ax, ay, ax2, ay2
         attribute vec2 aFreq;        // bx, by
-        uniform float uTime, uR, uS, uSize, uConeSize, uAngK, uConeRate, uConeBase, uConeRings, uRedNorm, uConeSpeed, uConeFadeW;
+        uniform float uTime, uR, uS, uSize, uConeSize, uAngK, uConeRate, uConeBase, uConeRings, uRedNorm, uConeSpeed, uConeFadeW, uOrthoScale;
         uniform int uGeoLocal, uMapMode, uConeColor, uConeFold;
         varying vec3 vColor; varying float vFade;
         vec2 comov(float z){
@@ -414,7 +419,8 @@
             }
             vec4 mv = modelViewMatrix * vec4(P,1.0);
             gl_Position = projectionMatrix * mv;
-            gl_PointSize = clamp(uConeSize*1.2 * 300.0 / -mv.z, 1.0, 40.0);
+            float depth = (uOrthoScale > 0.0) ? uOrthoScale : max(-mv.z, 0.1);
+            gl_PointSize = clamp(uConeSize*1.2 * 300.0 / depth, 1.0, 40.0);
             float age = m / max(1.0, uConeRings-1.0);
             if (uConeColor==1){                          // TRACK: stable hue keyed to emission event
                 vColor = hsv2rgb(fract(k*0.61803399), 0.7, 1.0);   // golden-ratio hue spread
@@ -789,6 +795,9 @@
     function tick(){
         requestAnimationFrame(tick);
         controls.update();
+        // ortho: constant reference depth (initial camera distance), scaled by zoom;
+        // 0 tells the shaders to fall back to perspective -mv.z attenuation
+        U.uOrthoScale.value = camera.isOrthographicCamera ? (R*2.6)/camera.zoom : 0;
         if (playing && showSweep && Z_cache.length){
             framePos = (framePos + playSpeed) % Z_cache.length;
             frame = Math.floor(framePos) % Z_cache.length;

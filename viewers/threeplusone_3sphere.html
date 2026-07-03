@@ -210,7 +210,11 @@
         uK:{value:1}, uPhi:{value:0}, uViewScale:{value:viewScale},
         uMapMode:{value:0}, uShapeN:{value:3},
         uCap:{value:0}, uCapThresh:{value:0.85},
-        uSize:{value:0.7}, uOpacity:{value:0.6}, uTex:{value:glowTex}
+        uSize:{value:0.7}, uOpacity:{value:0.6}, uTex:{value:glowTex},
+        // ortho cameras have no perspective attenuation: point size must come from
+        // camera.zoom, never from view depth (-mv.z), which goes through 0 at the
+        // camera plane (size blow-up in front, 1px collapse behind). 0 = perspective.
+        uOrthoScale:{value:0}
     };
 
     const VERT = `
@@ -221,7 +225,7 @@
         attribute vec3 aAmp2;             // ax2, ay2, aw2
         attribute vec3 aFreq;             // bx, by, bw
         attribute vec2 aPec;              // per-particle comoving speed min,max
-        uniform float uZ0,uStep,uT,uTime,uGMin,uGMax,uLogTmax,uK,uPhi,uViewScale,uSize,uCapThresh,uShapeN;
+        uniform float uZ0,uStep,uT,uTime,uGMin,uGMax,uLogTmax,uK,uPhi,uViewScale,uSize,uCapThresh,uShapeN,uOrthoScale;
         uniform int uGeoLocal,uMode,uLog,uPecGlobal,uSliceMode,uCap,uMapMode;
         varying vec3 vColor;
         vec3 comov3(float z){
@@ -268,7 +272,8 @@
             // causality-cap highlight: particles whose comoving coord nears the ±1 light-cone cap
             float capness = (uCap==1) ? smoothstep(uCapThresh, 1.0, max(max(abs(cm.x),abs(cm.y)),abs(cm.z))) : 0.0;
             float sz = uSize * (uSliceMode==1 ? 1.4 : 1.0) * (1.0 + capness*1.6);
-            gl_PointSize = clamp(sz * 300.0 / -mv.z, 1.0, 80.0);
+            float depth = (uOrthoScale > 0.0) ? uOrthoScale : max(-mv.z, 0.1);
+            gl_PointSize = clamp(sz * 300.0 / depth, 1.0, 80.0);
             if(uMode==0){ vColor=vec3(0.78,0.85,1.0); }
             else if(uMode==1){ vColor=ramp(log(1.0/s)/uLogTmax); }
             else {
@@ -447,6 +452,9 @@
     function tick(){
         requestAnimationFrame(tick);
         controls.update();
+        // ortho: constant reference depth (initial camera distance), scaled by zoom;
+        // 0 tells the shaders to fall back to perspective -mv.z attenuation
+        U.uOrthoScale.value = camera.isOrthographicCamera ? CAM/camera.zoom : 0;
         if (playing && showSweep && Z_cache.length){
             framePos=(framePos+playSpeed)%Z_cache.length; frame=Math.floor(framePos)%Z_cache.length;
             sweepMat.uniforms.uTime.value=Z_cache[frame];
