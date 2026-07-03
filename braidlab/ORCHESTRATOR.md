@@ -114,6 +114,14 @@ Notes:
 - **macOS has no `timeout`.** Don't rely on it from the driver host; use
   until-loops / background polling instead.
 - Use `ssh -o BatchMode=yes -o ConnectTimeout=8` for non-interactive checks.
+- **One campaign per host at a time.** The remote workspace is shared: every
+  campaign writes the SAME `run_braidlab.sh`, and `runner_alive()` cannot tell
+  whose runner is running. Launching campaign B on a host where campaign A's
+  runner is still alive makes B silently skip its launch (it mistakes A's
+  runner for its own) and poll forever collecting nothing; B's deploy also
+  overwrites the runner script under A. Run campaigns on disjoint host sets,
+  or sequence them (this bit the concurrent torus3d_e6/torus2d_e6 launch on
+  2026-07-02).
 
 ## GPU memory caps (T ceilings)
 

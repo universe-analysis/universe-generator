@@ -33,11 +33,11 @@ DATASETS = [
     ("3+1  cutoff 1e-7", "data/corrdim/run.db", 3, "tab:blue"),
     ("3+1  cutoff 1e-6", "data/corrdim3d_e6/run.db", 3, "tab:orange"),
     ("2+1  cutoff 1e-7", "data/corrdim2d/run.db", 2, "tab:green"),
-    # Torus (new-dogma) model, 1e-6 cutoff -- compare against the same-cutoff
-    # hard-wall 3+1 dataset above; missing dbs are skipped so the script runs
-    # before/while the torus campaigns collect.
+    # Torus (new-dogma) model -- each compared against the SAME-cutoff hard-wall
+    # dataset above (3+1 at 1e-6, 2+1 at 1e-7); missing dbs are skipped so the
+    # script runs before/while the torus campaigns collect.
     ("3+1  torus 1e-6", "data/torus/run3d_e6.db", 3, "tab:red"),
-    ("2+1  torus 1e-6", "data/torus/run2d_e6.db", 2, "tab:purple"),
+    ("2+1  torus 1e-7", "data/torus/run2d.db", 2, "tab:purple"),
 ]
 BAND = "nyq"
 HIGH_T = 100  # high-T half cut for the robustness fit
