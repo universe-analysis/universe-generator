@@ -31,7 +31,7 @@ import numpy as np
 
 from braidlab.corrdim import wrap_unit
 
-COUNT_D = 2.46  # count-scaling packing dimension, for reference
+COUNT_D = 2.46  # default count-scaling packing dimension (hard-wall model)
 
 
 def load_params(path: str) -> dict[str, np.ndarray]:
@@ -79,6 +79,12 @@ def main() -> None:
         action="store_true",
         help="torus-model dumps: wrap reconstructed positions onto [-1, 1)",
     )
+    parser.add_argument(
+        "--count-d",
+        type=float,
+        default=COUNT_D,
+        help="count-scaling packing dimension drawn as the reference line",
+    )
     parser.add_argument("--out", type=Path, default=Path("figures/spacetime_dim.png"))
     args = parser.parse_args()
 
@@ -105,28 +111,42 @@ def main() -> None:
     pool_d = -np.gradient(np.log(pool_n), np.log(sizes))
 
     fig, ax = plt.subplots(figsize=(11, 6.5))
-    ax.plot(sizes, pool_d, "o-", color="tab:purple",
-            label="pooled worldlines (all timesteps)")
-    ax.plot(sizes, snap_d, "s--", color="tab:gray",
-            label="single snapshot (turnaround)")
-    ax.axhline(COUNT_D, color="tab:red", ls="-", lw=1.5,
-               label=f"count-scaling packing dim = {COUNT_D}")
+    ax.plot(
+        sizes,
+        pool_d,
+        "o-",
+        color="tab:purple",
+        label="pooled worldlines (all timesteps)",
+    )
+    ax.plot(
+        sizes, snap_d, "s--", color="tab:gray", label="single snapshot (turnaround)"
+    )
+    ax.axhline(
+        args.count_d,
+        color="tab:red",
+        ls="-",
+        lw=1.5,
+        label=f"count-scaling packing dim = {args.count_d}",
+    )
     ax.axhline(3.0, color="black", ls=":", lw=1, label="space-filling (3)")
     ax.axhline(1.0, color="tab:green", ls=":", lw=1, label="single curve (1)")
-    ax.axvspan(cell, 0.045, color="tab:gray", alpha=0.08,
-               label="snapshot subsample-saturated")
+    ax.axvspan(
+        cell, 0.045, color="tab:gray", alpha=0.08, label="snapshot subsample-saturated"
+    )
     ax.set_xscale("log")
     ax.set_xlabel("box scale")
     ax.set_ylabel("local box-counting dimension")
-    ax.set_title("Geometric dimension vs scale: the worldline set runs 1 -> 3, "
-                 "with no 2.46 plateau")
+    ax.set_title(
+        "Geometric dimension vs scale: the worldline set runs 1 -> 3, "
+        f"with no {args.count_d} plateau"
+    )
     ax.legend(loc="upper left", fontsize=8)
     ax.grid(True, which="both", alpha=0.3)
     fig.text(
         0.5,
         0.005,
         "The pooled worldlines are ~1D curves that collectively fill 3D "
-        "(local D: 1 at fine -> 3 at coarse). The count-scaling 2.46 is a "
+        f"(local D: 1 at fine -> 3 at coarse). The count-scaling {args.count_d} is a "
         "packing-NUMBER exponent (count suppressed by the across-time "
         "constraint), not a geometric dimension of this cloud.",
         ha="center",
@@ -141,10 +161,12 @@ def main() -> None:
         m = (sizes_arr >= lo) & (sizes_arr <= hi)
         return float(np.mean(d_arr[m]))
 
-    print(f"\npooled local D:  fine (~CELL) = {pool_d[0]:.2f}, "
-          f"mid [0.02,0.04] = {at(sizes, pool_d, 0.02, 0.04):.2f}, "
-          f"coarse [0.08,0.15] = {at(sizes, pool_d, 0.08, 0.15):.2f}")
-    print(f"count-scaling packing dimension = {COUNT_D} (no matching plateau)")
+    print(
+        f"\npooled local D:  fine (~CELL) = {pool_d[0]:.2f}, "
+        f"mid [0.02,0.04] = {at(sizes, pool_d, 0.02, 0.04):.2f}, "
+        f"coarse [0.08,0.15] = {at(sizes, pool_d, 0.08, 0.15):.2f}"
+    )
+    print(f"count-scaling packing dimension = {args.count_d} (no matching plateau)")
     print(f"wrote {args.out}")
 
 

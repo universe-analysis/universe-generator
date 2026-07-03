@@ -37,7 +37,7 @@ import numpy as np
 
 from braidlab.corrdim import wrap_unit
 
-COUNT_D = 2.46  # count-scaling packing dimension, for reference
+COUNT_D = 2.46  # default count-scaling packing dimension (hard-wall model)
 
 
 def load_params(path: str) -> dict[str, np.ndarray]:
@@ -84,6 +84,12 @@ def main() -> None:
         action="store_true",
         help="torus-model dumps: wrap reconstructed positions onto [-1, 1)",
     )
+    parser.add_argument(
+        "--count-d",
+        type=float,
+        default=COUNT_D,
+        help="count-scaling packing dimension drawn as the reference line",
+    )
     parser.add_argument("--out", type=Path, default=Path("figures/spacetime_4d.png"))
     args = parser.parse_args()
 
@@ -128,11 +134,11 @@ def main() -> None:
         label="4D bundle, z packed (dz_step = CELL)",
     )
     ax.axhline(
-        COUNT_D,
+        args.count_d,
         color="tab:red",
         ls="-",
         lw=1.5,
-        label=f"count-scaling packing dim = {COUNT_D}",
+        label=f"count-scaling packing dim = {args.count_d}",
     )
     ax.axhline(4.0, color="black", ls=":", lw=1, label="space-filling in 4D (4)")
     ax.axhline(1.0, color="tab:green", ls=":", lw=1, label="single curve (1)")
@@ -140,7 +146,8 @@ def main() -> None:
     ax.set_xlabel("box scale")
     ax.set_ylabel("local box-counting dimension (4D)")
     ax.set_title(
-        "4D box-count of the worldline bundle: local D runs 1 -> 4, no 2.46 plateau"
+        f"4D box-count of the worldline bundle: local D runs 1 -> 4, "
+        f"no {args.count_d} plateau"
     )
     ax.legend(loc="upper left", fontsize=8)
     ax.grid(True, which="both", alpha=0.3)
@@ -149,7 +156,8 @@ def main() -> None:
         0.005,
         "Time treated as a spatial axis. The bundle is a union of smooth 1D curves "
         "threading 4D; its geometric dimension sweeps 1 (fine) -> 4 (coarse) under "
-        "both z scalings. The count-scaling 2.46 is a packing-NUMBER exponent taken "
+        f"both z scalings. The count-scaling {args.count_d} is a packing-NUMBER "
+        "exponent taken "
         "across resolution T, not a geometric dimension of this 4D cloud.",
         ha="center",
         fontsize=7.5,
@@ -165,8 +173,8 @@ def main() -> None:
     for name, (_, d) in curves.items():
         print(
             f"{name:>7}: fine D = {d[0]:.2f}, "
-            f"crosses {COUNT_D} near scale "
-            f"{sizes[np.argmin(np.abs(d - COUNT_D))]:.3f}, coarse D = {d[-4]:.2f}"
+            f"crosses {args.count_d} near scale "
+            f"{sizes[np.argmin(np.abs(d - args.count_d))]:.3f}, coarse D = {d[-4]:.2f}"
         )
     print(f"wrote {args.out}")
 
