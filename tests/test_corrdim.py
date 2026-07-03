@@ -67,3 +67,19 @@ def test_aggregate_groups_by_t_and_averages(tmp_path: Path) -> None:
     s = stats[0]
     assert s.t == 40 and s.n_seeds == 3
     assert s.sphere_sem >= 0.0 and np.isfinite(s.sphere_mean)
+
+
+def test_wrap_unit_maps_onto_fundamental_domain() -> None:
+    x = np.array([-2.0, -1.2, -1.0, -0.3, 0.0, 0.99, 1.0, 1.2, 1.9])
+    w = corrdim.wrap_unit(x)
+    assert np.all(w >= -1.0) and np.all(w < 1.0)
+    # A full period (2) away maps to the same point; interior points unmoved.
+    assert np.allclose(corrdim.wrap_unit(x + 2.0), w)
+    assert np.allclose(w[3:6], x[3:6])
+
+
+def test_load_turnaround_cloud_wrap(tmp_path: Path) -> None:
+    p = tmp_path / "d3_tor.csv"
+    _write_dump(p, 200, seed=1)
+    wrapped = corrdim.load_turnaround_cloud(p, wrap=True)
+    assert np.all(wrapped >= -1.0) and np.all(wrapped < 1.0)

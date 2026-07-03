@@ -33,6 +33,11 @@ DATASETS = [
     ("3+1  cutoff 1e-7", "data/corrdim/run.db", 3, "tab:blue"),
     ("3+1  cutoff 1e-6", "data/corrdim3d_e6/run.db", 3, "tab:orange"),
     ("2+1  cutoff 1e-7", "data/corrdim2d/run.db", 2, "tab:green"),
+    # Torus (new-dogma) model, 1e-6 cutoff -- compare against the same-cutoff
+    # hard-wall 3+1 dataset above; missing dbs are skipped so the script runs
+    # before/while the torus campaigns collect.
+    ("3+1  torus 1e-6", "data/torus/run3d_e6.db", 3, "tab:red"),
+    ("2+1  torus 1e-6", "data/torus/run2d_e6.db", 2, "tab:purple"),
 ]
 BAND = "nyq"
 HIGH_T = 100  # high-T half cut for the robustness fit
@@ -55,6 +60,9 @@ def main() -> None:
     )
 
     for label, db, dim, color in DATASETS:
+        if not (root / db).exists():
+            print(f"\n== {label} ==  (no db at {db}; skipped)")
+            continue
         results = Store(root / db).results(dim, BAND)
         full = measure_d(results, dim, BAND)
         high = measure_d([r for r in results if r.t >= HIGH_T], dim, BAND)

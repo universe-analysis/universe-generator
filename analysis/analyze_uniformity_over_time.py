@@ -33,6 +33,8 @@ from pathlib import Path
 
 import numpy as np
 
+from braidlab.corrdim import wrap_unit
+
 # Coarse spatial window for the per-slice box-counting slope (avoids the packing
 # cell at the fine end and the box boundary at the coarse end).
 SLICE_SIZES = np.array([0.05, 0.075, 0.1125, 0.169])
@@ -60,6 +62,12 @@ def main() -> None:
     parser.add_argument("--t", type=int, default=200)
     parser.add_argument("--seeds", type=int, default=3)
     parser.add_argument(
+        "--torus",
+        action="store_true",
+        help="torus-model dumps: wrap reconstructed positions onto [-1, 1). "
+        "Note the rms spread of a homogeneous torus sits at sqrt(1/3) ~ 0.577.",
+    )
+    parser.add_argument(
         "--out", type=Path, default=Path("figures/uniformity_over_time.png")
     )
     args = parser.parse_args()
@@ -75,9 +83,10 @@ def main() -> None:
     print(f"T={args.t}, {len(paths)} seeds")
 
     def axis(cols, a, b, a2):  # (N, T)
-        return (
+        out = (
             cols[a][:, None] * np.sin(np.outer(cols[b], z)) / sinz + cols[a2][:, None]
         )
+        return wrap_unit(out) if args.torus else out
 
     rms_all, dim_all = [], []
     for p in paths:

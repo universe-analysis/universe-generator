@@ -36,12 +36,23 @@ N_CENTERS = 4000
 _NAME_RE = re.compile(r"_T(?P<t>\d+)_s(?P<seed>\d+)")
 
 
-def load_turnaround_cloud(path: str | Path) -> np.ndarray:
+def wrap_unit(x: np.ndarray) -> np.ndarray:
+    """Wrap comoving coordinates onto the torus fundamental domain [-1, 1).
+
+    Torus-model (``--torus``) worldlines can excurse beyond |X| = 1 (the free
+    sin1 offset plus a full-budget wiggle); the engine stores them wrapped, so
+    any reconstruction from raw dump parameters must apply the same wrap.
+    """
+    return x - 2.0 * np.floor((x + 1.0) * 0.5)
+
+
+def load_turnaround_cloud(path: str | Path, wrap: bool = False) -> np.ndarray:
     """Load a parameter dump and return its z=pi/2 comoving cloud (N, d).
 
     Dimension is inferred from the columns: a 3+1 dump carries the third (w)
     axis, a 2+1 dump does not. At the turnaround sin(z)=1, so the comoving
-    position is just X = a*sin(b*pi/2) + a2 on each axis.
+    position is just X = a*sin(b*pi/2) + a2 on each axis. ``wrap`` applies the
+    torus wrap onto [-1, 1) (required for torus-model dumps).
     """
     rows = list(csv.DictReader(open(path)))
     fields = set(rows[0].keys()) if rows else set()
@@ -54,7 +65,8 @@ def load_turnaround_cloud(path: str | Path) -> np.ndarray:
     if "aw" in fields:  # 3+1 dump
         triples.append(("aw", "bw", "aw2"))
     axes = [col(a) * np.sin(col(b) * half_pi) + col(a2) for a, b, a2 in triples]
-    return np.column_stack(axes)
+    cloud = np.column_stack(axes)
+    return wrap_unit(cloud) if wrap else cloud
 
 
 def correlation_integral(

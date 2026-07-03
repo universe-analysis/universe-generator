@@ -108,6 +108,37 @@ CAMPAIGNS: dict[str, Campaign] = {
         dump=True,
         torus=True,
     ),
+    # Torus model at the 1e-6 cutoff: ~10x cheaper in the rejection-dominated
+    # tail, and the cutoff study (PHYSICS_FINDINGS section 12) showed D moves
+    # < 0.02 per cutoff decade. Pairs exactly with corrdim3d_e6 for a
+    # same-cutoff old-vs-new comparison. Tagged so it cannot collide with a
+    # 1e-7 torus run in the shared remote workspace.
+    "torus3d_e6": Campaign(
+        name="torus3d_e6",
+        dim=3,
+        band="nyq",
+        t_values=CORRDIM_T,
+        seeds=CORRDIM_SEEDS,
+        accept_rate=1e-6,
+        max_attempts=MAX_ATTEMPTS,
+        angle=False,
+        dump=True,
+        torus=True,
+        tag="e6",
+    ),
+    "torus2d_e6": Campaign(
+        name="torus2d_e6",
+        dim=2,
+        band="nyq",
+        t_values=CORRDIM2D_T,
+        seeds=CORRDIM2D_SEEDS,
+        accept_rate=1e-6,
+        max_attempts=MAX_ATTEMPTS,
+        angle=False,
+        dump=True,
+        torus=True,
+        tag="e6",
+    ),
     # Torus model, 2+1 (same long-T grid as corrdim2d -- the 2D grid is cheap).
     "torus2d": Campaign(
         name="torus2d",

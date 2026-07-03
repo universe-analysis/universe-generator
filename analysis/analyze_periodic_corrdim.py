@@ -33,6 +33,17 @@ from scipy.spatial import KDTree
 
 from braidlab.corrdim import FIT_HI, FIT_LO, R_MAX, fit_slope, load_turnaround_cloud
 
+CAVEAT_HARDWALL = (
+    "CAVEAT: wrapped measurement on the HARD-WALL packing (not periodic) -- "
+    "the seam invents spurious cross-wall pairs. Preview of the estimator "
+    "for a future periodic space; not physically self-consistent on this data."
+)
+NOTE_TORUS = (
+    "Torus-model packing: the generation domain IS periodic (minimum-image "
+    "exclusion, no wall), so the wrapped estimator is the physically "
+    "self-consistent measurement here -- no seam artifact, no edge depletion."
+)
+
 #: Comoving domain [-1, 1]^3 -> side length 2 per axis for the toroidal wrap.
 BOX = 2.0
 _NAME_RE = re.compile(r"_T(?P<t>\d+)_s(?P<seed>\d+)")
@@ -77,6 +88,12 @@ def main() -> None:
     parser.add_argument("--dumps", default="data/corrdim/dumps")
     parser.add_argument("--seeds", type=int, default=5)
     parser.add_argument(
+        "--torus",
+        action="store_true",
+        help="dumps are torus-model: wrap reconstructed positions onto [-1, 1) "
+        "(the wrapped estimator is then self-consistent, not a preview)",
+    )
+    parser.add_argument(
         "--out", type=Path, default=Path("figures/periodic_corrdim.png")
     )
     args = parser.parse_args()
@@ -100,7 +117,9 @@ def main() -> None:
     sem: dict[str, list[float]] = {k: [] for k in keys}
     print(f"{'T':>4} {'per_sphere':>11} {'per_cube':>10} {'nonper_sphere':>14}")
     for t in ts:
-        clouds = [load_turnaround_cloud(p) for p in by_t[t][: args.seeds]]
+        clouds = [
+            load_turnaround_cloud(p, wrap=args.torus) for p in by_t[t][: args.seeds]
+        ]
         runs = {
             "per_sphere": [corr_dimension(c, t, 2.0, True) for c in clouds],
             "per_cube": [corr_dimension(c, t, np.inf, True) for c in clouds],
@@ -129,18 +148,17 @@ def main() -> None:
     ax.axhline(3.0, color="black", ls="--", lw=1, label="space-filling D = 3")
     ax.set_xlabel("T (resolution)")
     ax.set_ylabel("correlation dimension D2")
-    ax.set_title("Periodic (wrapped) correlation dimension vs T (3+1)")
+    model = "torus model" if args.torus else "hard-wall packing"
+    ax.set_title(f"Periodic (wrapped) correlation dimension vs T (3+1, {model})")
     ax.legend(loc="lower right", fontsize=9)
     ax.grid(True, alpha=0.3)
     fig.text(
         0.5,
         0.005,
-        "CAVEAT: wrapped measurement on the HARD-WALL packing (not periodic) -- "
-        "the seam invents spurious cross-wall pairs. Preview of the estimator "
-        "for a future periodic space; not physically self-consistent on this data.",
+        NOTE_TORUS if args.torus else CAVEAT_HARDWALL,
         ha="center",
         fontsize=7.5,
-        color="firebrick",
+        color="darkgreen" if args.torus else "firebrick",
     )
     fig.tight_layout(rect=(0, 0.03, 1, 1))
     args.out.parent.mkdir(parents=True, exist_ok=True)

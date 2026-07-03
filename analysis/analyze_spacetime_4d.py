@@ -35,6 +35,8 @@ from pathlib import Path
 
 import numpy as np
 
+from braidlab.corrdim import wrap_unit
+
 COUNT_D = 2.46  # count-scaling packing dimension, for reference
 
 
@@ -43,13 +45,16 @@ def load_params(path: str) -> dict[str, np.ndarray]:
     return {k: np.array([float(r[k]) for r in rows]) for k in rows[0]}
 
 
-def pooled_4d(cols: dict[str, np.ndarray], t: int, packed: bool) -> np.ndarray:
+def pooled_4d(
+    cols: dict[str, np.ndarray], t: int, packed: bool, torus: bool = False
+) -> np.ndarray:
     """Return the pooled (N*T)x4 (x, y, w, z) cloud for one dump."""
     z = 0.01 + np.arange(t) * (np.pi - 0.02) / (t - 1)
     sinz = np.sin(z)
 
     def axis(a, b, a2):  # X(z) = a*sin(b*z)/sin(z) + a2, shape (N, T)
-        return a[:, None] * np.sin(np.outer(b, z)) / sinz + a2[:, None]
+        out = a[:, None] * np.sin(np.outer(b, z)) / sinz + a2[:, None]
+        return wrap_unit(out) if torus else out
 
     x = axis(cols["ax"], cols["bx"], cols["ax2"]).ravel()
     y = axis(cols["ay"], cols["by"], cols["ay2"]).ravel()
@@ -74,6 +79,11 @@ def main() -> None:
     parser.add_argument("--dumps", default="data/corrdim/dumps")
     parser.add_argument("--t", type=int, default=200)
     parser.add_argument("--seeds", type=int, default=3)
+    parser.add_argument(
+        "--torus",
+        action="store_true",
+        help="torus-model dumps: wrap reconstructed positions onto [-1, 1)",
+    )
     parser.add_argument("--out", type=Path, default=Path("figures/spacetime_4d.png"))
     args = parser.parse_args()
 
@@ -92,7 +102,9 @@ def main() -> None:
         counts = []
         for p in paths:
             counts.append(
-                box_count_4d(pooled_4d(load_params(p), args.t, packed), sizes)
+                box_count_4d(
+                    pooled_4d(load_params(p), args.t, packed, torus=args.torus), sizes
+                )
             )
         n = np.mean(counts, axis=0)
         curves["packed" if packed else "native"] = (

@@ -29,6 +29,8 @@ from pathlib import Path
 
 import numpy as np
 
+from braidlab.corrdim import wrap_unit
+
 COUNT_D = 2.46  # count-scaling packing dimension, for reference
 
 
@@ -37,14 +39,17 @@ def load_params(path: str) -> dict[str, np.ndarray]:
     return {k: np.array([float(r[k]) for r in rows]) for k in rows[0]}
 
 
-def trajectories(cols: dict[str, np.ndarray], t: int) -> tuple[np.ndarray, np.ndarray]:
+def trajectories(
+    cols: dict[str, np.ndarray], t: int, torus: bool = False
+) -> tuple[np.ndarray, np.ndarray]:
     """Return (snapshot Nx3 at turnaround, pooled (N*T)x3 over all timesteps)."""
     z = 0.01 + np.arange(t) * (np.pi - 0.02) / (t - 1)
     sinz = np.sin(z)
     half = int(np.argmin(np.abs(z - np.pi / 2)))
 
     def axis(a, b, a2):  # X(z) = a*sin(b*z)/sin(z) + a2, shape (N, T)
-        return a[:, None] * np.sin(np.outer(b, z)) / sinz + a2[:, None]
+        out = a[:, None] * np.sin(np.outer(b, z)) / sinz + a2[:, None]
+        return wrap_unit(out) if torus else out
 
     x = axis(cols["ax"], cols["bx"], cols["ax2"])
     y = axis(cols["ay"], cols["by"], cols["ay2"])
@@ -69,6 +74,11 @@ def main() -> None:
     parser.add_argument("--dumps", default="data/corrdim/dumps")
     parser.add_argument("--t", type=int, default=200)
     parser.add_argument("--seeds", type=int, default=3)
+    parser.add_argument(
+        "--torus",
+        action="store_true",
+        help="torus-model dumps: wrap reconstructed positions onto [-1, 1)",
+    )
     parser.add_argument("--out", type=Path, default=Path("figures/spacetime_dim.png"))
     args = parser.parse_args()
 
@@ -84,7 +94,7 @@ def main() -> None:
 
     snap_counts, pool_counts = [], []
     for p in paths:
-        snap, pooled = trajectories(load_params(p), args.t)
+        snap, pooled = trajectories(load_params(p), args.t, torus=args.torus)
         snap_counts.append(box_count(snap, sizes))
         pool_counts.append(box_count(pooled, sizes))
         print(f"  {Path(p).name}: snapshot {len(snap):,}  pooled {len(pooled):,}")
