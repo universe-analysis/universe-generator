@@ -632,10 +632,20 @@
     /* ================================================================
        PART 3 — UI + RENDER LOOP
     ================================================================ */
-    let frame = 0, framePos = 0, playSpeed = 1, playing = true;   // framePos = fractional time index
+    let framePos = 0, playSpeed = 1, playing = true;   // framePos = fractional time index
+
+    // Continuous z along the baked (uniform) grid — worldlines are analytic in z,
+    // so playback isn't quantized to the packing timestep: the speed control sets
+    // how far z advances per tick, and fractional positions render exactly.
+    function zAt(pos){
+        const n = Z_cache.length;
+        if (n < 2) return Z_cache[0];
+        const step = (Z_cache[n-1] - Z_cache[0]) / (n - 1);
+        return Z_cache[0] + pos * step;
+    }
 
     document.getElementById('generateBtn').addEventListener('click', () => {
-        abort_gen = false; saturated = false; groupIDcount = 0; frame = 0; framePos = 0;
+        abort_gen = false; saturated = false; groupIDcount = 0; framePos = 0;
         time_steps = parseInt(timeInput.value);
         modulation_Max = Math.max(2, Math.floor(time_steps/2));
         targetGroups = parseInt(groupInput.value);
@@ -701,9 +711,8 @@
     timeScrub.addEventListener('input', e=>{
         playing=false; document.getElementById('playBtn').classList.remove('on');
         document.getElementById('playBtn').textContent='Paused';
-        if (Z_cache.length){ frame = Math.round(parseFloat(e.target.value)*(Z_cache.length-1));
-            framePos = frame;
-            sweepMat.uniforms.uTime.value = Z_cache[frame]; }
+        if (Z_cache.length){ framePos = parseFloat(e.target.value)*(Z_cache.length-1);
+            sweepMat.uniforms.uTime.value = zAt(framePos); }
         hudDirty=true;
     });
     document.getElementById('speedRange').addEventListener('input', e=>{
@@ -792,6 +801,7 @@
     function sliceColor(f,p,z,zN){                 // matches the GPU paint modes
         if(paintMode==='mono') return [0.78,0.85,1.0];
         if(paintMode==='temp') return ramp(Math.log(1/Math.sin(z))/LOG_TMAX);
+        if(!instPec) return [0.78,0.85,1.0];       // speed ranges not baked yet (mid-generation)
         const s=Math.sin(z), sN=Math.sin(zN);
 		
 		
@@ -835,7 +845,8 @@
         ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,W,H);
         ctx.strokeStyle='rgba(120,140,180,0.14)'; ctx.lineWidth=1;
         ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.moveTo(0,H/2); ctx.lineTo(W,H/2); ctx.stroke();
-        const z=Z_cache[fr], zN=Z_cache[fr<Z_cache.length-1?fr+1:fr-1], sinz=Math.sin(z);
+        // fr is fractional — sample z continuously, one grid step ahead for the speed color
+        const z=zAt(fr), zN=zAt(fr+1<=Z_cache.length-1?fr+1:fr-1), sinz=Math.sin(z);
         const range=1;                                 // box = exactly one period [-1,1], edges wrap
         const sc=(Math.min(W,H)/2 - 8*hudDPR)/range, cx0=W/2, cy0=H/2, r=1.5*hudDPR, d=r*2;
         ctx.globalCompositeOperation='lighter';
@@ -918,19 +929,23 @@
     rebuildGrid();
     setTimeout(() => document.getElementById('generateBtn').click(), 60);   // auto-render on load
 
-    function tick(){
+    let lastTick = 0;
+    function tick(now){
         requestAnimationFrame(tick);
         controls.update();
         // ortho: constant reference depth (initial camera distance), scaled by zoom;
         // 0 tells the shaders to fall back to perspective -mv.z attenuation
         U.uOrthoScale.value = camera.isOrthographicCamera ? (R*2.6)/camera.zoom : 0;
-        if (playing && showSweep && Z_cache.length){
-            framePos = (framePos + playSpeed) % Z_cache.length;
-            frame = Math.floor(framePos) % Z_cache.length;
-            sweepMat.uniforms.uTime.value = Z_cache[frame];
-            timeScrub.value = (frame/(Z_cache.length-1)).toFixed(3);
+        // dt in units of a 60 Hz frame, so 1× advances 60 grid steps/s on any display
+        const dt = (now && lastTick) ? Math.min((now - lastTick)/(1000/60), 4) : 1;
+        if (now) lastTick = now;
+        if (playing && showSweep && Z_cache.length > 1){
+            const span = Z_cache.length - 1;
+            framePos = (framePos + playSpeed*dt) % span;
+            sweepMat.uniforms.uTime.value = zAt(framePos);
+            timeScrub.value = (framePos/span).toFixed(3);
         }
-        if (showHUD && functions.length && (playing || hudDirty)){ drawHUD(frame); hudDirty=false; }
+        if (showHUD && functions.length && (playing || hudDirty)){ drawHUD(framePos); hudDirty=false; }
         renderer.render(scene, camera);
     }
     tick();
