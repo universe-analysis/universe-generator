@@ -127,8 +127,8 @@
         const n = Z_cache.length, X = new Float32Array(n), Y = new Float32Array(n);
         for (let i = 0; i < n; i++) {
             const z = Z_cache[i], inv = 1 / Math.sin(z);
-			var temp_x=(ax * Math.sin(bx * z) + ax2 * Math.sin(z));
-			var temp_y=(ay * Math.sin(by * z) + ay2 * Math.sin(z));
+			var temp_x=(ax * Math.sin((bx * z)+fx) + ax2 * Math.sin(z));
+			var temp_y=(ay * Math.sin((by * z)+fy) + ay2 * Math.sin(z));
 			
 			//	Phase shift components offset to zero
 			if (fx!=0){
@@ -334,8 +334,8 @@
         varying vec3 vColor;
         vec2 comovRaw(float z){
             float s = sin(z);
-            return vec2((aAmp.x*sin(aFreq.x*z) + aAmp.z*sin(z)-aAmp.x* sin(aPhase.x)),
-                        (aAmp.y*sin(aFreq.y*z) + aAmp.w*sin(z))-aAmp.y* sin(aPhase.y)) / s;
+            return vec2((aAmp.x*sin((aFreq.x*z)+aPhase.x) + aAmp.z*sin(z)-aAmp.x* sin(aPhase.x)),
+                        (aAmp.y*sin((aFreq.y*z)+aPhase.y) + aAmp.w*sin(z))-aAmp.y* sin(aPhase.y)) / s;
         }
         // period-2 wrap to [-1,1); positions wrap, velocities never do.
         // Float noise near the seam can flip a point between -1 and ~+1, but with
@@ -429,8 +429,8 @@
         varying vec3 vColor; varying float vFade;
         vec2 comovRaw(float z){
             float s = sin(z);
-            return vec2((aAmp.x*sin(aFreq.x*z) + aAmp.z*sin(z)-aAmp.x* sin(aPhase.x)),
-                        (aAmp.y*sin(aFreq.y*z) + aAmp.w*sin(z))-aAmp.y* sin(aPhase.y)) / s;
+            return vec2((aAmp.x*sin((aFreq.x*z)+aPhase.x) + aAmp.z*sin(z)-aAmp.x* sin(aPhase.x)),
+                        (aAmp.y*sin((aFreq.y*z)+aPhase.y) + aAmp.w*sin(z))-aAmp.y* sin(aPhase.y)) / s;
         }
         vec2 wrap2(vec2 c){ return fract((c + 1.0)*0.5)*2.0 - 1.0; }  // period-2 wrap to [-1,1)
         vec3 hsv2rgb(float h, float s, float v){
@@ -523,8 +523,8 @@
             for (let i=0;i<n;i++){
                 const z=Z_cache[i], inv=1/Math.sin(z);
 				
-				var temp_x=f.ax*Math.sin(f.bx*z)+f.ax2*Math.sin(z);
-				var temp_y=f.ay*Math.sin(f.by*z)+f.ay2*Math.sin(z);
+				var temp_x=f.ax*Math.sin((f.bx*z)+f.fx)+f.ax2*Math.sin(z);
+				var temp_y=f.ay*Math.sin((f.by*z)+f.fy)+f.ay2*Math.sin(z);
 				
 				//	Phase shift components offset to zero
 				if (f.fx!=0){
@@ -796,8 +796,8 @@
 		
 		
 		//	Cx Phase
-		var temp_x=f.ax*Math.sin(f.bx*z)+f.ax2*Math.sin(z);
-		var temp_y=f.ay*Math.sin(f.by*z)+f.ay2*Math.sin(z);
+		var temp_x=f.ax*Math.sin((f.bx*z)+f.fx)+f.ax2*Math.sin(z);
+		var temp_y=f.ay*Math.sin((f.by*z)+f.fy)+f.ay2*Math.sin(z);
 			
 		//	Phase shift components offset to zero
 		if (f.fx!=0){
@@ -810,8 +810,8 @@
 			
 			
 		//	cXN Phase
-		var temp_xN=f.ax*Math.sin(f.bx*zN)+f.ax2*Math.sin(zN);
-		var temp_yN=f.ay*Math.sin(f.by*zN)+f.ay2*Math.sin(zN);
+		var temp_xN=f.ax*Math.sin((f.bx*zN)+f.fx)+f.ax2*Math.sin(zN);
+		var temp_yN=f.ay*Math.sin((f.by*zN)+f.fy)+f.ay2*Math.sin(zN);
 			
 		//	Phase shift components offset to zero
 		if (f.fx!=0){
@@ -842,8 +842,8 @@
         for(let p=0;p<functions.length;p++){
             const f=functions[p];
 			
-			var temp_x=f.ax*Math.sin(f.bx*z)+f.ax2*Math.sin(z);
-			var temp_y=f.ay*Math.sin(f.by*z)+f.ay2*Math.sin(z);
+			var temp_x=f.ax*Math.sin((f.bx*z)+f.fx)+f.ax2*Math.sin(z);
+			var temp_y=f.ay*Math.sin((f.by*z)+f.fy)+f.ay2*Math.sin(z);
 				
 			//	Phase shift components offset to zero
 			if (f.fx!=0){
@@ -870,8 +870,8 @@
             for(let p=0;p<emit;p++){
                 const f=functions[p];
 				
-				var temp_x=f.ax*Math.sin(f.bx*z)+f.ax2*Math.sin(z);
-				var temp_y=f.ay*Math.sin(f.by*z)+f.ay2*Math.sin(z);
+				var temp_x=f.ax*Math.sin((f.bx*z)+f.fx)+f.ax2*Math.sin(z);
+				var temp_y=f.ay*Math.sin((f.by*z)+f.fy)+f.ay2*Math.sin(z);
 				
 				//	Phase shift components offset to zero
 				if (f.fx!=0){
