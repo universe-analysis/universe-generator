@@ -101,7 +101,7 @@
             <div class="choices">
                 <span class="group-name">Paint</span>
                 <label><input type="radio" name="paintMode" value="mono"> Mono</label>
-                <label><input type="radio" name="paintMode" value="temp"> Temperature (1/sin z)</label>
+                <label><input type="radio" name="paintMode" value="freq"> Frequency (bx+by) — red low, blue high</label>
                 <label><input type="radio" name="paintMode" value="pec" checked> Peculiar speed (local)</label>
                 <span class="group-name">Speed normalisation</span>
                 <label><input type="radio" name="normMode" value="per" checked> Per-particle</label>
@@ -174,11 +174,11 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v4';
+    const VIEWER_VERSION = 'v5';
 
     let functions = [];
     let Z_cache = [];
-    let time_steps, modulation_Max, groupIDcount = 0, abort_gen = false;
+    let time_steps, modulation_Max, freqMax = 4, groupIDcount = 0, abort_gen = false;
     let genBudgetMs = 10000, genStart = 0, consecFails = 0, lastLiveUpload = 0;
     const maxAttemptsPerFunction = 50;
 
@@ -386,14 +386,13 @@
         const t = new THREE.Texture(c); t.needsUpdate = true; return t;
     }
     const glowTex = makeGlow();
-    const LOG_TMAX = Math.log(1 / Math.sin(0.01));
 
     /* ---- shared uniforms (one object; cloud & sweep reference these) ---- */
     const U = {
         uZ0:{value:0}, uStep:{value:1}, uT:{value:1},
         uR:{value:R}, uS:{value:S}, uGeoLocal:{value:1},
         uMode:{value:2}, uLog:{value:1}, uPecGlobal:{value:0}, uAngK:{value:Math.PI},
-        uGMin:{value:0}, uGMax:{value:1}, uLogTmax:{value:LOG_TMAX},
+        uGMin:{value:0}, uGMax:{value:1}, uFreqMax:{value:4},
         uConeRate:{value:0.6}, uConeBase:{value:0.0}, uConeRings:{value:3}, uRedNorm:{value:1.2}, uConeColor:{value:1}, uConeSpeed:{value:1.0},
         uConeFadeW:{value:0.3}, uConeFold:{value:0}, uConeSquare:{value:0},
         uConeOn:{value:1}, uConeMax:{value:1},
@@ -414,7 +413,7 @@
         attribute vec2 aPec;         // per-particle comoving speed min, max
 		attribute vec2 aPhase;        // fx,fy PHASE UPDATE
         attribute float aIndex;      // instance index 0..N-1 (for emitter highlight)
-        uniform float uZ0, uStep, uT, uR, uS, uLogTmax, uSize, uGMin, uGMax, uTime, uAngK, uConeMax, uOrthoScale;
+        uniform float uZ0, uStep, uT, uR, uS, uFreqMax, uSize, uGMin, uGMax, uTime, uAngK, uConeMax, uOrthoScale;
         uniform int uGeoLocal, uMode, uLog, uPecGlobal, uSliceMode, uConeOn;
         varying vec3 vColor;
         vec2 comovRaw(float z){
@@ -453,7 +452,13 @@
             float depth = (uOrthoScale > 0.0) ? uOrthoScale : max(-mv.z, 0.1);
             gl_PointSize = clamp(sz * 300.0 / depth, 1.0, 90.0);
             if(uMode==0){ vColor = vec3(0.78,0.85,1.0); }
-            else if(uMode==1){ vColor = ramp(log(1.0/s)/uLogTmax); }
+            else if(uMode==1){
+                // frequency sum bx+by over its attainable range [4, uFreqMax]:
+                // hot (red) = slow low-frequency paths, cold (blue) = high
+                float t = clamp((aFreq.x + aFreq.y - 4.0) / max(1.0, uFreqMax - 4.0), 0.0, 1.0);
+                vColor = (t < 0.5) ? mix(vec3(1.0,0.10,0.04), vec3(1.0,0.96,0.90), t*2.0)
+                                   : mix(vec3(1.0,0.96,0.90), vec3(0.10,0.35,1.0), t*2.0-1.0);
+            }
             else {
                 float zN = (uSliceMode==1) ? z+uStep : (i < uT-1.0 ? z+uStep : z-uStep);
                 float v = length(comovRaw(zN)-cmR) / abs(uStep);   // unwrapped difference
@@ -717,6 +722,10 @@
         consecFails = 0;
         time_steps = parseInt(timeInput.value);
         modulation_Max = Math.max(2, Math.floor(time_steps/2));
+        // frequencies are drawn from [2, modulation_Max+1], so the largest
+        // attainable bx+by (the blue end of the frequency paint) is:
+        freqMax = 2 * (modulation_Max + 1);
+        U.uFreqMax.value = freqMax;
         functions = [];
         genBudgetMs = parseFloat(genTimeRange.value) * 1000;
         genStart = performance.now(); lastLiveUpload = genStart;
@@ -755,7 +764,7 @@
     sizeRange().addEventListener('input', e=>{ U.uSize.value = parseFloat(e.target.value); });
 
     /* coloring */
-    const paintOrder = ['mono','temp','pec'];
+    const paintOrder = ['mono','freq','pec'];
     let paintMode = 'pec';
     onRadio('paintMode', v=>{ paintMode = v; U.uMode.value = paintOrder.indexOf(v); hudDirty = true; });
     let pecGlobal = false;
@@ -837,6 +846,12 @@
         else{a=C[3];b=C[4];f=(t-0.8)/0.2;}
         return [a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f, a[2]+(b[2]-a[2])*f];
     }
+    function hotCold(t){                           // JS twin of the shader frequency gradient
+        t = t<0?0:t>1?1:t;
+        const hot=[1.0,0.10,0.04], mid=[1.0,0.96,0.90], cold=[0.10,0.35,1.0];
+        const a = t<0.5?hot:mid, b = t<0.5?mid:cold, f = t<0.5?t*2:t*2-1;
+        return [a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f, a[2]+(b[2]-a[2])*f];
+    }
     function hsv2rgb(h,s,v){                       // JS twin of the shader hue helper
         const f=n=>{ let p=Math.abs((((h+n)%1)+1)%1*6-3); p=p<1?0:p>2?1:p-1; return v*(1+(p-1)*s); };
         return [f(0), f(2/3), f(1/3)];
@@ -852,7 +867,7 @@
     }
     function sliceColor(f,p,z,zN){                 // matches the GPU paint modes
         if(paintMode==='mono') return [0.78,0.85,1.0];
-        if(paintMode==='temp') return ramp(Math.log(1/Math.sin(z))/LOG_TMAX);
+        if(paintMode==='freq') return hotCold((f.bx+f.by-4)/Math.max(1,freqMax-4));
         if(!instPec) return [0.78,0.85,1.0];       // speed ranges not baked yet (mid-generation)
         const s=Math.sin(z), sN=Math.sin(zN);
 		
