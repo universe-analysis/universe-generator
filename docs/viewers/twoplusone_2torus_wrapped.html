@@ -96,6 +96,10 @@
     const timeInput  = document.getElementById('timeInput');
     const statusEl   = document.getElementById('status');
 
+    // Shown in the lower right of the 2D slice HUD. Bump before every commit
+    // that touches this file (see CLAUDE.md).
+    const VIEWER_VERSION = 'v1';
+
     let functions = [];
     let Z_cache = [];
     let time_steps, modulation_Max, targetGroups, groupIDcount = 0, abort_gen = false;
@@ -923,6 +927,9 @@
         ctx.fillText('t = '+(z/Math.PI).toFixed(3)+'π   a = '+sinz.toFixed(3), 8*hudDPR, H-8*hudDPR);
         ctx.fillStyle='rgba(120,140,180,0.6)';
         ctx.fillText(geoLocal?'local (comoving)':'global (raw)', 8*hudDPR, 16*hudDPR);
+        ctx.textAlign='right';
+        ctx.fillText(VIEWER_VERSION, W-8*hudDPR, H-8*hudDPR);
+        ctx.textAlign='left';
     }
     toggle('hudBtn', ()=>showHUD, v=>{ showHUD=v; hud.style.display=v?'block':'none'; hudDirty=true; });
 
