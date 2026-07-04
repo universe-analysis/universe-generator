@@ -6,66 +6,144 @@
     <style>
         :root { color-scheme: dark; }
         html,body { margin:0; height:100%; background:#000006; color:#aeb8cc; font-family:sans-serif; overflow:hidden; }
-        #panel {
-            position:fixed; top:0; left:0; right:0; z-index:10;
-            display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px;
-            padding:9px 13px; background:rgba(4,5,12,.82);
-            border-bottom:1px solid #161c2c; backdrop-filter:blur(4px);
-        }
-        #panel label { font-size:12px; display:inline-flex; align-items:center; gap:5px; }
-        #panel input[type=number]{ width:64px; background:#0c1018; color:#cdd6e4; border:1px solid #232c40; border-radius:4px; padding:3px 5px; }
-        #panel input[type=range]{ width:104px; }
+        canvas { display:block; }
         button { background:#141c30; color:#dce4f4; border:1px solid #29344f; border-radius:5px; padding:5px 10px; cursor:pointer; font-size:12px; }
         button:hover { background:#1d2742; }
         button.on { background:#2f6f4f; border-color:#3f9f6f; }
-        #status { font-size:12px; color:#7d8aa6; margin-left:auto; }
-        canvas { display:block; }
-        #hud { position:fixed; right:12px; bottom:12px; width:240px; height:240px; z-index:9;
-               border:1px solid #222b40; border-radius:6px; background:rgba(2,3,8,0.55); }
+        input[type=number]{ width:64px; background:#0c1018; color:#cdd6e4; border:1px solid #232c40; border-radius:4px; padding:3px 5px; }
+        input[type=range]{ width:104px; accent-color:#4f7fd0; }
+        input[type=checkbox], input[type=radio]{ accent-color:#4f7fd0; margin:0; }
         .sep { width:1px; height:20px; background:#222b40; }
+
+        /* top bar: just the essentials — generate + playback */
+        #topbar {
+            position:fixed; top:0; left:0; right:0; z-index:12;
+            display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px;
+            padding:8px 12px; background:rgba(4,5,12,.85);
+            border-bottom:1px solid #161c2c; backdrop-filter:blur(4px);
+        }
+        #topbar label { font-size:12px; display:inline-flex; align-items:center; gap:5px; }
+        #status { font-size:12px; color:#7d8aa6; margin-left:auto; }
+
+        /* collapsible settings side panel */
+        #sidepanel {
+            position:fixed; top:0; left:0; bottom:0; z-index:11;
+            width:280px; box-sizing:border-box; padding:56px 16px 16px;
+            overflow-y:auto; background:rgba(6,8,16,.93);
+            border-right:1px solid #161c2c; backdrop-filter:blur(6px);
+            transform:translateX(-100%); transition:transform .22s ease;
+        }
+        #sidepanel.open { transform:none; }
+        #sidepanel details { border-bottom:1px solid #161c2c; padding-bottom:10px; }
+        #sidepanel summary { cursor:pointer; font-size:11px; font-weight:bold; color:#c8d4ea;
+                             letter-spacing:.6px; text-transform:uppercase; padding:10px 0 6px; }
+        .choices { display:flex; flex-direction:column; gap:4px; padding:2px 0 4px; }
+        .choices label { font-size:12px; display:flex; align-items:center; gap:7px; cursor:pointer; }
+        .group-name { font-size:11px; color:#7d8aa6; padding-top:5px; }
+        .row { display:flex; align-items:center; gap:8px; font-size:12px; padding:4px 0; }
+        .row > span:first-child { flex:0 0 86px; }
+        .row > input[type=range]{ flex:1; min-width:0; width:auto; }
+        .row .val { flex:none; width:26px; text-align:right; color:#9fb0d0; }
+
+        /* minimap: chart + caption bar below it (text never overlays the map) */
+        #hudBox { position:fixed; right:12px; bottom:12px; z-index:9; width:240px;
+                  border:1px solid #222b40; border-radius:6px; overflow:hidden;
+                  background:rgba(2,3,8,0.55); }
+        #hud { width:240px; height:240px; }
+        #hudBar { display:flex; justify-content:space-between; align-items:baseline; gap:8px;
+                  padding:4px 8px; font-size:11px; color:#aab8cc; white-space:nowrap;
+                  background:rgba(6,8,16,.92); border-top:1px solid #161c2c; }
+        #hudMode { color:#7d8aa6; }
+        #hudVer { color:#5a6880; }
     </style>
 </head>
 <body>
-    <div id="panel">
-        <label>Groups <input type="number" id="groupInput" value="250" min="1"></label>
+    <div id="topbar">
+        <button id="menuBtn">☰ Settings</button>
+        <span class="sep"></span>
         <label>Time-steps <input type="number" id="timeInput" value="180" min="2"></label>
+        <label>Gen time <input type="range" id="genTimeRange" min="1" max="120" step="1" value="10"><span id="genTimeVal" style="width:32px;display:inline-block;color:#9fb0d0">10s</span></label>
         <button id="generateBtn">Generate</button>
         <button id="abortBtn">Abort</button>
-        <button id="smartFreqBtn" class="on">Smart freqs</button>
-        <span class="sep"></span>
-        <button id="mapBtn" class="on">Map: Surface</button>
-        <button id="cloudBtn">Cloud</button>
-        <button id="sweepBtn" class="on">Sweep ▶</button>
-        <button id="gridBtn" class="on">Torus grid</button>
-        <button id="spinBtn">Auto-spin</button>
-        <button id="viewBtn" class="on">View: Ortho</button>
-        <button id="hudBtn" class="on">Slice 2D</button>
-        <button id="coneBtn" class="on">Light cones</button>
-        <label>Rings <input type="range" id="coneRingsRange" min="1" max="60" step="1" value="3"><span id="coneRingsVal" style="width:18px;display:inline-block;color:#9fb0d0">3</span></label>
-        <label>Emit rate <input type="range" id="coneRateRange" min="0.5" max="50" step="0.5" value="1.7"></label>
-        <label>Cone speed <input type="number" id="coneSpeedRange" min="0" step="0.05" value="1"></label>
-        <label>Cone fade <input type="range" id="coneFadeRange" min="0" max="0.6" step="0.01" value="0.3"></label>
-        <button id="coneFoldBtn">Fold</button>
-        <label>Cone paths <input type="number" id="coneMaxInput" value="1" min="1"></label>
-        <button id="coneColorBtn" class="on">Cone: Track</button>
-        <button id="coneShapeBtn">Shape: Circle</button>
-        <label>Redshift <input type="range" id="redGainRange" min="0.5" max="6" step="0.1" value="2.5"></label>
-        <span class="sep"></span>
-        <button id="paintBtn" class="on">Paint: Speed·local</button>
-        <button id="normBtn">Norm: Per-particle</button>
-        <button id="logBtn" class="on">Log</button>
-        <button id="localBtn" class="on">Local geom</button>
         <span class="sep"></span>
         <button id="playBtn" class="on">Play ▶</button>
         <label>Speed <input type="range" id="speedRange" min="0.05" max="5" step="0.05" value="1"><span id="speedVal" style="width:34px;display:inline-block;color:#9fb0d0">1.0×</span></label>
         <label>Time <input type="range" id="timeScrub" min="0" max="1" step="0.001" value="0"></label>
-        <label>Glow <input type="range" id="sizeRange" min="0.05" max="4" step="0.01" value="0.7"></label>
-        <label>Cone glow <input type="range" id="coneSizeRange" min="0.05" max="4" step="0.01" value="0.7"></label>
-        <label>Loop R <input type="range" id="rRange" min="4" max="24" step="0.5" value="6"></label>
-        <label>Spread <input type="range" id="sRange" min="1" max="12" step="0.5" value="5"></label>
         <span id="status">Idle — press Generate</span>
     </div>
-    <canvas id="hud" width="240" height="240"></canvas>
+
+    <div id="sidepanel">
+        <details open>
+            <summary>Generation</summary>
+            <div class="choices">
+                <label><input type="checkbox" id="smartFreqChk" checked> Smart frequencies (coprime, packs denser)</label>
+            </div>
+        </details>
+        <details open>
+            <summary>View</summary>
+            <div class="choices">
+                <span class="group-name">Map</span>
+                <label><input type="radio" name="mapMode" value="surface" checked> Surface — space is the torus surface</label>
+                <label><input type="radio" name="mapMode" value="worldline"> Worldline — time wraps the major loop</label>
+                <span class="group-name">Camera</span>
+                <label><input type="radio" name="viewMode" value="ortho" checked> Orthographic (edge-on)</label>
+                <label><input type="radio" name="viewMode" value="persp"> Perspective (3/4 view)</label>
+                <label><input type="checkbox" id="spinChk"> Auto-spin</label>
+                <span class="group-name">Show</span>
+                <label><input type="checkbox" id="sweepChk" checked> Present slice (sweep)</label>
+                <label><input type="checkbox" id="cloudChk"> All-times cloud</label>
+                <label><input type="checkbox" id="gridChk" checked> Torus wireframe</label>
+                <label><input type="checkbox" id="hudChk" checked> 2D slice minimap</label>
+            </div>
+            <div class="row"><span>Loop R</span><input type="range" id="rRange" min="4" max="24" step="0.5" value="6"></div>
+            <div class="row"><span>Spread</span><input type="range" id="sRange" min="1" max="12" step="0.5" value="5"></div>
+            <div class="row"><span>Glow</span><input type="range" id="sizeRange" min="0.05" max="4" step="0.01" value="0.7"></div>
+        </details>
+        <details open>
+            <summary>Coloring</summary>
+            <div class="choices">
+                <span class="group-name">Paint</span>
+                <label><input type="radio" name="paintMode" value="mono"> Mono</label>
+                <label><input type="radio" name="paintMode" value="temp"> Temperature (1/sin z)</label>
+                <label><input type="radio" name="paintMode" value="pec" checked> Peculiar speed (local)</label>
+                <span class="group-name">Speed normalisation</span>
+                <label><input type="radio" name="normMode" value="per" checked> Per-particle</label>
+                <label><input type="radio" name="normMode" value="global"> Global</label>
+                <span class="group-name">Options</span>
+                <label><input type="checkbox" id="logChk" checked> Log colour scale</label>
+                <label><input type="checkbox" id="localChk" checked> Local (comoving) geometry</label>
+            </div>
+        </details>
+        <details open>
+            <summary>Light cones</summary>
+            <div class="choices">
+                <label><input type="checkbox" id="coneChk" checked> Show light cones</label>
+                <label><input type="checkbox" id="coneFoldChk"> Fold — refocus at the antipode</label>
+            </div>
+            <div class="row"><span>Rings</span><input type="range" id="coneRingsRange" min="1" max="60" step="1" value="3"><span class="val" id="coneRingsVal">3</span></div>
+            <div class="row"><span>Emit rate</span><input type="range" id="coneRateRange" min="0.5" max="50" step="0.5" value="1.7"></div>
+            <div class="row"><span>Fade</span><input type="range" id="coneFadeRange" min="0" max="0.6" step="0.01" value="0.3"></div>
+            <div class="row"><span>Cone glow</span><input type="range" id="coneSizeRange" min="0.05" max="4" step="0.01" value="0.7"></div>
+            <div class="row"><span>Speed</span><input type="number" id="coneSpeedRange" min="0" step="0.05" value="1"></div>
+            <div class="row"><span>Emitting paths</span><input type="number" id="coneMaxInput" value="1" min="1"></div>
+            <div class="choices">
+                <span class="group-name">Colour</span>
+                <label><input type="radio" name="coneColor" value="track" checked> Track — hue per emission</label>
+                <label><input type="radio" name="coneColor" value="redshift"> Redshift</label>
+            </div>
+            <div class="row"><span>Redshift gain</span><input type="range" id="redGainRange" min="0.5" max="6" step="0.1" value="2.5"></div>
+            <div class="choices">
+                <span class="group-name">Wavefront shape</span>
+                <label><input type="radio" name="coneShape" value="circle" checked> Circle</label>
+                <label><input type="radio" name="coneShape" value="square"> Square (matches wrapped domain)</label>
+            </div>
+        </details>
+    </div>
+
+    <div id="hudBox">
+        <canvas id="hud" width="240" height="240"></canvas>
+        <div id="hudBar"><span id="hudMode">local (comoving)</span><span id="hudTime">t = —</span><span id="hudVer"></span></div>
+    </div>
 
     <!-- Three.js classic UMD builds — load from file:// without CORS issues -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -93,17 +171,18 @@
        jump in raw/worldline projections (points, not lines — no
        streaks). Only the comoving surface map is exactly seamless.
     ================================================================ */
-    const groupInput = document.getElementById('groupInput');
-    const timeInput  = document.getElementById('timeInput');
-    const statusEl   = document.getElementById('status');
+    const timeInput    = document.getElementById('timeInput');
+    const genTimeRange = document.getElementById('genTimeRange');
+    const statusEl     = document.getElementById('status');
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v2';
+    const VIEWER_VERSION = 'v3';
 
     let functions = [];
     let Z_cache = [];
-    let time_steps, modulation_Max, targetGroups, groupIDcount = 0, abort_gen = false;
+    let time_steps, modulation_Max, groupIDcount = 0, abort_gen = false;
+    let genBudgetMs = 10000, genStart = 0, consecFails = 0, lastLiveUpload = 0;
     const maxAttemptsPerFunction = 50;
 
 
@@ -178,7 +257,7 @@
     }
 
     // ---- frequency selection (Smart = coprime + high-frequency bias → ~40% denser packing) ----
-    let smartFreq = false;
+    let smartFreq = true;
     function gcd(a, b){ while (b){ const t = a % b; a = b; b = t; } return a; }
     function drawFreqs(){
         if (!smartFreq)
@@ -221,17 +300,27 @@
         return null;
     }
 
+    // Generation runs against a wall-clock budget (the "Gen time" slider) rather
+    // than a target count: paths accumulate until time runs out, the space
+    // saturates (500 consecutive collision failures), or Abort is pressed.
+    // Partial results are uploaded to the GPU every ~0.8 s so the torus fills
+    // in live while packing continues.
     function make_groups() {
         const t0 = performance.now();
-        let consecFails = 0;
-        while (functions.length < targetGroups && !abort_gen) {
+        while (!abort_gen && !saturated && performance.now() - genStart < genBudgetMs) {
             const nf = generateFunction();
             if (nf) { functions.push(nf); groupIDcount++; consecFails = 0; }
-            else if (++consecFails > 500) { saturated = true; break; }
+            else if (++consecFails > 500) saturated = true;
             if (performance.now() - t0 > 12) break;          // yield to keep UI live
         }
-        if (functions.length < targetGroups && !abort_gen && !saturated) {
-            statusEl.textContent = `Generating… ${functions.length}/${targetGroups}`;
+        const done = abort_gen || saturated || performance.now() - genStart >= genBudgetMs;
+        if (!done) {
+            const secsLeft = Math.ceil((genBudgetMs - (performance.now() - genStart)) / 1000);
+            statusEl.textContent = `Generating… ${functions.length} paths · ${secsLeft}s left`;
+            if (performance.now() - lastLiveUpload > 800) {
+                lastLiveUpload = performance.now();
+                buildBuffers(); rebuildGPU(); hudDirty = true;
+            }
             setTimeout(make_groups, 0);
         } else {
             const note = saturated ? ' (space saturated)' : '';
@@ -626,8 +715,11 @@
                 for (let i=0;i<=96;i++){ const u=(i/96)*Math.PI*2; torusPt(u,v,r,out); if(prev)addSeg(prev,out); prev=out.slice(); } }
         } else {                                          // pinched worldline torus (time is the loop)
             const A=1.0, TT=220, LON=10;
+            // keep z off the exact pinch (sin z = 0): embed() divides by sin z
+            // in local mode, and 0/0 there poisons the wireframe with NaNs
+            const zClamp = t => Math.min(Math.PI - 1e-3, Math.max(1e-3, t));
             for (let j=0;j<LON;j++){ const phi=(j/LON)*Math.PI*2, cphi=Math.cos(phi), sphi=Math.sin(phi); let prev=null;
-                for (let i=0;i<=TT;i++){ const z=(i/TT)*Math.PI, s=Math.sin(z), out=[0,0,0];
+                for (let i=0;i<=TT;i++){ const z=zClamp((i/TT)*Math.PI), s=Math.sin(z), out=[0,0,0];
                     embed(A*s*cphi, A*s*sphi, z, out); if(prev) addSeg(prev,out); prev=out.slice(); } }
             const LAT=[0.18,0.4,0.6,0.9,1.2,1.5,Math.PI-1.5,Math.PI-1.2,Math.PI-0.9,Math.PI-0.6,Math.PI-0.4,Math.PI-0.18];
             for (const z of LAT){ const s=Math.sin(z); let prev=null;
@@ -657,81 +749,73 @@
 
     document.getElementById('generateBtn').addEventListener('click', () => {
         abort_gen = false; saturated = false; groupIDcount = 0; framePos = 0;
+        consecFails = 0;
         time_steps = parseInt(timeInput.value);
         modulation_Max = Math.max(2, Math.floor(time_steps/2));
-        targetGroups = parseInt(groupInput.value);
         functions = [];
+        genBudgetMs = parseFloat(genTimeRange.value) * 1000;
+        genStart = performance.now(); lastLiveUpload = genStart;
         bakeZValues(); resetGrid();
         make_groups();
     });
     document.getElementById('abortBtn').addEventListener('click', () => abort_gen = true);
-
-    function toggle(id, get, set){ const el=document.getElementById(id);
-        el.addEventListener('click', ()=>{ set(!get()); el.classList.toggle('on', get()); }); }
-    toggle('cloudBtn', ()=>showCloud, v=>{ showCloud=v; if(cloud) cloud.visible=v; });
-    toggle('sweepBtn', ()=>showSweep, v=>{ showSweep=v; if(sweep) sweep.visible=v; });
-    toggle('gridBtn',  ()=>showGrid,  v=>{ showGrid=v; if(grid) grid.visible=v; });
-    toggle('smartFreqBtn', ()=>smartFreq, v=>{ smartFreq=v; });   // applies on next Generate
-    toggle('spinBtn',  ()=>autoRotateOn, v=>{ autoRotateOn=v; controls.autoRotate=v; });
-    document.getElementById('viewBtn').addEventListener('click', e=>{
-        setView(viewMode==='persp' ? 'ortho' : 'persp');
-        e.currentTarget.textContent = 'View: ' + (viewMode==='ortho'?'Ortho':'Persp');
-        e.currentTarget.classList.toggle('on', viewMode==='ortho');
+    genTimeRange.addEventListener('input', e=>{
+        document.getElementById('genTimeVal').textContent = e.target.value + 's';
     });
 
-    const paintOrder=['mono','temp','pec'], paintLabel={mono:'Mono',temp:'Temp (1/sin z)',pec:'Speed·local'};
-    let paintMode='pec';
-    document.getElementById('paintBtn').addEventListener('click', e=>{
-        paintMode = paintOrder[(paintOrder.indexOf(paintMode)+1)%3];
-        U.uMode.value = paintOrder.indexOf(paintMode);
-        e.currentTarget.textContent = 'Paint: ' + paintLabel[paintMode];
-        e.currentTarget.classList.toggle('on', paintMode!=='mono');
-        hudDirty=true;
+    /* ---- settings side panel: open/close + checkbox/radio helpers ---- */
+    const sidepanel = document.getElementById('sidepanel');
+    document.getElementById('menuBtn').addEventListener('click', e=>{
+        e.currentTarget.classList.toggle('on', sidepanel.classList.toggle('open'));
     });
-    let pecGlobal=false;
-    document.getElementById('normBtn').addEventListener('click', e=>{
-        pecGlobal=!pecGlobal; U.uPecGlobal.value = pecGlobal?1:0;
-        e.currentTarget.textContent = 'Norm: ' + (pecGlobal?'Global':'Per-particle');
-        e.currentTarget.classList.toggle('on', pecGlobal);
-        hudDirty=true;
-    });
-    let logColor=true;
-    toggle('logBtn', ()=>logColor, v=>{ logColor=v; U.uLog.value = v?1:0; hudDirty=true; });
-    document.getElementById('localBtn').addEventListener('click', e=>{
-        geoLocal=!geoLocal; U.uGeoLocal.value = geoLocal?1:0;
-        e.currentTarget.classList.toggle('on', geoLocal);
-        setAngK(); rebuildGrid();                   // wireframe is CPU-side
-        hudDirty=true;
-    });
-    document.getElementById('mapBtn').addEventListener('click', e=>{
-        mapMode = mapMode==='worldline' ? 'surface' : 'worldline';
-        U.uMapMode.value = mapMode==='surface' ? 1 : 0;
-        e.currentTarget.textContent = 'Map: ' + (mapMode==='surface'?'Surface':'Worldline');
-        e.currentTarget.classList.toggle('on', mapMode==='surface');
+    function onCheck(id, apply){ const el = document.getElementById(id);
+        el.addEventListener('change', ()=>apply(el.checked)); }
+    function onRadio(name, apply){
+        document.querySelectorAll('input[name=' + name + ']').forEach(el=>
+            el.addEventListener('change', ()=>{ if (el.checked) apply(el.value); })); }
+
+    /* generation */
+    onCheck('smartFreqChk', v=>{ smartFreq = v; });              // applies on next Generate
+
+    /* view */
+    onRadio('mapMode', v=>{
+        mapMode = v;
+        U.uMapMode.value = (v==='surface') ? 1 : 0;
         // Surface = one instant at a time → show the sweep slice, hide the all-times cloud
-        showCloud = (mapMode!=='surface'); if(cloud) cloud.visible=showCloud;
-        document.getElementById('cloudBtn').classList.toggle('on', showCloud);
-        if (mapMode==='surface'){ showSweep=true; if(sweep) sweep.visible=true;
-            document.getElementById('sweepBtn').classList.add('on'); }
+        showCloud = (v!=='surface'); if (cloud) cloud.visible = showCloud;
+        document.getElementById('cloudChk').checked = showCloud;
+        if (v==='surface'){ showSweep = true; if (sweep) sweep.visible = true;
+            document.getElementById('sweepChk').checked = true; }
         setAngK(); rebuildGrid();
     });
+    onRadio('viewMode', v=>setView(v));
+    onCheck('spinChk',  v=>{ autoRotateOn = v; controls.autoRotate = v; });
+    onCheck('sweepChk', v=>{ showSweep = v; if (sweep) sweep.visible = v; });
+    onCheck('cloudChk', v=>{ showCloud = v; if (cloud) cloud.visible = v; });
+    onCheck('gridChk',  v=>{ showGrid = v; if (grid) grid.visible = v; });
+    onCheck('hudChk',   v=>{ showHUD = v;
+        document.getElementById('hudBox').style.display = v ? 'block' : 'none'; hudDirty = true; });
+    document.getElementById('rRange').addEventListener('input', e=>{ R=parseFloat(e.target.value); U.uR.value=R; rebuildGrid(); });
+    document.getElementById('sRange').addEventListener('input', e=>{ S=parseFloat(e.target.value); U.uS.value=S; rebuildGrid(); });
+    sizeRange().addEventListener('input', e=>{ U.uSize.value = parseFloat(e.target.value); });
 
-    toggle('playBtn', ()=>playing, v=>{ playing=v;
-        document.getElementById('playBtn').textContent = v?'Play ▶':'Paused'; });
-    const timeScrub = document.getElementById('timeScrub');
-    timeScrub.addEventListener('input', e=>{
-        playing=false; document.getElementById('playBtn').classList.remove('on');
-        document.getElementById('playBtn').textContent='Paused';
-        if (Z_cache.length){ framePos = parseFloat(e.target.value)*(Z_cache.length-1);
-            sweepMat.uniforms.uTime.value = zAt(framePos); }
-        hudDirty=true;
-    });
-    document.getElementById('speedRange').addEventListener('input', e=>{
-        playSpeed = parseFloat(e.target.value);
-        document.getElementById('speedVal').textContent = playSpeed.toFixed(2).replace(/0$/,'') + '×';
-    });
+    /* coloring */
+    const paintOrder = ['mono','temp','pec'];
+    let paintMode = 'pec';
+    onRadio('paintMode', v=>{ paintMode = v; U.uMode.value = paintOrder.indexOf(v); hudDirty = true; });
+    let pecGlobal = false;
+    onRadio('normMode', v=>{ pecGlobal = (v==='global'); U.uPecGlobal.value = pecGlobal?1:0; hudDirty = true; });
+    let logColor = true;
+    onCheck('logChk',   v=>{ logColor = v; U.uLog.value = v?1:0; hudDirty = true; });
+    onCheck('localChk', v=>{ geoLocal = v; U.uGeoLocal.value = v?1:0;
+        setAngK(); rebuildGrid();                   // wireframe is CPU-side
+        hudDirty = true; });
 
-    toggle('coneBtn', ()=>showCones, v=>{ showCones=v; U.uConeOn.value=v?1:0; if(cones) cones.visible=v; });
+    /* light cones */
+    onCheck('coneChk', v=>{ showCones = v; U.uConeOn.value = v?1:0; if (cones) cones.visible = v; hudDirty = true; });
+    onCheck('coneFoldChk', v=>{ U.uConeFold.value = v?1:0; });   // bounce/refocus at the antipode
+    onRadio('coneColor', v=>{ U.uConeColor.value = (v==='track') ? 1 : 0; hudDirty = true; });
+    onRadio('coneShape', v=>{ U.uConeSquare.value = (v==='square') ? 1 : 0; hudDirty = true; });
     document.getElementById('coneRingsRange').addEventListener('input', e=>{
         coneRings = parseInt(e.target.value); U.uConeRings.value = coneRings;
         document.getElementById('coneRingsVal').textContent = coneRings;
@@ -747,10 +831,6 @@
     document.getElementById('coneFadeRange').addEventListener('input', e=>{
         U.uConeFadeW.value = parseFloat(e.target.value);       // fade window before the antipode (0 = hard meet)
     });
-    document.getElementById('coneFoldBtn').addEventListener('click', e=>{
-        const on = U.uConeFold.value = U.uConeFold.value ? 0 : 1;   // bounce/refocus at the antipode
-        e.currentTarget.classList.toggle('on', !!on);
-    });
     document.getElementById('redGainRange').addEventListener('input', e=>{
         U.uRedNorm.value = 3.0 / parseFloat(e.target.value);   // higher slider = stronger red/blue
         hudDirty = true;
@@ -760,22 +840,24 @@
         U.uConeMax.value = coneMax;
         if (cones) cones.geometry.instanceCount = Math.min(functions.length, coneMax);
     });
-    document.getElementById('coneColorBtn').addEventListener('click', e=>{
-        const track = U.uConeColor.value = U.uConeColor.value ? 0 : 1;
-        e.currentTarget.textContent = 'Cone: ' + (track ? 'Track' : 'Redshift');
-        e.currentTarget.classList.toggle('on', !!track);
-    });
-    document.getElementById('coneShapeBtn').addEventListener('click', e=>{
-        const sq = U.uConeSquare.value = U.uConeSquare.value ? 0 : 1;  // circle ↔ square wavefront
-        e.currentTarget.textContent = 'Shape: ' + (sq ? 'Square' : 'Circle');
-        e.currentTarget.classList.toggle('on', !!sq);
+    document.getElementById('coneSizeRange').addEventListener('input', e=>{ U.uConeSize.value = parseFloat(e.target.value); });
+
+    /* playback */
+    const playBtn = document.getElementById('playBtn');
+    playBtn.addEventListener('click', ()=>{ playing = !playing;
+        playBtn.classList.toggle('on', playing);
+        playBtn.textContent = playing ? 'Play ▶' : 'Paused'; });
+    const timeScrub = document.getElementById('timeScrub');
+    timeScrub.addEventListener('input', e=>{
+        playing = false; playBtn.classList.remove('on'); playBtn.textContent = 'Paused';
+        if (Z_cache.length){ framePos = parseFloat(e.target.value)*(Z_cache.length-1);
+            sweepMat.uniforms.uTime.value = zAt(framePos); }
         hudDirty = true;
     });
-
-    sizeRange().addEventListener('input', e=>{ U.uSize.value = parseFloat(e.target.value); });
-    document.getElementById('coneSizeRange').addEventListener('input', e=>{ U.uConeSize.value = parseFloat(e.target.value); });
-    document.getElementById('rRange').addEventListener('input', e=>{ R=parseFloat(e.target.value); U.uR.value=R; rebuildGrid(); });
-    document.getElementById('sRange').addEventListener('input', e=>{ S=parseFloat(e.target.value); U.uS.value=S; rebuildGrid(); });
+    document.getElementById('speedRange').addEventListener('input', e=>{
+        playSpeed = parseFloat(e.target.value);
+        document.getElementById('speedVal').textContent = playSpeed.toFixed(2).replace(/0$/,'') + '×';
+    });
 
     addEventListener('resize', ()=>{
         const aspect=innerWidth/innerHeight;
@@ -938,15 +1020,12 @@
             ctx.globalAlpha=1;
         }
         ctx.globalCompositeOperation='source-over';
-        ctx.fillStyle='rgba(170,184,204,0.85)'; ctx.font=(11*hudDPR)+'px sans-serif';
-        ctx.fillText('t = '+(z/Math.PI).toFixed(3)+'π   a = '+sinz.toFixed(3), 8*hudDPR, H-8*hudDPR);
-        ctx.fillStyle='rgba(120,140,180,0.6)';
-        ctx.fillText(geoLocal?'local (comoving)':'global (raw)', 8*hudDPR, 16*hudDPR);
-        ctx.textAlign='right';
-        ctx.fillText(VIEWER_VERSION, W-8*hudDPR, H-8*hudDPR);
-        ctx.textAlign='left';
+        // caption lives in the DOM bar below the chart — never overlays the map
+        document.getElementById('hudTime').textContent =
+            't = ' + (z/Math.PI).toFixed(3) + 'π · a = ' + sinz.toFixed(3);
+        document.getElementById('hudMode').textContent = geoLocal ? 'local (comoving)' : 'global (raw)';
     }
-    toggle('hudBtn', ()=>showHUD, v=>{ showHUD=v; hud.style.display=v?'block':'none'; hudDirty=true; });
+    document.getElementById('hudVer').textContent = VIEWER_VERSION;
 
     rebuildGrid();
     setTimeout(() => document.getElementById('generateBtn').click(), 60);   // auto-render on load
