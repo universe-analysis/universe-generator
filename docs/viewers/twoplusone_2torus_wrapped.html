@@ -48,6 +48,7 @@
         <button id="coneFoldBtn">Fold</button>
         <label>Cone paths <input type="number" id="coneMaxInput" value="1" min="1"></label>
         <button id="coneColorBtn" class="on">Cone: Track</button>
+        <button id="coneShapeBtn">Shape: Circle</button>
         <label>Redshift <input type="range" id="redGainRange" min="0.5" max="6" step="0.1" value="2.5"></label>
         <span class="sep"></span>
         <button id="paintBtn" class="on">Paint: Speed·local</button>
@@ -98,7 +99,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v1';
+    const VIEWER_VERSION = 'v2';
 
     let functions = [];
     let Z_cache = [];
@@ -314,7 +315,7 @@
         uMode:{value:2}, uLog:{value:1}, uPecGlobal:{value:0}, uMapMode:{value:1}, uAngK:{value:Math.PI},
         uGMin:{value:0}, uGMax:{value:1}, uLogTmax:{value:LOG_TMAX},
         uConeRate:{value:0.6}, uConeBase:{value:0.0}, uConeRings:{value:3}, uRedNorm:{value:1.2}, uConeColor:{value:1}, uConeSpeed:{value:1.0},
-        uConeFadeW:{value:0.3}, uConeFold:{value:0},
+        uConeFadeW:{value:0.3}, uConeFold:{value:0}, uConeSquare:{value:0},
         uConeOn:{value:1}, uConeMax:{value:1},
         uSize:{value:parseFloat(sizeRange().value)}, uConeSize:{value:0.7}, uOpacity:{value:0.6}, uTex:{value:glowTex},
         // ortho cameras have no perspective attenuation: point size must come from
@@ -429,7 +430,7 @@
         attribute vec2 aFreq;        // bx, by
 		attribute vec2 aPhase;        // fx,fy PHASE UPDATE
         uniform float uTime, uR, uS, uSize, uConeSize, uAngK, uConeRate, uConeBase, uConeRings, uRedNorm, uConeSpeed, uConeFadeW, uOrthoScale;
-        uniform int uGeoLocal, uMapMode, uConeColor, uConeFold;
+        uniform int uGeoLocal, uMapMode, uConeColor, uConeFold, uConeSquare;
         varying vec3 vColor; varying float vFade;
         vec2 comovRaw(float z){
             float s = sin(z);
@@ -461,15 +462,21 @@
             } else {                                             // fade out near the far side (window = uConeFadeW)
                 coneFade = clamp((rmax - r)/(max(uConeFadeW,1e-3)*rmax), 0.0, 1.0);
             }
+            // ring direction: unit circle, or stretched onto the unit square
+            // perimeter (Chebyshev ball — matches the square wrapped domain)
+            vec2 dir = vec2(cos(alpha), sin(alpha));
+            if (uConeSquare==1){
+                dir /= max(abs(dir.x), abs(dir.y));
+            }
             vec3 P;
-            if (uMapMode==1){                            // SURFACE: ring is a circle in the chosen space
+            if (uMapMode==1){                            // SURFACE: ring in the chosen space
                 vec2 center = (uGeoLocal==1) ? cm : cm*s;
-                vec2 p2 = center + r*vec2(cos(alpha), sin(alpha));
+                vec2 p2 = center + r*dir;
                 float u = uAngK*p2.x, v = uAngK*p2.y;
                 float radial = uR + uS*cos(v);
                 P = vec3(radial*cos(u), radial*sin(u), uS*sin(v));
-            } else {                                     // WORLDLINE: plain circle
-                vec2 p2 = cm + r*vec2(cos(alpha), sin(alpha));
+            } else {                                     // WORLDLINE: plain ring
+                vec2 p2 = cm + r*dir;
                 vec2 pos2 = (uGeoLocal==1) ? p2 : p2*s;
                 float theta = 2.0*z, radial = uR + uS*pos2.x;
                 P = vec3(radial*cos(theta), radial*sin(theta), uS*pos2.y);
@@ -758,6 +765,12 @@
         e.currentTarget.textContent = 'Cone: ' + (track ? 'Track' : 'Redshift');
         e.currentTarget.classList.toggle('on', !!track);
     });
+    document.getElementById('coneShapeBtn').addEventListener('click', e=>{
+        const sq = U.uConeSquare.value = U.uConeSquare.value ? 0 : 1;  // circle ↔ square wavefront
+        e.currentTarget.textContent = 'Shape: ' + (sq ? 'Square' : 'Circle');
+        e.currentTarget.classList.toggle('on', !!sq);
+        hudDirty = true;
+    });
 
     sizeRange().addEventListener('input', e=>{ U.uSize.value = parseFloat(e.target.value); });
     document.getElementById('coneSizeRange').addEventListener('input', e=>{ U.uConeSize.value = parseFloat(e.target.value); });
@@ -913,11 +926,13 @@
                     const col=coneColorJS(k,sinz,zEmit);
                     ctx.strokeStyle='rgb('+((col[0]*255)|0)+','+((col[1]*255)|0)+','+((col[2]*255)|0)+')';
                     ctx.globalAlpha=(1.0-0.35*(m/Math.max(1,M-1)))*cf;
-                    const pr=(geoLocal?rr:rr*sinz)*sc;        // plain circle on the chart
+                    const pr=(geoLocal?rr:rr*sinz)*sc;        // ring "radius" on the chart
+                    const square=U.uConeSquare.value===1;
                     for(let di=-1;di<=1;di++) for(let dj=-1;dj<=1;dj++){
                         const ax=px+di*Ppx, ay=py+dj*Ppx;
                         if(ax+pr<0||ax-pr>W||ay+pr<0||ay-pr>H) continue;
-                        ctx.beginPath(); ctx.arc(ax,ay,pr,0,Math.PI*2); ctx.stroke(); }
+                        if(square){ ctx.strokeRect(ax-pr, ay-pr, pr*2, pr*2); }
+                        else { ctx.beginPath(); ctx.arc(ax,ay,pr,0,Math.PI*2); ctx.stroke(); } }
                 }
             }
             ctx.globalAlpha=1;
