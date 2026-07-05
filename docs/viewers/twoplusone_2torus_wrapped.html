@@ -174,7 +174,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v5';
+    const VIEWER_VERSION = 'v6';
 
     let functions = [];
     let Z_cache = [];
@@ -324,8 +324,12 @@
             statusEl.textContent = `Generated ${functions.length} paths${note} — uploading…`;
             setTimeout(() => {
                 buildBuffers(); rebuildGPU();
+                // free the packing hash — the page's only O(N·T) storage; it is
+                // only needed while inserting, and Generate rebuilds it anyway
+                gridByT = [];
                 hudDirty = true;          // refresh the 2D slice even while paused
-                statusEl.textContent = `${functions.length} paths${note} · ${time_steps} steps · ${(functions.length*time_steps).toLocaleString()} GPU points`;
+                const cloudPts = functions.length * cloudSamples(Z_cache.length).count;
+                statusEl.textContent = `${functions.length} paths${note} · ${time_steps} steps · ${cloudPts.toLocaleString()} cloud points`;
             }, 0);
         }
     }
@@ -631,6 +635,17 @@
         U.uZ0.value=Z_cache[0]; U.uStep.value=(Z_cache[n-1]-Z_cache[0])/(n-1); U.uT.value=n;
     }
 
+    // Cloud resolution cap: the all-times cloud draws at most CLOUD_RES samples
+    // per path, strided evenly across the loop (T=200 → every 2nd step,
+    // T=1000 → every 10th). Positions are analytic in the shader, so this
+    // bounds per-frame draw cost only — no stored data changes. The sweep
+    // slice and the packing itself always use the full time-step grid.
+    const CLOUD_RES = 100;
+    function cloudSamples(n){
+        const stride = Math.max(1, Math.ceil(n / CLOUD_RES));
+        return { stride, count: Math.ceil(n / stride) };
+    }
+
     let cloud=null, sweep=null, showCloud=false, showSweep=true;   // start in Surface (one instant)
     let cones=null, showCones=true, coneRings=3, coneMax=1;
     function disposeObj(o){ if(o){ scene.remove(o); o.geometry.dispose(); } }
@@ -645,8 +660,9 @@
         const idx = new Float32Array(N); for (let p=0;p<N;p++) idx[p]=p;
         const idxA = new THREE.InstancedBufferAttribute(idx,1);
 
-        const baseC = new Float32Array(n*3);            // one vertex per time-step (carries index i)
-        for (let i=0;i<n;i++) baseC[i*3]=i;
+        const cs = cloudSamples(n);                     // strided time-step indices (see CLOUD_RES)
+        const baseC = new Float32Array(cs.count*3);
+        for (let k=0;k<cs.count;k++) baseC[k*3] = k*cs.stride;
         const gc = new THREE.InstancedBufferGeometry();
         gc.setAttribute('position', new THREE.Float32BufferAttribute(baseC,3));
         gc.setAttribute('aAmp', ampA); gc.setAttribute('aFreq', freqA);gc.setAttribute('aPhase', phaseA); gc.setAttribute('aPec', pecA);
