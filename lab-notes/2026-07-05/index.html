@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-07-05</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-07-05</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="phase-2d-count-exponent">
+      <h2>Phase schema on the torus: the 2+1 count exponent does not move</h2>
+      <p class="meta">
+        Campaigns <code>torus2d_phase_e6</code> + <code>torus2d_e6</code>
+        (152 jobs each, mother + kitt) &middot; code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/f2b686d"><code>f2b686d</code></a>,
+        <a href="https://github.com/universe-analysis/universe-generator/commit/2d37461"><code>2d37461</code></a>
+      </p>
+      <p>
+        The 07-02 torus experiments predate the phase schema &mdash; until
+        today it existed only in the viewer. The engines now take
+        <code>--phase</code>: the wiggle term gains a free phase
+        <code>f ~ U[0, &pi;)</code> on <em>even</em> frequencies (odd
+        frequencies must stay phase-free for the loop to close at
+        <code>z = &pi;</code>), each component is re-pinned to zero at the
+        endpoints by an <code>a&middot;sin(f)</code> offset, and the z grid
+        becomes the symmetric T-interior-points-of-(0,&nbsp;&pi;) indexing.
+        Phase-free proposals keep the verbatim pre-phase arithmetic, so
+        baselines are untouched.
+      </p>
+      <p>
+        Two campaigns repeat the 07-02 measurement with the new knob:
+        <code>torus2d_phase_e6</code> (2+1, T = 40&ndash;400 step 20, 8 seeds,
+        1e-6 cutoff) and <code>torus2d_e6</code> &mdash; the no-phase torus
+        baseline at the <em>same</em> cutoff, which it turned out had never
+        been run (the 07-02 2+1 torus dataset is 1e-7). Both completed in
+        ~20 minutes on the two 3080s. The comparison is one-knob: same model,
+        same grid, same seeds, same cutoff, phases on/off.
+      </p>
+      <ul>
+        <li>Count exponent, full ladder: <strong>1.396 &plusmn; 0.002</strong>
+            with phases vs <strong>1.382 &plusmn; 0.002</strong> without;
+            T &ge; 100 half: 1.375 &plusmn; 0.004 vs 1.383 &plusmn; 0.006.
+            Differences sit at the 0.01 level with mixed sign &mdash; the
+            exponent is unchanged.</li>
+        <li>The prefactor moves slightly: at T = 400 the phased model jams at
+            &lang;N_sat&rang; = 6139 vs 5974 without (+2.8%) &mdash; phases add
+            packing freedom without changing how the jam scales.</li>
+        <li>Cutoff sensitivity note: no-phase torus 2+1 reads 1.382 at 1e-6 vs
+            1.422 at 1e-7 &mdash; a cutoff decade moves the 2+1 torus exponent
+            ~0.04, about twice the &lt;0.02 the 3+1 hard-wall cutoff study
+            showed. Worth remembering when quoting 2+1 values across cutoffs.</li>
+      </ul>
+      <figure class="plot">
+        <img src="jam_scaling_phase2d.png"
+             alt="Jam count vs T on log-log axes: the 2+1 torus+phase and no-phase 1e-6 datasets lie on top of each other at slope ~1.38-1.40, beside the earlier torus and hard-wall ladders." />
+        <figcaption>
+          Jam count N_sat vs total resolution T (log-log), all ladders. The two
+          new 2+1 curves &mdash; torus at 1e-6 without phases (olive) and with
+          phases (cyan) &mdash; run on top of each other: same slope, a
+          few-percent prefactor offset. Lower panel: local slopes stay flat for
+          both.
+        </figcaption>
+      </figure>
+      <p>
+        Takeaway: in 2+1, the phase degrees of freedom are a
+        <em>packing-density</em> knob, not a <em>scaling</em> knob. The count
+        exponent keeps reading as a property of the slope budget. The 3+1
+        phase campaign (<code>torus3d_phase_e6</code>) is still working the
+        T &ge; 160 tail on deep-thought &mdash; entry to follow when it lands;
+        its early T = 200 points jam ~7% above the no-phase baseline, so the
+        prefactor effect appears there too.
+      </p>
+    </article>
+
+    <article class="entry" id="corrdim-variant-mixing">
+      <h2>Corrdim was averaging variants together; corrected D2 is phase-blind</h2>
+      <p class="meta">
+        Bug fix in the report path &middot; code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/3b39dd2"><code>3b39dd2</code></a>
+      </p>
+      <p>
+        Caught because three different datasets returned <em>identical</em>
+        correlation-dimension reports, to the third decimal, with a suspicious
+        24 &ldquo;seeds&rdquo; per T. Variant campaigns share a dumps directory
+        (<code>data/torus/dumps</code> now holds <code>_tor</code>,
+        <code>_tor_e6</code> and <code>_tor_ph_e6</code> files at the same
+        (T,&nbsp;seed)), and the report glob matched them all &mdash; averaging
+        three different models into one number. <code>aggregate()</code> now
+        takes a job-name filter and the CLI passes the store&rsquo;s own names
+        (curve-path stems); a regression test pins it. The 07-02 numbers are
+        unaffected &mdash; each dumps directory held a single variant back
+        then; the mixing only became possible once today&rsquo;s campaigns
+        landed sibling variants beside them.
+      </p>
+      <p>
+        With per-variant filtering, the wrapped (minimum-image) correlation
+        dimension of the turnaround slice, seed-averaged over the high-T tail:
+        <strong>1.915</strong> with phases, <strong>1.916</strong> without
+        (1e-6), and the 07-02 torus 1e-7 dataset reads <strong>1.913</strong>
+        under the same tooling &mdash; identical within error. Whatever the
+        phases rearrange along the loop, the equal-time slice geometry at the
+        turnaround does not see it.
+      </p>
+      <figure class="plot">
+        <img src="periodic_corrdim_2d_phase.png"
+             alt="Wrapped correlation dimension vs T for the 2+1 torus+phase dataset: sphere and cube estimators converge to ~1.92 by T=400." />
+        <figcaption>
+          Wrapped-estimator convergence, 2+1 torus with phases (8 seeds per T).
+          Sphere and cube probes converge together; the box-count column stays
+          noisy as usual.
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="periodic_corrdim_2d_nophase.png"
+             alt="Wrapped correlation dimension vs T for the 2+1 torus no-phase 1e-6 dataset: indistinguishable from the phase version, converging to ~1.92." />
+        <figcaption>
+          Same measurement, no-phase baseline at the same cutoff &mdash;
+          indistinguishable from the phased dataset point by point.
+        </figcaption>
+      </figure>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
