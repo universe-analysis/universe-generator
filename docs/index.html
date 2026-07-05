@@ -105,6 +105,34 @@
       </a>
     </div>
 
+    <h2>Example datasets</h2>
+    <p style="color:var(--muted);margin-top:-.4rem">
+      Real GPU-packed runs exported by the engines' <code>--dump-params</code>
+      flag &mdash; one CSV row per accepted worldline (positions are analytic, so
+      the parameters are the whole dataset). Download one and load it with the
+      <strong>Import CSV</strong> button in the
+      <a href="viewers/twoplusone_2torus_wrapped.html">wrapped 2+1 viewer</a>:
+      these runs sit far nearer to jamming than the in-page generator reaches.
+    </p>
+    <div class="grid">
+      <a class="card" href="examples/d2_nyq_T200_s1.csv" download>
+        <h3>2+1 hard-wall, T=200 &darr;</h3>
+        <p>4390 worldlines &middot; 283 KB &mdash; the corrdim2d dimension-study family.</p>
+      </a>
+      <a class="card" href="examples/d2_nyq_T100_s1.csv" download>
+        <h3>2+1 hard-wall, T=100 &darr;</h3>
+        <p>1480 worldlines &middot; 92 KB &mdash; smaller, quick-loading variant.</p>
+      </a>
+      <a class="card" href="examples/d2_nyq_T200_s1_tor.csv" download>
+        <h3>2+1 torus, T=200 &darr;</h3>
+        <p>2735 worldlines &middot; 175 KB &mdash; toroidal collisions, matching the wrapped viewer.</p>
+      </a>
+      <a class="card" href="examples/d2_demo_phase_T100_s0.csv" download>
+        <h3>Phase-column demo, T=100 &darr;</h3>
+        <p>50 worldlines &middot; 4 KB &mdash; tiny synthetic 8-column file (fx,fy present).</p>
+      </a>
+    </div>
+
     <h2>Key results</h2>
     <div class="grid">
       <figure class="figure"><img src="figures/corrdim3d_seeded.png" alt="3+1 correlation dimension" />

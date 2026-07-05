@@ -23,3 +23,7 @@ The time-step count `T` is encoded in the `_T###_` filename token.
 **To view:** open `docs/viewers/twoplusone_2torus_wrapped.html` in a browser
 and press **Import CSV**. These GPU-packed runs sit much nearer to jamming
 than anything the in-page generator can produce in reasonable time.
+
+These files are mirrored in `docs/examples/` so the GitHub Pages site can
+offer them as downloads (Pages only serves `docs/`) — if you change one set,
+re-copy the other.
