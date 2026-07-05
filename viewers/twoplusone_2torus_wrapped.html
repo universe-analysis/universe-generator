@@ -174,7 +174,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v6';
+    const VIEWER_VERSION = 'v7';
 
     let functions = [];
     let Z_cache = [];
@@ -204,26 +204,37 @@
         CELL = 2 / time_steps; NCELL = time_steps;
         gridByT = Array.from({ length: Z_cache.length }, () => new Map());
     }
-    function comovingTraj(ax, ay, bx, by, ax2, ay2,fx,fy) {
+    function comovingTraj(ax, ay, bx, by, ax2, ay2, fx, fy) {
         const n = Z_cache.length, X = new Float32Array(n), Y = new Float32Array(n);
+        // The comoving speed range is measured in this same pass, on UNWRAPPED
+        // coords — peculiar speed must never difference across a wrap (that
+        // would inject period-sized jumps). Accepted paths keep the result, so
+        // buildBuffers never has to rescan trajectories.
+        let pecMin = Infinity, pecMax = -Infinity, pcx = 0, pcy = 0;
         for (let i = 0; i < n; i++) {
             const z = Z_cache[i], inv = 1 / Math.sin(z);
-			var temp_x=(ax * Math.sin((bx * z)+fx) + ax2 * Math.sin(z));
-			var temp_y=(ay * Math.sin((by * z)+fy) + ay2 * Math.sin(z));
-			
-			//	Phase shift components offset to zero
-			if (fx!=0){
-				temp_x-=ax* Math.sin(fx);
-			}
-			
-			if (fy!=0){
-				temp_y-=ay* Math.sin(fy);
-			}
-			
-            X[i] = wrapComov(temp_x * inv);
-            Y[i] = wrapComov(temp_y * inv);
+            let temp_x = ax * Math.sin((bx * z) + fx) + ax2 * Math.sin(z);
+            let temp_y = ay * Math.sin((by * z) + fy) + ay2 * Math.sin(z);
+
+            //	Phase shift components offset to zero
+            if (fx != 0){
+                temp_x -= ax * Math.sin(fx);
+            }
+            if (fy != 0){
+                temp_y -= ay * Math.sin(fy);
+            }
+
+            const cx = temp_x * inv, cy = temp_y * inv;
+            if (i > 0){
+                const v = Math.hypot(cx - pcx, cy - pcy) / (z - Z_cache[i-1]);
+                if (v < pecMin) pecMin = v;
+                if (v > pecMax) pecMax = v;
+            }
+            pcx = cx; pcy = cy;
+            X[i] = wrapComov(cx);
+            Y[i] = wrapComov(cy);
         }
-        return { X, Y };
+        return { X, Y, pecMin, pecMax };
     }
     function collides(traj) {
         const n = Z_cache.length;
@@ -288,10 +299,11 @@
 				fy=Math.random()*Math.PI;
 			}
 
-            const traj = comovingTraj(ax, ay, bx, by, ax2, ay2,fx,fy);
+            const traj = comovingTraj(ax, ay, bx, by, ax2, ay2, fx, fy);
             if (!collides(traj)) {
                 insertTraj(traj);
-                return { ax, ay, bx, by, ax2, ay2,fx,fy, groupID: groupIDcount };
+                return { ax, ay, bx, by, ax2, ay2, fx, fy,
+                         pecMin: traj.pecMin, pecMax: traj.pecMax, groupID: groupIDcount };
             }
         }
         return null;
@@ -604,31 +616,11 @@
             const f = functions[p];
             instAmp[p*4]=f.ax; instAmp[p*4+1]=f.ay; instAmp[p*4+2]=f.ax2; instAmp[p*4+3]=f.ay2;
             instFreq[p*2]=f.bx; instFreq[p*2+1]=f.by;
-			instPhase[p*2]=f.fx; instPhase[p*2+1]=f.fy;
-            // per-particle comoving speed range — UNWRAPPED coords: peculiar speed
-            // must never difference across a wrap (would inject period-sized jumps)
-            let mn=Infinity, mx=-Infinity, pcx=0, pcy=0;
-            for (let i=0;i<n;i++){
-                const z=Z_cache[i], inv=1/Math.sin(z);
-				
-				var temp_x=f.ax*Math.sin((f.bx*z)+f.fx)+f.ax2*Math.sin(z);
-				var temp_y=f.ay*Math.sin((f.by*z)+f.fy)+f.ay2*Math.sin(z);
-				
-				//	Phase shift components offset to zero
-				if (f.fx!=0){
-					temp_x-=f.ax* Math.sin(f.fx);
-				}
-				
-				if (f.fy!=0){
-					temp_y-=f.ay* Math.sin(f.fy);
-				}
-				
-                const cx=(temp_x)*inv;
-                const cy=(temp_y)*inv;
-                if (i>0){ const v=Math.hypot(cx-pcx,cy-pcy)/(z-Z_cache[i-1]); if(v<mn)mn=v; if(v>mx)mx=v; }
-                pcx=cx; pcy=cy;
-            }
-            instPec[p*2]=mn; instPec[p*2+1]=mx; if(mn<gmn)gmn=mn; if(mx>gmx)gmx=mx;
+            instPhase[p*2]=f.fx; instPhase[p*2+1]=f.fy;
+            // speed range was measured at acceptance (comovingTraj) — just copy,
+            // so this loop is O(N) instead of O(N·T)
+            instPec[p*2]=f.pecMin; instPec[p*2+1]=f.pecMax;
+            if(f.pecMin<gmn)gmn=f.pecMin; if(f.pecMax>gmx)gmx=f.pecMax;
         }
         U.uGMin.value=gmn; U.uGMax.value=gmx;
         setAngK();
