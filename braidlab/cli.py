@@ -108,7 +108,17 @@ def _cmd_notify(args: argparse.Namespace) -> None:
 
 def _cmd_corrdim(args: argparse.Namespace) -> None:
     store = Store(args.db)
-    stats = corrdim.aggregate(store.dumps_dir, dim=args.dim, band=args.band)
+    # Variant campaigns share a dumps dir; restrict aggregation to the jobs this
+    # store actually owns (their curve-path stems are the job names), or sibling
+    # variants' dumps at the same (T, seed) leak into the average.
+    names = {
+        Path(r.curve_path).stem
+        for r in store.results(args.dim, args.band)
+        if r.curve_path
+    }
+    stats = corrdim.aggregate(
+        store.dumps_dir, dim=args.dim, band=args.band, names=names or None
+    )
     if not stats:
         print(f"no dumps found in {store.dumps_dir}")
         return

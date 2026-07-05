@@ -69,6 +69,21 @@ def test_aggregate_groups_by_t_and_averages(tmp_path: Path) -> None:
     assert s.sphere_sem >= 0.0 and np.isfinite(s.sphere_mean)
 
 
+def test_aggregate_names_filter_excludes_sibling_variants(tmp_path: Path) -> None:
+    # Variant campaigns share a dumps dir: the same (T, seed) exists as both a
+    # no-phase and a phase dump. Without the names filter both match the glob
+    # and get silently averaged together (regression: identical corrdim reports
+    # for every variant sharing data/torus/dumps).
+    for seed in (1, 2):
+        _write_dump(tmp_path / f"d3_nyq_T40_s{seed}_tor_e6.csv", 4000, seed)
+        _write_dump(tmp_path / f"d3_nyq_T40_s{seed}_tor_ph_e6.csv", 4000, seed + 50)
+    names = {f"d3_nyq_T40_s{s}_tor_e6" for s in (1, 2)}
+    stats = corrdim.aggregate(tmp_path, dim=3, band="nyq", names=names)
+    assert len(stats) == 1 and stats[0].n_seeds == 2  # not 4: siblings excluded
+    unfiltered = corrdim.aggregate(tmp_path, dim=3, band="nyq")
+    assert unfiltered[0].n_seeds == 4  # the trap the filter exists to avoid
+
+
 def test_wrap_unit_maps_onto_fundamental_domain() -> None:
     x = np.array([-2.0, -1.2, -1.0, -0.3, 0.0, 0.99, 1.0, 1.2, 1.9])
     w = corrdim.wrap_unit(x)

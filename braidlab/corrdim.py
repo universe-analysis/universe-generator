@@ -160,10 +160,23 @@ def _mean_sem(values: list[float]) -> tuple[float, float]:
     return float(arr.mean()), sem
 
 
-def aggregate(dumps_dir: str | Path, dim: int = 3, band: str = "nyq") -> list[TStat]:
-    """Seed-average every ``d{dim}_{band}_T*_s*.csv`` dump in a directory."""
+def aggregate(
+    dumps_dir: str | Path,
+    dim: int = 3,
+    band: str = "nyq",
+    names: set[str] | None = None,
+) -> list[TStat]:
+    """Seed-average every ``d{dim}_{band}_T*_s*.csv`` dump in a directory.
+
+    ``names`` restricts aggregation to dumps whose filename stem is in the set.
+    Variant campaigns share a dumps directory (e.g. ``data/torus/dumps`` holds
+    ``_tor``, ``_tor_e6`` and ``_tor_ph_e6`` files at the same (T, seed)), so
+    the glob alone would silently average different models together.
+    """
     by_t: dict[int, list[DumpMeasure]] = {}
     for path in sorted(Path(dumps_dir).glob(f"d{dim}_{band}_T*_s*.csv")):
+        if names is not None and path.stem not in names:
+            continue
         m = _NAME_RE.search(path.name)
         if not m:
             continue
