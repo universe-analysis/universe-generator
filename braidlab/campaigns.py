@@ -126,6 +126,38 @@ CAMPAIGNS: dict[str, Campaign] = {
         torus=True,
         tag="e6",
     ),
+    # Phase schema on the torus model: even-frequency phases on the wiggle term
+    # plus the symmetric z grid (Chris's viewer schema, engine flag --phase).
+    # Same T grid / seeds / 1e-6 cutoff as torus3d_e6, so the with/without-phase
+    # comparison is one-knob. The _ph name suffix keeps remote files distinct.
+    "torus3d_phase_e6": Campaign(
+        name="torus3d_phase_e6",
+        dim=3,
+        band="nyq",
+        t_values=CORRDIM_T,
+        seeds=CORRDIM_SEEDS,
+        accept_rate=1e-6,
+        max_attempts=MAX_ATTEMPTS,
+        angle=False,
+        dump=True,
+        torus=True,
+        phase=True,
+        tag="e6",
+    ),
+    "torus2d_phase_e6": Campaign(
+        name="torus2d_phase_e6",
+        dim=2,
+        band="nyq",
+        t_values=CORRDIM2D_T,
+        seeds=CORRDIM2D_SEEDS,
+        accept_rate=1e-6,
+        max_attempts=MAX_ATTEMPTS,
+        angle=False,
+        dump=True,
+        torus=True,
+        phase=True,
+        tag="e6",
+    ),
     "torus2d_e6": Campaign(
         name="torus2d_e6",
         dim=2,

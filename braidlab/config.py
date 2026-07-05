@@ -52,6 +52,9 @@ class Job:
     #: Torus (new-dogma) model (--torus): |a*b|=1 budget on the wiggle term,
     #: free sin1 comoving offset, periodic comoving domain.
     torus: bool = False
+    #: Phase schema (--phase): free phase on the wiggle term for even
+    #: frequencies, plus the symmetric endpoint-free z grid.
+    phase: bool = False
     #: Free-form variant tag (e.g. "e6" for a different cutoff). Not part of the
     #: key; appended to the name so variant runs do not collide in the shared
     #: remote workspace.
@@ -76,6 +79,8 @@ class Job:
             base += "_eu"
         if self.torus:
             base += "_tor"
+        if self.phase:
+            base += "_ph"
         if self.tag:
             base += f"_{self.tag}"
         return base
@@ -105,6 +110,8 @@ class Campaign:
     euclid: bool = False
     #: Use the torus (new-dogma) model: |a*b|=1, free sin1, periodic domain.
     torus: bool = False
+    #: Use the phase schema: even-frequency phases + symmetric z grid.
+    phase: bool = False
     #: Variant tag appended to job names (e.g. "e6" for a different cutoff).
     tag: str = ""
 
@@ -129,6 +136,7 @@ class Campaign:
                 angle=self.angle,
                 euclid=self.euclid,
                 torus=self.torus,
+                phase=self.phase,
                 tag=self.tag,
             )
             for t in self.t_values

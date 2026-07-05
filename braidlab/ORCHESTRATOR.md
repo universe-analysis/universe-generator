@@ -232,4 +232,6 @@ PY
 
 `-t <T>` · `--attempts <N>` · `--smart` · `--seed <s>` ·
 `--until-accept-rate <r>` (the fixed-convergence stop) · `--maxfreq <m>` (band) ·
-`--angle-sample` (edge sampler) · `--curve <path>` · `--dump-params <path>`.
+`--angle-sample` (edge sampler) · `--torus` (new-dogma model) · `--phase`
+(even-frequency phases + symmetric z grid; adds fx/fy/fw dump columns) ·
+`--curve <path>` · `--dump-params <path>`.

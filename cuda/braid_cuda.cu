@@ -6,6 +6,11 @@
 // grid and serially admits the (rare) survivors. Batch size adapts: small while
 // acceptance is high (early), huge in the deep tail (rejection-dominated).
 //
+// --phase switches to the phase schema: the wiggle term gains a free phase
+// f ~ U[0, pi) on even frequencies (odd ones must stay phase-free for the loop
+// to close), each component is offset by a*sin(f) so it still starts at zero,
+// and the z grid becomes the symmetric T-interior-points-of-(0, pi) indexing.
+//
 // Output: the same `attempts,n` curve CSV as the Rust engine.
 //
 // Build:  nvcc -O3 -o braid_cuda braid_cuda.cu
@@ -78,8 +83,11 @@ __host__ __device__ inline uint32_t igcd(uint32_t a, uint32_t b) {
     return a;
 }
 
+constexpr double kPi = 3.14159265358979323846;
+
 struct Path {
     double ax, ay, bx, by, ax2, ay2;
+    double fx, fy;  // per-axis phase on the wiggle term (0 unless --phase)
 };
 
 // Torus (new-dogma) model helpers. The comoving domain is periodic with period
@@ -97,7 +105,8 @@ __host__ __device__ inline double torus_delta(double d) {
     return d;
 }
 
-__host__ __device__ inline Path propose(Rng& r, uint32_t modmax, bool smart, bool torus) {
+__host__ __device__ inline Path propose(
+    Rng& r, uint32_t modmax, bool smart, bool torus, bool phase) {
     double xs = rng_f64(r), ys = rng_f64(r);
     uint32_t bx, by;
     if (!smart) {
@@ -139,6 +148,19 @@ __host__ __device__ inline Path propose(Rng& r, uint32_t modmax, bool smart, boo
         p.ax2 = -p.ax2;
     if (rng_flip(r))
         p.ay2 = -p.ay2;
+    // Phase update: a free phase on the wiggle term, drawn only for EVEN
+    // frequencies -- the loop closes at z=pi only where sin(b*pi + f) equals
+    // sin(f), so odd frequencies stay phase-free. The a*sin(f) offset applied
+    // at evaluation time re-pins the component to zero at the endpoints.
+    // Drawn last so the baseline (phase off) RNG stream is untouched.
+    p.fx = 0.0;
+    p.fy = 0.0;
+    if (phase) {
+        if (bx % 2 == 0)
+            p.fx = rng_f64(r) * kPi;
+        if (by % 2 == 0)
+            p.fy = rng_f64(r) * kPi;
+    }
     return p;
 }
 
@@ -158,10 +180,25 @@ __device__ bool collides_dev(const Path& p,
                              const int* order,
                              bool torus) {
     double edge = 1.0 - 0.5 * cell;  // path radius CELL/2 hits the hard wall at |X|=1
+    // Phase offsets re-pin each component to zero at the endpoints.
+    const double offx = p.ax * sin(p.fx);
+    const double offy = p.ay * sin(p.fy);
+    // Phase-free paths take the verbatim pre-phase expression, so their
+    // per-candidate math is bit-identical to the pre-phase engine (folding a
+    // zero phase into the expression shifts FP contraction by an ulp). Full-run
+    // output is still scheduling-dependent: survivor admission order comes from
+    // atomicAdd slots.
+    const bool phased = (p.fx != 0.0) || (p.fy != 0.0);
     for (int oi = 0; oi < T; oi++) {
         int i = order[oi];
-        double X = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
-        double Y = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
+        double X, Y;
+        if (phased) {
+            X = (p.ax * sin(p.bx * z[i] + p.fx) + p.ax2 * sinz[i] - offx) * invz[i];
+            Y = (p.ay * sin(p.by * z[i] + p.fy) + p.ay2 * sinz[i] - offy) * invz[i];
+        } else {
+            X = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
+            Y = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
+        }
         int cx, cy;
         if (torus) {
             // Periodic domain: wrap onto [-1, 1); there is no wall.
@@ -207,6 +244,7 @@ __global__ void test_kernel(uint64_t baseSeed,
                             uint32_t modmax,
                             bool smart,
                             bool torus,
+                            bool phase,
                             int T,
                             const double* z,
                             const double* sinz,
@@ -228,7 +266,7 @@ __global__ void test_kernel(uint64_t baseSeed,
     Rng r;
     rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
-    Path p = propose(r, modmax, smart, torus);
+    Path p = propose(r, modmax, smart, torus, phase);
     if (!collides_dev(p, T, z, sinz, invz, cell, gw, off, cellStart, cellLen, ptsX, ptsY, order,
                       torus)) {
         int slot = atomicAdd(survCount, 1);
@@ -247,6 +285,7 @@ int main(int argc, char** argv) {
     int maxfreq = 0;          // 0 = default modulation cap T/2
     double acceptThresh = 0;  // 0 = run to --attempts; >0 = stop when accept-rate < thresh
     bool torus = false;       // new-dogma model: |a*b|=1, free sin1 offset, periodic domain
+    bool phase = false;       // phase schema: even-frequency phases + symmetric z grid
     const char* paramPath = nullptr;  // if set, dump accepted worldline parameters
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-t") || !strcmp(argv[i], "--timesteps"))
@@ -267,6 +306,8 @@ int main(int argc, char** argv) {
             acceptThresh = atof(argv[++i]);
         else if (!strcmp(argv[i], "--torus"))
             torus = true;
+        else if (!strcmp(argv[i], "--phase"))
+            phase = true;
         else if (!strcmp(argv[i], "--dump-params"))
             paramPath = argv[++i];
     }
@@ -285,12 +326,21 @@ int main(int argc, char** argv) {
     // Torus grid: exactly T cells of width CELL span [-1, 1), so the modular
     // neighbour scan wraps cleanly at the seam. Hard-wall grid keeps its margin.
     int gw = torus ? T : T + 4, off = torus ? 0 : (T + 4) / 2;
-    fprintf(stderr, "2+1%s: T=%d  modmax=%u (maxfreq=%u)\n", torus ? " (torus)" : "", T, modmax,
-            modmax + 1);
-    // z tables + endpoint-first order
+    fprintf(stderr, "2+1%s%s: T=%d  modmax=%u (maxfreq=%u)\n", torus ? " (torus)" : "",
+            phase ? " (phase)" : "", T, modmax, modmax + 1);
+    // z tables + endpoint-first order. The phase schema replaces the hardcoded
+    // 0.01 endpoint clamp with a symmetric grid: T interior points of (0, pi),
+    // one step in from each end (matches the viewer's z indexing).
     std::vector<double> z(T), sinz(T), invz(T);
     std::vector<int> order(T);
-    double z0 = 0.01, z1 = PI - 0.01, step = (z1 - z0) / (T - 1);
+    double z0, step;
+    if (phase) {
+        step = PI / (T + 1);
+        z0 = step;
+    } else {
+        z0 = 0.01;
+        step = (PI - 0.01 - z0) / (T - 1);
+    }
     for (int i = 0; i < T; i++) {
         z[i] = z0 + i * step;
         sinz[i] = sin(z[i]);
@@ -426,9 +476,9 @@ int main(int argc, char** argv) {
         // --- launch batch test ---
         CK(cudaMemset(dSurvCount, 0, 4));
         int threads = 256, blocks = (int)((batch + threads - 1) / threads);
-        test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, smart, torus, T, dz,
-                                         dsinz, dinvz, cell, gw, off, dCellStart, dCellLen,
-                                         dPtsX, dPtsY, dorder, dSurv, dSurvCount, survCap);
+        test_kernel<<<blocks, threads>>>(
+            seed, round, (int)batch, modmax, smart, torus, phase, T, dz, dsinz, dinvz, cell, gw,
+            off, dCellStart, dCellLen, dPtsX, dPtsY, dorder, dSurv, dSurvCount, survCap);
         CK(cudaDeviceSynchronize());
         int sc;
         CK(cudaMemcpy(&sc, dSurvCount, 4, cudaMemcpyDeviceToHost));
@@ -442,9 +492,19 @@ int main(int argc, char** argv) {
         long long admitted = 0;
         for (int s = 0; s < got; s++) {
             Path& p = hSurv[s];
+            const double offx = p.ax * sin(p.fx);
+            const double offy = p.ay * sin(p.fy);
+            // Same rule as collides_dev: phase-free paths take the verbatim
+            // pre-phase expression (per-candidate math identical to pre-phase).
+            const bool phased = (p.fx != 0.0) || (p.fy != 0.0);
             for (int i = 0; i < T; i++) {
-                Xb[i] = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
-                Yb[i] = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
+                if (phased) {
+                    Xb[i] = (p.ax * sin(p.bx * z[i] + p.fx) + p.ax2 * sinz[i] - offx) * invz[i];
+                    Yb[i] = (p.ay * sin(p.by * z[i] + p.fy) + p.ay2 * sinz[i] - offy) * invz[i];
+                } else {
+                    Xb[i] = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
+                    Yb[i] = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
+                }
                 if (torus) {
                     Xb[i] = torus_wrap(Xb[i]);
                     Yb[i] = torus_wrap(Yb[i]);
@@ -500,11 +560,12 @@ int main(int argc, char** argv) {
 
     if (paramPath) {
         // Per-worldline parameters of the final 2+1 packing (two spatial axes).
+        // Phase columns are always present (zero when --phase is off).
         FILE* f = fopen(paramPath, "w");
-        fprintf(f, "ax,ay,bx,by,ax2,ay2\n");
+        fprintf(f, "ax,ay,bx,by,ax2,ay2,fx,fy\n");
         for (auto& p : acceptedPaths)
-            fprintf(f, "%.10g,%.10g,%.0f,%.0f,%.10g,%.10g\n", p.ax, p.ay, p.bx, p.by, p.ax2,
-                    p.ay2);
+            fprintf(f, "%.10g,%.10g,%.0f,%.0f,%.10g,%.10g,%.10g,%.10g\n", p.ax, p.ay, p.bx,
+                    p.by, p.ax2, p.ay2, p.fx, p.fy);
         fclose(f);
         fprintf(stderr, "dump-params: wrote %zu worldlines to %s\n", acceptedPaths.size(),
                 paramPath);

@@ -10,6 +10,11 @@
 // comoving domain is a period-2 torus (wrapped positions, minimum-image
 // collision, no wall).
 //
+// --phase switches to the phase schema: the wiggle term gains a free phase
+// f ~ U[0, pi) on even frequencies (odd ones must stay phase-free for the loop
+// to close), each component is offset by a*sin(f) so it still starts at zero,
+// and the z grid becomes the symmetric T-interior-points-of-(0, pi) indexing.
+//
 // Build:  nvcc -O3 -arch=sm_86 -o braid_cuda3d braid_cuda3d.cu
 // Run:    ./braid_cuda3d -t 80 --attempts 5e9 --seed 1 --curve out.csv
 
@@ -81,8 +86,11 @@ __host__ __device__ inline uint32_t igcd(uint32_t a, uint32_t b) {
     return a;
 }
 
+constexpr double kPi = 3.14159265358979323846;
+
 struct Path {
     double ax, ay, aw, bx, by, bw, ax2, ay2, aw2;
+    double fx, fy, fw;  // per-axis phase on the wiggle term (0 unless --phase)
 };
 
 // Edge-weighted draw for a sin1-component magnitude in (0,1]. theta ~ U(-pi,pi)
@@ -111,7 +119,7 @@ __host__ __device__ inline double torus_delta(double d) {
 }
 
 __host__ __device__ inline Path propose(
-    Rng& r, uint32_t modmax, bool smart, bool angle, bool torus) {
+    Rng& r, uint32_t modmax, bool smart, bool angle, bool torus, bool phase) {
     double xs, ys, ws;
     if (angle) {
         xs = angle_magnitude(r);
@@ -173,6 +181,22 @@ __host__ __device__ inline Path propose(
         p.ay2 = -p.ay2;
     if (rng_flip(r))
         p.aw2 = -p.aw2;
+    // Phase update: a free phase on the wiggle term, drawn only for EVEN
+    // frequencies -- the loop closes at z=pi only where sin(b*pi + f) equals
+    // sin(f), so odd frequencies stay phase-free. The a*sin(f) offset applied
+    // at evaluation time re-pins the component to zero at the endpoints.
+    // Drawn last so the baseline (phase off) RNG stream is untouched.
+    p.fx = 0.0;
+    p.fy = 0.0;
+    p.fw = 0.0;
+    if (phase) {
+        if (bx % 2 == 0)
+            p.fx = rng_f64(r) * kPi;
+        if (by % 2 == 0)
+            p.fy = rng_f64(r) * kPi;
+        if (bw % 2 == 0)
+            p.fw = rng_f64(r) * kPi;
+    }
     return p;
 }
 
@@ -195,14 +219,31 @@ __device__ bool collides_dev(const Path& p,
                              bool euclid,
                              bool torus) {
     const double edge = 1.0 - 0.5 * cell;  // path radius CELL/2 hits the wall at |X|=1
+    // Phase offsets re-pin each component to zero at the endpoints.
+    const double offx = p.ax * sin(p.fx);
+    const double offy = p.ay * sin(p.fy);
+    const double offw = p.aw * sin(p.fw);
+    // Phase-free paths take the verbatim pre-phase expression, so their
+    // per-candidate math is bit-identical to the pre-phase engine (folding a
+    // zero phase into the expression shifts FP contraction by an ulp). Full-run
+    // output is still scheduling-dependent: survivor admission order comes from
+    // atomicAdd slots.
+    const bool phased = (p.fx != 0.0) || (p.fy != 0.0) || (p.fw != 0.0);
 
     for (int oi = 0; oi < T; oi++) {
         const int i = order[oi];
 
         // Comoving position of the candidate path at this timestep (X = x / sin z).
-        double X = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
-        double Y = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
-        double W = (p.aw * sin(p.bw * z[i]) + p.aw2 * sinz[i]) * invz[i];
+        double X, Y, W;
+        if (phased) {
+            X = (p.ax * sin(p.bx * z[i] + p.fx) + p.ax2 * sinz[i] - offx) * invz[i];
+            Y = (p.ay * sin(p.by * z[i] + p.fy) + p.ay2 * sinz[i] - offy) * invz[i];
+            W = (p.aw * sin(p.bw * z[i] + p.fw) + p.aw2 * sinz[i] - offw) * invz[i];
+        } else {
+            X = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
+            Y = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
+            W = (p.aw * sin(p.bw * z[i]) + p.aw2 * sinz[i]) * invz[i];
+        }
 
         int cx, cy, cw;
         if (torus) {
@@ -277,6 +318,7 @@ __global__ void test_kernel(uint64_t baseSeed,
                             bool angle,
                             bool euclid,
                             bool torus,
+                            bool phase,
                             int T,
                             const double* z,
                             const double* sinz,
@@ -301,7 +343,7 @@ __global__ void test_kernel(uint64_t baseSeed,
     Rng r;
     rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
-    Path p = propose(r, modmax, smart, angle, torus);
+    Path p = propose(r, modmax, smart, angle, torus, phase);
     if (!collides_dev(p, T, z, sinz, invz, cell, gw, off, gw2, gw3, cellStart, cellLen, ptsX,
                       ptsY, ptsW, order, euclid, torus)) {
         int slot = atomicAdd(survCount, 1);
@@ -321,6 +363,7 @@ int main(int argc, char** argv) {
     bool angle = false;       // edge-weighted sin1 sampling (vs flat uniform)
     bool euclid = false;      // L2-ball exclusion (vs the default Chebyshev cube)
     bool torus = false;       // new-dogma model: |a*b|=1, free sin1 offset, periodic domain
+    bool phase = false;       // phase schema: even-frequency phases + symmetric z grid
     const char* diagPrefix = nullptr;  // if set, write occupancy + probe diagnostics
     long long probeN = 5000000;        // fresh proposals fired at the final state
     const char* paramPath = nullptr;   // if set, dump accepted worldline parameters
@@ -347,6 +390,8 @@ int main(int argc, char** argv) {
             euclid = true;
         else if (!strcmp(argv[i], "--torus"))
             torus = true;
+        else if (!strcmp(argv[i], "--phase"))
+            phase = true;
         else if (!strcmp(argv[i], "--diag"))
             diagPrefix = argv[++i];
         else if (!strcmp(argv[i], "--probe-n"))
@@ -369,9 +414,19 @@ int main(int argc, char** argv) {
     // neighbour scan wraps cleanly at the seam. Hard-wall grid keeps its margin.
     int gw = torus ? T : T + 4, off = torus ? 0 : (T + 4) / 2;
     long gw2 = (long)gw * gw, gw3 = gw2 * gw;
+    // z tables + endpoint-first order. The phase schema replaces the hardcoded
+    // 0.01 endpoint clamp with a symmetric grid: T interior points of (0, pi),
+    // one step in from each end (matches the viewer's z indexing).
     std::vector<double> z(T), sinz(T), invz(T);
     std::vector<int> order(T);
-    double z0 = 0.01, z1 = PI - 0.01, step = (z1 - z0) / (T - 1);
+    double z0, step;
+    if (phase) {
+        step = PI / (T + 1);
+        z0 = step;
+    } else {
+        z0 = 0.01;
+        step = (PI - 0.01 - z0) / (T - 1);
+    }
     for (int i = 0; i < T; i++) {
         z[i] = z0 + i * step;
         sinz[i] = sin(z[i]);
@@ -393,8 +448,9 @@ int main(int argc, char** argv) {
     CK(cudaMemcpy(dorder, order.data(), T * 4, cudaMemcpyHostToDevice));
 
     size_t ncell = (size_t)T * gw3;
-    fprintf(stderr, "3+1%s: T=%d  modmax=%u (maxfreq=%u)  grid cells=%.2e  (~%.1f GB)\n",
-            torus ? " (torus)" : "", T, modmax, modmax + 1, (double)ncell, ncell * 8.0 / 1e9);
+    fprintf(stderr, "3+1%s%s: T=%d  modmax=%u (maxfreq=%u)  grid cells=%.2e  (~%.1f GB)\n",
+            torus ? " (torus)" : "", phase ? " (phase)" : "", T, modmax, modmax + 1,
+            (double)ncell, ncell * 8.0 / 1e9);
     // cellStart holds cumulative point offsets (< N*T, well within int32 even at
     // T=300), so a 32-bit grid index halves device memory vs a 64-bit one.
     std::vector<int> cellStart(ncell);
@@ -526,8 +582,8 @@ int main(int argc, char** argv) {
         CK(cudaMemset(dSurvCount, 0, 4));
         int threads = 256, blocks = (int)((batch + threads - 1) / threads);
         test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, smart, angle, euclid,
-                                         torus, T, dz, dsinz, dinvz, cell, gw, off, gw2, gw3,
-                                         dCellStart, dCellLen, dPtsX, dPtsY, dPtsW, dorder,
+                                         torus, phase, T, dz, dsinz, dinvz, cell, gw, off, gw2,
+                                         gw3, dCellStart, dCellLen, dPtsX, dPtsY, dPtsW, dorder,
                                          dSurv, dSurvCount, survCap);
         CK(cudaDeviceSynchronize());
         int sc;
@@ -541,10 +597,22 @@ int main(int argc, char** argv) {
         long long admitted = 0;
         for (int s = 0; s < got; s++) {
             Path& p = hSurv[s];
+            const double offx = p.ax * sin(p.fx);
+            const double offy = p.ay * sin(p.fy);
+            const double offw = p.aw * sin(p.fw);
+            // Same rule as collides_dev: phase-free paths take the verbatim
+            // pre-phase expression (per-candidate math identical to pre-phase).
+            const bool phased = (p.fx != 0.0) || (p.fy != 0.0) || (p.fw != 0.0);
             for (int i = 0; i < T; i++) {
-                Xb[i] = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
-                Yb[i] = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
-                Wb[i] = (p.aw * sin(p.bw * z[i]) + p.aw2 * sinz[i]) * invz[i];
+                if (phased) {
+                    Xb[i] = (p.ax * sin(p.bx * z[i] + p.fx) + p.ax2 * sinz[i] - offx) * invz[i];
+                    Yb[i] = (p.ay * sin(p.by * z[i] + p.fy) + p.ay2 * sinz[i] - offy) * invz[i];
+                    Wb[i] = (p.aw * sin(p.bw * z[i] + p.fw) + p.aw2 * sinz[i] - offw) * invz[i];
+                } else {
+                    Xb[i] = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
+                    Yb[i] = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
+                    Wb[i] = (p.aw * sin(p.bw * z[i]) + p.aw2 * sinz[i]) * invz[i];
+                }
                 if (torus) {
                     Xb[i] = torus_wrap(Xb[i]);
                     Yb[i] = torus_wrap(Yb[i]);
@@ -600,11 +668,12 @@ int main(int argc, char** argv) {
     if (paramPath) {
         // Per-worldline parameters of the final packing, so the full phase space
         // can be reconstructed analytically at any z (e.g. the turnaround z=pi/2).
+        // Phase columns are always present (zero when --phase is off).
         FILE* f = fopen(paramPath, "w");
-        fprintf(f, "ax,ay,aw,bx,by,bw,ax2,ay2,aw2\n");
+        fprintf(f, "ax,ay,aw,bx,by,bw,ax2,ay2,aw2,fx,fy,fw\n");
         for (auto& p : acceptedPaths)
-            fprintf(f, "%.10g,%.10g,%.10g,%.0f,%.0f,%.0f,%.10g,%.10g,%.10g\n", p.ax, p.ay, p.aw,
-                    p.bx, p.by, p.bw, p.ax2, p.ay2, p.aw2);
+            fprintf(f, "%.10g,%.10g,%.10g,%.0f,%.0f,%.0f,%.10g,%.10g,%.10g,%.10g,%.10g,%.10g\n",
+                    p.ax, p.ay, p.aw, p.bx, p.by, p.bw, p.ax2, p.ay2, p.aw2, p.fx, p.fy, p.fw);
         fclose(f);
         fprintf(stderr, "dump-params: wrote %zu worldlines to %s\n", acceptedPaths.size(),
                 paramPath);
@@ -647,11 +716,21 @@ int main(int argc, char** argv) {
         rng_seed(pr, seed ^ 0xABCDEF1234567890ULL);
         std::vector<double> X(T), Y(T), W(T);
         for (long long t = 0; t < probeN; t++) {
-            Path p = propose(pr, modmax, smart, angle, torus);
+            Path p = propose(pr, modmax, smart, angle, torus, phase);
+            const double offx = p.ax * sin(p.fx);
+            const double offy = p.ay * sin(p.fy);
+            const double offw = p.aw * sin(p.fw);
+            const bool phased = (p.fx != 0.0) || (p.fy != 0.0) || (p.fw != 0.0);
             for (int i = 0; i < T; i++) {
-                X[i] = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
-                Y[i] = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
-                W[i] = (p.aw * sin(p.bw * z[i]) + p.aw2 * sinz[i]) * invz[i];
+                if (phased) {
+                    X[i] = (p.ax * sin(p.bx * z[i] + p.fx) + p.ax2 * sinz[i] - offx) * invz[i];
+                    Y[i] = (p.ay * sin(p.by * z[i] + p.fy) + p.ay2 * sinz[i] - offy) * invz[i];
+                    W[i] = (p.aw * sin(p.bw * z[i] + p.fw) + p.aw2 * sinz[i] - offw) * invz[i];
+                } else {
+                    X[i] = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
+                    Y[i] = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
+                    W[i] = (p.aw * sin(p.bw * z[i]) + p.aw2 * sinz[i]) * invz[i];
+                }
                 if (torus) {
                     X[i] = torus_wrap(X[i]);
                     Y[i] = torus_wrap(Y[i]);

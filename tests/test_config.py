@@ -41,6 +41,32 @@ def test_torus_job_name_and_command() -> None:
     assert "--torus" in build_command(j, "bin", "curve.csv")
 
 
+def test_phase_job_name_and_command() -> None:
+    """Phase jobs get the _ph suffix (workspace collision guard) and --phase."""
+    from braidlab.engine import build_command
+
+    j = Job(
+        dim=3,
+        band="nyq",
+        t=44,
+        seed=2,
+        accept_rate=1e-6,
+        max_attempts=3e12,
+        torus=True,
+        phase=True,
+        tag="e6",
+    )
+    assert j.name == "d3_nyq_T44_s2_tor_ph_e6"
+    assert "--phase" in build_command(j, "bin", "curve.csv")
+
+
+def test_phase_campaign_expands_phase_jobs() -> None:
+    from braidlab.campaigns import get
+
+    c = get("torus3d_phase_e6")
+    assert all(j.phase and j.torus for j in c.jobs())
+
+
 def test_torus_campaign_expands_torus_jobs() -> None:
     c = Campaign(
         name="t",

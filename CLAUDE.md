@@ -67,7 +67,9 @@ uv run python -m braidlab corrdim --db data/corrdim/run.db --dim 3 --band nyq
 
 Predefined campaigns (`braidlab/campaigns.py`): `corrdim3d` / `corrdim2d`
 (the dimension studies), `corrdim3d_e6` (cutoff check), `corrdim3d_euclid`
-(sphere-collision variant), plus the older `3plus1` / `2plus1`.
+(sphere-collision variant), `torus3d` / `torus2d` (+ `_e6` cutoff variants) for
+the torus model, `torus3d_phase_e6` / `torus2d_phase_e6` (torus + the phase
+schema, engine flag `--phase`), plus the older `3plus1` / `2plus1`.
 
 ### Discord notifications
 

@@ -83,3 +83,40 @@ def test_load_turnaround_cloud_wrap(tmp_path: Path) -> None:
     _write_dump(p, 200, seed=1)
     wrapped = corrdim.load_turnaround_cloud(p, wrap=True)
     assert np.all(wrapped >= -1.0) and np.all(wrapped < 1.0)
+
+
+def test_load_turnaround_cloud_phase_columns(tmp_path: Path) -> None:
+    """A phase-schema dump reconstructs X = a*sin(b*pi/2 + f) + a2 - a*sin(f)."""
+    p = tmp_path / "d3_ph.csv"
+    ax, bx, ax2, fx = 0.25, 4, 0.1, 1.2  # even frequency, nonzero phase
+    with open(p, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(
+            ["ax", "ay", "aw", "bx", "by", "bw", "ax2", "ay2", "aw2", "fx", "fy", "fw"]
+        )
+        w.writerow([ax, 0.2, 0.5, bx, 5, 3, ax2, 0.0, 0.0, fx, 0.0, 0.0])
+    cloud = corrdim.load_turnaround_cloud(p)
+    half_pi = np.pi / 2.0
+    expected_x = ax * np.sin(bx * half_pi + fx) + ax2 - ax * np.sin(fx)
+    assert np.isclose(cloud[0, 0], expected_x)
+    # Zero phase reduces to the pre-phase formula on the other axes.
+    assert np.isclose(cloud[0, 1], 0.2 * np.sin(5 * half_pi))
+    assert np.isclose(cloud[0, 2], 0.5 * np.sin(3 * half_pi))
+
+
+def test_load_turnaround_cloud_missing_phase_columns_is_zero_phase(
+    tmp_path: Path,
+) -> None:
+    """Pre-phase dumps (no f columns) load exactly as before."""
+    old = tmp_path / "old.csv"
+    _write_dump(old, 50, seed=3)
+    new = tmp_path / "new.csv"
+    rows = list(csv.reader(open(old)))
+    with open(new, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(rows[0] + ["fx", "fy", "fw"])
+        for r in rows[1:]:
+            w.writerow(r + ["0", "0", "0"])
+    assert np.allclose(
+        corrdim.load_turnaround_cloud(old), corrdim.load_turnaround_cloud(new)
+    )

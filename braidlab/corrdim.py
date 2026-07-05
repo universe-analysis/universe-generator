@@ -51,8 +51,10 @@ def load_turnaround_cloud(path: str | Path, wrap: bool = False) -> np.ndarray:
 
     Dimension is inferred from the columns: a 3+1 dump carries the third (w)
     axis, a 2+1 dump does not. At the turnaround sin(z)=1, so the comoving
-    position is just X = a*sin(b*pi/2) + a2 on each axis. ``wrap`` applies the
-    torus wrap onto [-1, 1) (required for torus-model dumps).
+    position is X = a*sin(b*pi/2 + f) + a2 - a*sin(f) on each axis, where f is
+    the wiggle-term phase (a phase-schema dump; 0 -- and absent from pre-phase
+    dumps -- otherwise). ``wrap`` applies the torus wrap onto [-1, 1) (required
+    for torus-model dumps).
     """
     rows = list(csv.DictReader(open(path)))
     fields = set(rows[0].keys()) if rows else set()
@@ -61,10 +63,18 @@ def load_turnaround_cloud(path: str | Path, wrap: bool = False) -> np.ndarray:
     def col(k: str) -> np.ndarray:
         return np.array([float(r[k]) for r in rows])
 
-    triples = [("ax", "bx", "ax2"), ("ay", "by", "ay2")]
+    def phase_col(k: str) -> np.ndarray:
+        if k in fields:
+            return col(k)
+        return np.zeros(len(rows))
+
+    quads = [("ax", "bx", "ax2", "fx"), ("ay", "by", "ay2", "fy")]
     if "aw" in fields:  # 3+1 dump
-        triples.append(("aw", "bw", "aw2"))
-    axes = [col(a) * np.sin(col(b) * half_pi) + col(a2) for a, b, a2 in triples]
+        quads.append(("aw", "bw", "aw2", "fw"))
+    axes = []
+    for a, b, a2, f in quads:
+        av, fv = col(a), phase_col(f)
+        axes.append(av * np.sin(col(b) * half_pi + fv) + col(a2) - av * np.sin(fv))
     cloud = np.column_stack(axes)
     return wrap_unit(cloud) if wrap else cloud
 
@@ -179,9 +189,7 @@ def converged_value(stats: list[TStat]) -> float:
     return float(np.mean([s.sphere_mean for s in tail])) if tail else 0.0
 
 
-def plot_convergence(
-    stats: list[TStat], out: str | Path, labels: bool = False
-) -> Path:
+def plot_convergence(stats: list[TStat], out: str | Path, labels: bool = False) -> Path:
     """Error-barred convergence of the three estimators vs T.
 
     With ``labels`` set, each point is annotated with its value -- staggered per
@@ -204,24 +212,50 @@ def plot_convergence(
     for mean_k, sem_k, color, marker, label, dy in series:
         means = np.array([getattr(s, mean_k) for s in stats])
         sems = np.array([getattr(s, sem_k) for s in stats])
-        ax.errorbar(ts, means, yerr=sems, fmt=marker + "-", color=color,
-                    capsize=3, ms=5, label=label)
+        ax.errorbar(
+            ts,
+            means,
+            yerr=sems,
+            fmt=marker + "-",
+            color=color,
+            capsize=3,
+            ms=5,
+            label=label,
+        )
         if labels:
             for t, m in zip(ts, means):
-                ax.annotate(f"{m:.2f}", (t, m), textcoords="offset points",
-                            xytext=(0, dy), ha="center", fontsize=6, color=color)
+                ax.annotate(
+                    f"{m:.2f}",
+                    (t, m),
+                    textcoords="offset points",
+                    xytext=(0, dy),
+                    ha="center",
+                    fontsize=6,
+                    color=color,
+                )
 
     converged = converged_value(stats)
-    ax.axhline(converged, color="black", ls="--", lw=1.2,
-               label=f"converged D ~ {converged:.2f}")
+    ax.axhline(
+        converged,
+        color="black",
+        ls="--",
+        lw=1.2,
+        label=f"converged D ~ {converged:.2f}",
+    )
     clean_ts = [s.t for s in stats if 2.0 / s.t < FIT_LO / 2.0]
     if clean_ts:
-        ax.axvspan(ts.min() - 2, min(clean_ts), color="red", alpha=0.08,
-                   label="CELL intrudes on fit window")
+        ax.axvspan(
+            ts.min() - 2,
+            min(clean_ts),
+            color="red",
+            alpha=0.08,
+            label="CELL intrudes on fit window",
+        )
     ax.set_xlabel("T (resolution)")
     ax.set_ylabel("dimension")
-    ax.set_title("Turnaround correlation dimension vs resolution "
-                 "(seed-averaged, +/- SEM)")
+    ax.set_title(
+        "Turnaround correlation dimension vs resolution (seed-averaged, +/- SEM)"
+    )
     ax.legend(loc="lower right")
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
