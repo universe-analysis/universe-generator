@@ -73,13 +73,13 @@
     </div>
 
     <div id="sidepanel">
-        <details open>
+        <details>
             <summary>Generation</summary>
             <div class="choices">
                 <label><input type="checkbox" id="smartFreqChk" checked> Smart frequencies (coprime, packs denser)</label>
             </div>
         </details>
-        <details open>
+        <details>
             <summary>View</summary>
             <div class="choices">
                 <span class="group-name">Camera</span>
@@ -98,8 +98,14 @@
             <div class="group-name">Torus offset — slide the map around the loops</div>
             <div class="row"><span>X offset</span><input type="range" id="offXRange" min="-1" max="1" step="0.01" value="0"><span class="val" id="offXVal" style="width:34px">0.00</span></div>
             <div class="row"><span>Y offset</span><input type="range" id="offYRange" min="-1" max="1" step="0.01" value="0"><span class="val" id="offYVal" style="width:34px">0.00</span></div>
+            <div class="choices">
+                <label><input type="checkbox" id="autoXChk"> Auto-drift X</label>
+                <label><input type="checkbox" id="autoYChk"> Auto-drift Y</label>
+            </div>
+            <div class="row"><span>X drift speed</span><input type="range" id="driftXRange" min="0.005" max="0.5" step="0.005" value="0.05"></div>
+            <div class="row"><span>Y drift speed</span><input type="range" id="driftYRange" min="0.005" max="0.5" step="0.005" value="0.05"></div>
         </details>
-        <details open>
+        <details>
             <summary>Coloring</summary>
             <div class="choices">
                 <span class="group-name">Paint</span>
@@ -114,7 +120,7 @@
                 <label><input type="checkbox" id="localChk" checked> Local (comoving) geometry</label>
             </div>
         </details>
-        <details open>
+        <details>
             <summary>Light cones</summary>
             <div class="choices">
                 <label><input type="checkbox" id="coneChk" checked> Show light cones</label>
@@ -177,7 +183,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v8';
+    const VIEWER_VERSION = 'v10';
 
     let functions = [];
     let Z_cache = [];
@@ -775,16 +781,26 @@
     document.getElementById('rRange').addEventListener('input', e=>{ R=parseFloat(e.target.value); U.uR.value=R; rebuildGrid(); });
     document.getElementById('sRange').addEventListener('input', e=>{ S=parseFloat(e.target.value); U.uS.value=S; rebuildGrid(); });
     sizeRange().addEventListener('input', e=>{ U.uSize.value = parseFloat(e.target.value); });
+    function applyOffset(rangeId, valId, uniform, v){
+        v = wrapComov(v);                       // period-2 domain: passing 1 re-enters at -1
+        uniform.value = v;
+        document.getElementById(rangeId).value = v;
+        document.getElementById(valId).textContent = v.toFixed(2);
+    }
     function wireOffset(id, valId, uniform){
         document.getElementById(id).addEventListener('input', e=>{
-            const v = parseFloat(e.target.value);
-            uniform.value = v;
-            document.getElementById(valId).textContent = v.toFixed(2);
+            applyOffset(id, valId, uniform, parseFloat(e.target.value));
             hudDirty = true;
         });
     }
     wireOffset('offXRange', 'offXVal', U.uOffX);
     wireOffset('offYRange', 'offYVal', U.uOffY);
+    let autoOffX = false, autoOffY = false;      // advanced in tick(); speeds in offset units/s
+    let driftX = 0.05, driftY = 0.05;
+    onCheck('autoXChk', v=>{ autoOffX = v; });
+    onCheck('autoYChk', v=>{ autoOffY = v; });
+    document.getElementById('driftXRange').addEventListener('input', e=>{ driftX = parseFloat(e.target.value); });
+    document.getElementById('driftYRange').addEventListener('input', e=>{ driftY = parseFloat(e.target.value); });
 
     /* coloring */
     const paintOrder = ['mono','freq','pec'];
@@ -1034,6 +1050,10 @@
         // dt in units of a 60 Hz frame, so 1× advances 60 grid steps/s on any display
         const dt = (now && lastTick) ? Math.min((now - lastTick)/(1000/60), 4) : 1;
         if (now) lastTick = now;
+        // auto-drift the torus offsets (dt is in 60 Hz frames → speed is units/s)
+        if (autoOffX) applyOffset('offXRange', 'offXVal', U.uOffX, U.uOffX.value + driftX*dt/60);
+        if (autoOffY) applyOffset('offYRange', 'offYVal', U.uOffY, U.uOffY.value + driftY*dt/60);
+        if (autoOffX || autoOffY) hudDirty = true;   // keep the minimap sliding even when paused
         if (playing && showSweep && Z_cache.length > 1){
             const span = Z_cache.length - 1;
             framePos = (framePos + playSpeed*dt) % span;
