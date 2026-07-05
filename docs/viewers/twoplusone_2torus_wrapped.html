@@ -11,6 +11,7 @@
         button:hover { background:#1d2742; }
         button.on { background:#2f6f4f; border-color:#3f9f6f; }
         input[type=number]{ width:64px; background:#0c1018; color:#cdd6e4; border:1px solid #232c40; border-radius:4px; padding:3px 5px; }
+        select { background:#0c1018; color:#cdd6e4; border:1px solid #232c40; border-radius:4px; padding:3px 5px; font-size:12px; }
         input[type=range]{ width:104px; accent-color:#4f7fd0; }
         input[type=checkbox], input[type=radio]{ accent-color:#4f7fd0; margin:0; }
         .sep { width:1px; height:20px; background:#222b40; }
@@ -60,6 +61,12 @@
 <body>
     <div id="topbar">
         <button id="menuBtn">☰ Settings</button>
+        <label>Preset <select id="presetSel">
+            <option value="" selected disabled>Custom…</option>
+            <option value="sweep-speed">Sweep · speed paint</option>
+            <option value="cloud-freq-log">Cloud · frequency (log)</option>
+            <option value="minimal">Minimal</option>
+        </select></label>
         <span class="sep"></span>
         <label>Time-steps <input type="number" id="timeInput" value="180" min="2"></label>
         <label>Gen time <input type="range" id="genTimeRange" min="1" max="120" step="1" value="10"><span id="genTimeVal" style="width:32px;display:inline-block;color:#9fb0d0">10s</span></label>
@@ -183,7 +190,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v10';
+    const VIEWER_VERSION = 'v11';
 
     let functions = [];
     let Z_cache = [];
@@ -481,8 +488,14 @@
             if(uMode==0){ vColor = vec3(0.78,0.85,1.0); }
             else if(uMode==1){
                 // frequency sum bx+by over its attainable range [4, uFreqMax]:
-                // hot (red) = slow low-frequency paths, cold (blue) = high
-                float t = clamp((aFreq.x + aFreq.y - 4.0) / max(1.0, uFreqMax - 4.0), 0.0, 1.0);
+                // hot (red) = slow low-frequency paths, cold (blue) = high.
+                // Log colour scale on = log-compressed ramp: only the lowest
+                // few sums stay red, the upper half is nearly one blue.
+                float fsum = aFreq.x + aFreq.y - 4.0;
+                float span = max(1.0, uFreqMax - 4.0);
+                float t = (uLog==1) ? log(1.0 + fsum) / log(1.0 + span)
+                                    : fsum / span;
+                t = clamp(t, 0.0, 1.0);
                 vColor = (t < 0.5) ? mix(vec3(1.0,0.10,0.04), vec3(1.0,0.96,0.90), t*2.0)
                                    : mix(vec3(1.0,0.96,0.90), vec3(0.10,0.35,1.0), t*2.0-1.0);
             }
@@ -812,6 +825,42 @@
     onCheck('logChk',   v=>{ logColor = v; U.uLog.value = v?1:0; hudDirty = true; });
     onCheck('localChk', v=>{ geoLocal = v; U.uGeoLocal.value = v?1:0; hudDirty = true; });
 
+    /* ---- presets (stub) — named bundles of control values, applied through
+       the normal handlers so uniforms/state stay in sync. Tune or extend the
+       PRESETS table; radios are keyed by group name, checks/ranges by id.
+       Manual tweaks after applying one do NOT reset the dropdown to Custom. */
+    const PRESETS = {
+        'sweep-speed': {          // present slice painted by peculiar speed
+            radios: { paintMode:'pec', normMode:'per', viewMode:'ortho' },
+            checks: { sweepChk:true, cloudChk:false, logChk:true, localChk:true, coneChk:true }
+        },
+        'cloud-freq-log': {       // all-times cloud painted by frequency, log ramp
+            radios: { paintMode:'freq', viewMode:'persp' },
+            checks: { sweepChk:false, cloudChk:true, logChk:true, gridChk:true, coneChk:false }
+        },
+        'minimal': {              // clean sweep — no cones, grid or cloud
+            radios: { paintMode:'mono' },
+            checks: { sweepChk:true, cloudChk:false, gridChk:false, coneChk:false }
+        }
+    };
+    function applyPreset(name){
+        const p = PRESETS[name];
+        if (!p) return;
+        for (const [group, val] of Object.entries(p.radios || {})){
+            const el = document.querySelector('input[name="'+group+'"][value="'+val+'"]');
+            if (el && !el.checked){ el.checked = true; el.dispatchEvent(new Event('change')); }
+        }
+        for (const [id, val] of Object.entries(p.checks || {})){
+            const el = document.getElementById(id);
+            if (el && el.checked !== val){ el.checked = val; el.dispatchEvent(new Event('change')); }
+        }
+        for (const [id, val] of Object.entries(p.ranges || {})){
+            const el = document.getElementById(id);
+            if (el){ el.value = val; el.dispatchEvent(new Event('input')); }
+        }
+    }
+    document.getElementById('presetSel').addEventListener('change', e=>applyPreset(e.target.value));
+
     /* light cones */
     onCheck('coneChk', v=>{ showCones = v; U.uConeOn.value = v?1:0; if (cones) cones.visible = v; hudDirty = true; });
     onCheck('coneFoldChk', v=>{ U.uConeFold.value = v?1:0; });   // bounce/refocus at the antipode
@@ -906,7 +955,10 @@
     }
     function sliceColor(f,p,z,zN){                 // matches the GPU paint modes
         if(paintMode==='mono') return [0.78,0.85,1.0];
-        if(paintMode==='freq') return hotCold((f.bx+f.by-4)/Math.max(1,freqMax-4));
+        if(paintMode==='freq'){
+            const fsum = f.bx+f.by-4, span = Math.max(1, freqMax-4);
+            return hotCold(logColor ? Math.log(1+fsum)/Math.log(1+span) : fsum/span);
+        }
         if(!instPec) return [0.78,0.85,1.0];       // speed ranges not baked yet (mid-generation)
         const s=Math.sin(z), sN=Math.sin(zN);
 		
