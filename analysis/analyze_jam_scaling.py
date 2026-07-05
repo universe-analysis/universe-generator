@@ -38,6 +38,11 @@ DATASETS = [
     # script runs before/while the torus campaigns collect.
     ("3+1  torus 1e-6", "data/torus/run3d_e6.db", 3, "tab:red"),
     ("2+1  torus 1e-7", "data/torus/run2d.db", 2, "tab:purple"),
+    # Phase schema (engine --phase) on the torus model, plus the 1e-6 no-phase
+    # 2+1 baseline it is compared against (one-knob: phase on/off at the same
+    # cutoff). The 3+1 phase dataset joins this list when its campaign lands.
+    ("2+1  torus 1e-6", "data/torus/run2d_e6.db", 2, "tab:olive"),
+    ("2+1  torus+phase 1e-6", "data/torus/run2d_phase_e6.db", 2, "tab:cyan"),
 ]
 BAND = "nyq"
 HIGH_T = 100  # high-T half cut for the robustness fit
