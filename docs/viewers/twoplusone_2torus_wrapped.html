@@ -72,6 +72,8 @@
         <label>Gen time <input type="range" id="genTimeRange" min="1" max="120" step="1" value="10"><span id="genTimeVal" style="width:32px;display:inline-block;color:#9fb0d0">10s</span></label>
         <button id="generateBtn">Generate</button>
         <button id="abortBtn">Abort</button>
+        <input type="file" id="importInput" accept=".csv,text/csv" hidden>
+        <button id="importBtn" title="Load a CUDA --dump-params CSV">Import CSV</button>
         <span class="sep"></span>
         <button id="playBtn" class="on">Play ▶</button>
         <label>Speed <input type="range" id="speedRange" min="0.05" max="5" step="0.05" value="1"><span id="speedVal" style="width:34px;display:inline-block;color:#9fb0d0">1.0×</span></label>
@@ -190,12 +192,17 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v11';
+    const VIEWER_VERSION = 'v12';
 
     let functions = [];
     let Z_cache = [];
     let time_steps, modulation_Max, freqMax = 4, groupIDcount = 0, abort_gen = false;
     let genBudgetMs = 10000, genStart = 0, consecFails = 0, lastLiveUpload = 0;
+    // Generation epoch: every Generate (or Import) bumps this, and any
+    // make_groups round or finalize callback from an older epoch bails out.
+    // Without it, an import mid-generation would still get its status line and
+    // GPU buffers overwritten by the dying run's already-scheduled timeout.
+    let genEpoch = 0;
     const maxAttemptsPerFunction = 50;
 
 
@@ -330,7 +337,8 @@
     // saturates (500 consecutive collision failures), or Abort is pressed.
     // Partial results are uploaded to the GPU every ~0.8 s so the torus fills
     // in live while packing continues.
-    function make_groups() {
+    function make_groups(epoch) {
+        if (epoch !== genEpoch) return;                      // superseded by a newer Generate/Import
         const t0 = performance.now();
         while (!abort_gen && !saturated && performance.now() - genStart < genBudgetMs) {
             const nf = generateFunction();
@@ -346,11 +354,12 @@
                 lastLiveUpload = performance.now();
                 buildBuffers(); rebuildGPU(); hudDirty = true;
             }
-            setTimeout(make_groups, 0);
+            setTimeout(() => make_groups(epoch), 0);
         } else {
             const note = saturated ? ' (space saturated)' : '';
             statusEl.textContent = `Generated ${functions.length} paths${note} — uploading…`;
             setTimeout(() => {
+                if (epoch !== genEpoch) return;              // superseded while uploading
                 buildBuffers(); rebuildGPU();
                 // free the packing hash — the page's only O(N·T) storage; it is
                 // only needed while inserting, and Generate rebuilds it anyway
@@ -360,6 +369,87 @@
                 statusEl.textContent = `${functions.length} paths${note} · ${time_steps} steps · ${cloudPts.toLocaleString()} cloud points`;
             }, 0);
         }
+    }
+
+    /* ---- CSV import: load a CUDA engine --dump-params file ----
+       The packing engines dump accepted worldline PARAMETERS (one CSV row per
+       path), which is everything the renderer needs — positions are analytic.
+       Header is ax,ay,bx,by,ax2,ay2[,fx,fy]; older dumps lack the phase
+       columns (they read as 0). The time-step count is not in the file: it is
+       parsed from the braidlab _T###_ filename token, falling back to the
+       Time-steps input box. pecMin/pecMax are recomputed here with the same
+       comovingTraj pass the generator uses at acceptance. */
+    function tFromFilename(name) {
+        const m = name.match(/_T(\d+)_/);
+        return m ? parseInt(m[1]) : null;
+    }
+    function parseDumpCSV(text) {
+        const lines = text.split(/\r?\n/).map(s => s.trim()).filter(s => s.length);
+        if (lines.length < 2) throw new Error('no data rows');
+        const cols = lines[0].split(',').map(s => s.trim());
+        if (cols.includes('aw')) throw new Error('3+1 dump — not supported in this viewer');
+        const required = ['ax', 'ay', 'bx', 'by', 'ax2', 'ay2'];
+        for (const c of required) {
+            if (!cols.includes(c)) throw new Error(`missing column "${c}" — not an engine dump?`);
+        }
+        const idx = {};
+        cols.forEach((c, i) => { idx[c] = i; });
+        const hasPhase = 'fx' in idx && 'fy' in idx;
+        const rows = [];
+        let skipped = 0;
+        for (let li = 1; li < lines.length; li++) {
+            const parts = lines[li].split(',');
+            const row = {
+                ax:  parseFloat(parts[idx.ax]),  ay:  parseFloat(parts[idx.ay]),
+                bx:  parseFloat(parts[idx.bx]),  by:  parseFloat(parts[idx.by]),
+                ax2: parseFloat(parts[idx.ax2]), ay2: parseFloat(parts[idx.ay2]),
+                fx:  hasPhase ? parseFloat(parts[idx.fx]) : 0,
+                fy:  hasPhase ? parseFloat(parts[idx.fy]) : 0
+            };
+            const bad = Object.values(row).some(v => Number.isNaN(v));
+            if (bad) { skipped++; continue; }
+            rows.push(row);
+        }
+        if (!rows.length) throw new Error('no valid rows');
+        return { rows, skipped };
+    }
+    function applyImportedDump(rows, skipped, name) {
+        genEpoch++; abort_gen = true;                 // kill any in-flight generation
+        saturated = false; consecFails = 0; framePos = 0; groupIDcount = 0;
+        const tFile = tFromFilename(name);
+        time_steps = tFile || parseInt(timeInput.value);
+        if (tFile) timeInput.value = tFile;           // keep the UI honest
+        bakeZValues();                                // no resetGrid(): the collision
+        gridByT = [];                                 // hash is packing-only
+        functions = [];
+        freqMax = 4;
+        for (const r of rows) {
+            const traj = comovingTraj(r.ax, r.ay, r.bx, r.by, r.ax2, r.ay2, r.fx, r.fy);
+            functions.push({ ax: r.ax, ay: r.ay, bx: r.bx, by: r.by,
+                             ax2: r.ax2, ay2: r.ay2, fx: r.fx, fy: r.fy,
+                             pecMin: traj.pecMin, pecMax: traj.pecMax,
+                             groupID: groupIDcount++ });
+            if (r.bx + r.by > freqMax) freqMax = r.bx + r.by;
+        }
+        // frequency paint spans the data actually loaded, not the generator's
+        // drawing range; modulation_Max only matters if Generate runs later
+        modulation_Max = Math.max(2, Math.floor(time_steps / 2));
+        U.uFreqMax.value = freqMax;
+        buildBuffers(); rebuildGPU(); hudDirty = true;
+        const cloudPts = functions.length * cloudSamples(Z_cache.length).count;
+        const tSrc = tFile ? 'T from filename' : 'T from Time-steps box';
+        const skipNote = skipped ? ` · ${skipped} rows skipped` : '';
+        statusEl.textContent = `Imported ${functions.length} paths · ${time_steps} steps (${tSrc}) · `
+                             + `${cloudPts.toLocaleString()} cloud points${skipNote} — ${name}`;
+    }
+    function importDumpFile(file) {
+        statusEl.textContent = `Importing ${file.name}…`;
+        file.text().then(text => {
+            const parsed = parseDumpCSV(text);        // parse fully BEFORE touching
+            applyImportedDump(parsed.rows, parsed.skipped, file.name);  // any global state
+        }).catch(err => {
+            statusEl.textContent = `Import failed: ${err.message}`;
+        });
     }
 
     /* ================================================================
@@ -750,6 +840,7 @@
     }
 
     document.getElementById('generateBtn').addEventListener('click', () => {
+        genEpoch++;                                   // invalidate older runs/imports
         abort_gen = false; saturated = false; groupIDcount = 0; framePos = 0;
         consecFails = 0;
         time_steps = parseInt(timeInput.value);
@@ -762,9 +853,15 @@
         genBudgetMs = parseFloat(genTimeRange.value) * 1000;
         genStart = performance.now(); lastLiveUpload = genStart;
         bakeZValues(); resetGrid();
-        make_groups();
+        make_groups(genEpoch);
     });
     document.getElementById('abortBtn').addEventListener('click', () => abort_gen = true);
+    const importInput = document.getElementById('importInput');
+    document.getElementById('importBtn').addEventListener('click', () => importInput.click());
+    importInput.addEventListener('change', () => {
+        if (importInput.files.length) importDumpFile(importInput.files[0]);
+        importInput.value = '';                       // allow re-picking the same file
+    });
     genTimeRange.addEventListener('input', e=>{
         document.getElementById('genTimeVal').textContent = e.target.value + 's';
     });
