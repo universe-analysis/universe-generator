@@ -71,11 +71,11 @@ def _mean_sem(values: list[float]) -> tuple[float, float]:
     return float(arr.mean()), sem
 
 
-def control_check() -> None:
-    """Uniform D=3 cloud: periodic must return ~3.0 for both probes, gap ~0."""
+def control_check(dim: int) -> None:
+    """Uniform cloud at the ambient dim: periodic must return it exactly."""
     rng = np.random.default_rng(0)
-    u = rng.uniform(-1.0, 1.0, size=(60000, 3))
-    print("control -- uniform cloud (true D=3):")
+    u = rng.uniform(-1.0, 1.0, size=(60000, dim))
+    print(f"control -- uniform cloud (true D={dim}):")
     for p, name in [(2.0, "sphere"), (np.inf, "cube  ")]:
         npv = corr_dimension(u, 200, p, periodic=False)
         pv = corr_dimension(u, 200, p, periodic=True)
@@ -87,6 +87,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dumps", default="data/corrdim/dumps")
     parser.add_argument("--seeds", type=int, default=5)
+    parser.add_argument("--dim", type=int, default=3, choices=(2, 3))
+    parser.add_argument(
+        "--suffix",
+        default="",
+        help="filename suffix before .csv (e.g. _tor_ph_e6) -- REQUIRED to pick "
+        "one variant when campaigns share a dumps dir; suffix-anchored, so "
+        "_tor_e6 does not match _tor_ph_e6 files",
+    )
     parser.add_argument(
         "--torus",
         action="store_true",
@@ -103,10 +111,11 @@ def main() -> None:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    control_check()
+    control_check(args.dim)
 
     by_t: dict[int, list[str]] = {}
-    for path in sorted(glob.glob(f"{args.dumps}/d3_nyq_T*_s*.csv")):
+    pattern = f"{args.dumps}/d{args.dim}_nyq_T*_s*{args.suffix}.csv"
+    for path in sorted(glob.glob(pattern)):
         m = _NAME_RE.search(Path(path).name)
         if m:
             by_t.setdefault(int(m["t"]), []).append(path)
@@ -129,8 +138,10 @@ def main() -> None:
             m, s = _mean_sem(runs[k])
             mean[k].append(m)
             sem[k].append(s)
-        print(f"{t:>4} {mean['per_sphere'][-1]:>11.3f} "
-              f"{mean['per_cube'][-1]:>10.3f} {mean['nonper_sphere'][-1]:>14.3f}")
+        print(
+            f"{t:>4} {mean['per_sphere'][-1]:>11.3f} "
+            f"{mean['per_cube'][-1]:>10.3f} {mean['nonper_sphere'][-1]:>14.3f}"
+        )
 
     style = {
         "per_sphere": ("tab:green", "o-", "periodic D2 (sphere)"),
@@ -140,16 +151,32 @@ def main() -> None:
     fig, ax = plt.subplots(figsize=(13, 6.5))
     for k in keys:
         color, fmt, label = style[k]
-        ax.errorbar(ts, mean[k], yerr=sem[k], fmt=fmt, color=color, ms=4,
-                    capsize=3, label=label)
+        ax.errorbar(
+            ts, mean[k], yerr=sem[k], fmt=fmt, color=color, ms=4, capsize=3, label=label
+        )
         for t, v in zip(ts, mean[k]):
-            ax.annotate(f"{v:.2f}", (t, v), textcoords="offset points",
-                        xytext=(0, 8), ha="center", fontsize=6, color=color)
-    ax.axhline(3.0, color="black", ls="--", lw=1, label="space-filling D = 3")
+            ax.annotate(
+                f"{v:.2f}",
+                (t, v),
+                textcoords="offset points",
+                xytext=(0, 8),
+                ha="center",
+                fontsize=6,
+                color=color,
+            )
+    ax.axhline(
+        float(args.dim),
+        color="black",
+        ls="--",
+        lw=1,
+        label=f"space-filling D = {args.dim}",
+    )
     ax.set_xlabel("T (resolution)")
     ax.set_ylabel("correlation dimension D2")
     model = "torus model" if args.torus else "hard-wall packing"
-    ax.set_title(f"Periodic (wrapped) correlation dimension vs T (3+1, {model})")
+    ax.set_title(
+        f"Periodic (wrapped) correlation dimension vs T ({args.dim}+1, {model})"
+    )
     ax.legend(loc="lower right", fontsize=9)
     ax.grid(True, alpha=0.3)
     fig.text(
