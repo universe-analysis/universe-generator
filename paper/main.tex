@@ -12,9 +12,9 @@
 \newcommand{\Nsat}{N_{\mathrm{sat}}}
 \newcommand{\CELL}{\mathrm{CELL}}
 
-\title{Random sequential packing of sinusoidal worldlines on a closed
-conformal loop:\\ jam-count exponents, emergent homogeneity, and the
-phase-blindness of the packed state}
+\title{A packing model of a closed universe:\\
+random sequential adsorption of unit-rapidity worldlines\\
+on a comoving torus}
 
 \author{Chris Bentley \and Kevin Bentley}
 \date{July 6, 2026}
@@ -23,425 +23,407 @@ phase-blindness of the packed state}
 \maketitle
 
 \begin{abstract}
-We study a random sequential adsorption (RSA) problem in which the packed
-objects are extended worldlines threaded through a closed conformally-expanding
-loop: per spatial axis, $x(z) = a\sin(bz) + a_2\sin(z)$ with integer frequency
-$b$ and a unit slope budget (a ``speed of light''), packed to a jamming cutoff
-under a mutual exclusion rule enforced at every timestep. The jammed count
-grows as a clean power law $\Nsat \sim T^{D}$ in the time resolution $T$, with
-$D$ well below the spatial dimension $d$: on the periodic (torus) form of the
-model we measure $D = 2.33$ in $d=3$ and $1.38$--$1.42$ in $d=2$. We show that
-this exponent is a genuine \emph{packing-number} exponent rather than the
-geometric dimension of any static configuration: the equal-time slices of the
-jam are \emph{exactly} space-filling and homogeneous (wrapped correlation
-dimension $D_2 = 3.00$ in $d=3$ and $2.00$ in $d=2$; rms comoving spread flat
-at $\sqrt{1/3}$ over the entire loop), and box-counting the full worldline
-bundle sweeps from $1$ to $d{+}1$ with no plateau at $D$. An earlier apparent
-fractal dimension $D_2 \approx 2.79$ in the hard-wall form of the model is
-traced quantitatively to a boundary artifact of the correlation estimator.
-Finally, we extend the model with a free phase on even-frequency components ---
-a deformation that specifically removes the kinematic reason the packing
-prefers odd frequencies --- and find the packed state \emph{structurally
-blind} to it: the exponents, slice geometry, and even/odd composition of the
-jam are unchanged, with only the jam density rising (${+}2.8\%$ in $d=2$,
-${+}6.9\%$ in $d=3$). The nontrivial content of the model appears to reside
-entirely in the whole-loop exclusion constraint.
+We define and study a model universe built from nothing but mutually avoiding
+worldlines. Each worldline is a closed path over a conformal time loop
+$z \in (0,\pi)$, expressed per spatial axis as a sinusoidal expansion whose
+non-trivial frequency components jointly obey a unit \emph{rapidity}
+constraint $\sum_{k \ge 2} |k\,a_k| = 1$ (a built-in speed of light), while
+the frequency-1 amplitude is a free comoving coordinate --- a separation that
+makes homogeneity a property of the measure rather than an assumption.
+Comoving space is a torus: a path leaving through one face re-enters through
+the opposite one, so there is no boundary and no statable center. Even
+frequencies carry a free phase; odd frequencies are shown to already possess
+their full phase freedom. Packing these worldlines by random sequential
+adsorption under an everywhere-in-time exclusion rule produces a jam whose
+count grows as a clean power law $\Nsat \sim T^{D}$ in the time resolution
+$T$, with $D = 2.33$ in three spatial dimensions and $1.38$--$1.40$ in two
+--- strictly below the spatial dimension, yet demonstrably not the fractal
+dimension of any static set: the equal-time slices of the jam are
+\emph{exactly} uniform (wrapped correlation dimension $3.01$ and $2.03$; rms
+comoving spread flat at $\sqrt{1/3}$ over the entire loop), and the worldline
+bundle's local dimension sweeps from $1$ to $d$ with no plateau at $D$. The
+model makes a parameter-free kinematic prediction: mover velocities at
+maximum expansion should follow the arcsine law $P(v) = 2/\pi\sqrt{1-v^2}$,
+diverging integrably at the speed cap. The packed state inherits the law's
+shape --- including the relativistic pile-up at $v \to 1$ --- but with a
+measurable tilt toward slow movers ($\langle v^2\rangle = 0.40$ vs the
+proposal's $0.50$): jamming \emph{selects on phase}. The resulting equation
+of state at the turnaround is matter-like, $w = 0.070$, flat across the
+entire resolution ladder and identical under two independent energy
+dictionaries. We close with the geometry of what remains unexplored ---
+multi-frequency worldlines, intersecting ``unique groups'' and their
+subpaths --- and with a discussion of whether the jam supports a
+strange-attractor reading.
 \end{abstract}
 
 \section{Introduction}
 
-Random sequential adsorption --- irreversible random placement of mutually
-excluding objects, run to jamming --- is a classical subject with exact results
-in one dimension \cite{renyi} and a large literature on jamming densities and
-kinetics for compact objects such as disks, spheres, and aligned squares
-\cite{evans,torquato}. The objects packed here are not compact: they are
-\emph{worldlines}, one-dimensional trajectories threaded through a closed
-``expanding then contracting'' loop, which must avoid every other accepted
-worldline at \emph{every} time slice simultaneously. Each trajectory is a
-two-term sinusoid per spatial axis, with an integer frequency and a slope
-constraint playing the role of a speed limit.
+Most model universes start from fields on a background. This one starts from
+\emph{paths}. The only objects in the model are worldlines --- closed
+trajectories through a finite expanding-and-contracting spacetime --- and the
+only law is that they may not intersect. ``Matter'' is whatever set of
+worldlines survives being packed, one at a time and at random, until nothing
+more fits. The questions one can ask of such a universe are correspondingly
+concrete. How much fits? What does the surviving population look like ---
+where is it, how fast does it move, what microscopic traits did the packing
+select for? And do any of the answers resemble physics?
 
-The construction is motivated by a toy cosmology --- the loop coordinate $z$ is
-conformal time on a closed universe with scale factor $a(z) = \sin z$, and the
-packed worldlines are ``matter'' --- but the questions we ask of it are
-combinatorial and geometric, and we present it here as a packing problem:
+The packing problem itself belongs to a classical family: random sequential
+adsorption (RSA), the irreversible random placement of mutually excluding
+objects, exactly solvable in one dimension \cite{renyi} and much studied
+since for compact shapes \cite{evans,torquato}. Our objects are not compact.
+A worldline must avoid every other accepted worldline at \emph{every} moment
+of the loop simultaneously, so the excluded volume seen by a candidate is a
+joint, global object --- and this, it will turn out, is where all of the
+model's nontrivial structure lives.
 
-\begin{enumerate}
-  \item How does the jammed count $\Nsat$ grow with the time resolution $T$
-        (equivalently, with the inverse exclusion size)? Is the growth exponent
-        $D$ equal to the spatial dimension $d$, or sub-dimensional?
-  \item Is $D$ the fractal dimension of anything --- a slice, or the worldline
-        bundle --- or is it a packing-number exponent with no geometric
-        carrier?
-  \item Which microscopic degrees of freedom does the jam actually care about?
-        In particular, the integer frequencies carry a parity structure (odd
-        frequencies are at rest at the loop's turnaround, even ones are not),
-        and one can ask whether the packing selects on it for kinematic or for
-        global-geometric reasons.
-\end{enumerate}
+This paper does three things. First, it defines the model carefully
+(Section~\ref{sec:model}): the worldline family, the rapidity constraint that
+plays the role of a speed of light, the toroidal comoving space that removes
+any preferred center, the phase freedom of even frequencies, and the
+intersection rules --- including the notions of \emph{unique groups} and
+\emph{subpaths}, which define how the model is meant to be filled beyond the
+sector explored here. Second, it reports what has been measured in the first
+explored sector --- worldlines with a single wiggle frequency per axis, one
+path per group --- packed at scale on GPU hardware
+(Sections~\ref{sec:method}--\ref{sec:kinematics}): the growth exponent of the
+jam, the exact homogeneity of its slices, the absence of a geometric carrier
+for the exponent, the parity structure of the surviving frequencies, an
+arcsine velocity law with a measured deviation that quantifies how jamming
+selects on phase, and a resolution-independent, dictionary-robust equation of
+state. Third, it discusses what the results do and do not license one to
+conclude --- including the question of whether the jam is usefully described
+as a strange attractor --- and lays out the unexplored territory
+(Section~\ref{sec:disc}).
 
-Our answers, in brief: the growth is a clean power law with $D$ substantially
-below $d$ (Section~\ref{sec:count}); $D$ is \emph{not} a geometric dimension
---- on the periodic form of the model the equal-time slices are exactly
-space-filling and statistically identical at every conformal time, and the
-bundle's box-counting dimension has no plateau at $D$
-(Sections~\ref{sec:homog}--\ref{sec:notgeom}); and the parity structure of the
-jam turns out to be completely insensitive to a deformation (free phases) that
-removes its kinematic explanation, forcing a whole-loop-geometric one
-(Section~\ref{sec:phases}). Along the way we document a boundary artifact of
-the standard correlation-dimension estimator that produced a convincing---and
-wrong---fractal dimension $2.79$ on early versions of the model
-(Section~\ref{sec:artifact}); we include it because the diagnosis (probe-shape
-splitting of $D_2$ as an edge effect) seems useful beyond this model.
-
-All data, code (CUDA engines, orchestration, analysis), and a dated lab
-notebook from which this account is assembled are public.\footnote{%
-\url{https://github.com/universe-analysis/universe-generator}; the lab notes
-are published under \texttt{docs/lab-notes/}.}
+We have tried to keep the presentation self-contained and readable rather
+than maximally terse; where a derivation is short we give it, and where a
+claim is speculative we say so. All code (packing engines, orchestration,
+analysis), all data, and a dated lab notebook are public.\footnote{%
+\url{https://github.com/universe-analysis/universe-generator}.}
 
 \section{The model}
 \label{sec:model}
 
-\subsection{Worldlines}
+\subsection{Worldlines as constrained sinusoidal expansions}
+\label{sec:worldlines}
 
-Time is a coordinate $z \in (0,\pi)$; the scale factor is $a(z)=\sin z$, so
-the loop expands from a ``bang'' at $z=0$ to a turnaround at $z=\pi/2$ and
-recontracts to a ``crunch'' at $z=\pi$. A worldline has one component per
-spatial axis,
+Time is a coordinate $z \in (0,\pi)$, and the universe carries a scale factor
+$a(z) = \sin z$: it expands from a bang at $z = 0$ to a maximum at the
+turnaround $z = \pi/2$ and recontracts to a crunch at $z = \pi$. Along each
+spatial axis, a worldline is a superposition of integer-frequency sine terms,
 \begin{equation}
-  x(z) \;=\; a\,\sin(bz) \;+\; a_2 \sin z, \qquad b \in \mathbb{Z}_{\ge 2},
-  \label{eq:worldline}
+  x(z) \;=\; a_1 \sin z \;+\; \sum_{k \ge 2} a_k
+  \bigl[\sin(kz + f_k) - \sin f_k\bigr],
+  \qquad k \in \mathbb{Z},
+  \label{eq:general}
 \end{equation}
-with independent parameters per axis ($d=2$ or $3$ axes; we call these the
-$2{+}1$ and $3{+}1$ models). Both terms vanish at $z=0,\pi$: every worldline
-meets the bang and the crunch. Positions are compared in \emph{comoving}
-coordinates $X = x/\sin z$, in which the $a_2$ term is simply a constant
-offset,
-\begin{equation}
-  X(z) \;=\; a\,\frac{\sin(bz)}{\sin z} \;+\; a_2 .
-\end{equation}
+subject to three structural rules.
 
-Two forms of the amplitude constraint are studied:
+\paragraph{Closure.} The path must begin and end at zero: every worldline
+meets the bang and the crunch. The subtracted constants $\sin f_k$ in
+Eq.~\eqref{eq:general} enforce this in the presence of phases --- each
+component is re-pinned to zero at the endpoints. Closure is also why phases
+are restricted as they are below.
+
+\paragraph{The rapidity constraint.} All frequency components except $k=1$
+jointly obey
+\begin{equation}
+  \sum_{k \ge 2} |k\, a_k| \;=\; 1 .
+  \label{eq:rapidity}
+\end{equation}
+Since each term contributes at most $|k a_k|$ to $|dx/dz|$, this is a unit
+speed budget --- a speed of light built into the family rather than imposed
+on it. A worldline with $0.5\sin 2z$ spends its whole budget
+($0.5 \times 2 = 1$); one with $\tfrac{1}{5}\sin 3z + \tfrac{1}{5}\sin 2z$
+spends $\tfrac{3}{5} + \tfrac{2}{5} = 1$ likewise. The amplitudes of all
+non-trivial components are thus dependent on one another: speed spent on one
+frequency is unavailable to the rest.
+
+\paragraph{The free comoving coordinate.} The $k=1$ amplitude is exempt from
+the budget and drawn freely, $a_1 \in (-1,1)$. This term has a special
+meaning: in \emph{comoving} coordinates $X = x/\sin z$ it is simply the
+constant $a_1$ --- a static comoving position, the Hubble flow. Separating it
+from the rapidity constraint is what erases the preferred center: position
+costs nothing, so a uniform draw of $a_1$ is exactly the homogeneous measure,
+and nothing in the dynamics couples where a worldline sits to how fast it may
+move. (Section~\ref{sec:homog} shows the packing preserves this
+homogeneity exactly.)
+
+\paragraph{Phases.} Even frequencies may be freely modulated by a constant
+phase $f_k \in [0,\pi)$. Odd frequencies carry no explicit phase --- and need
+none: for odd $k$, a sign flip of the amplitude is exactly a phase shift by
+$\pi$ ($\sin(kz + \pi) = -\sin kz$ and the closure offset transforms
+consistently), and this is the entire phase freedom compatible with closure,
+since $\sin(k\pi + f) = \pm \sin f$ cancels the re-pinning constant only when
+$k$ is even. Odd components are, in this sense, already modulated to the
+highest allowable degree; even components acquire a genuinely new continuous
+degree of freedom. This asymmetry between the parities threads through
+everything that follows.
+
+The frequencies $k$ range over all positive integers in the abstract model.
+Under discrete analysis (Section~\ref{sec:discrete}) the timestep resolution
+imposes a Nyquist ceiling, which is the only place a frequency cutoff enters.
+
+\subsection{Comoving space is a torus}
+\label{sec:torus}
+
+The bounds of the universe along each axis are the curves $\pm\sin z$ --- the
+envelope traced by the extremal $k = 1$ worldlines. A path that crosses
+$+\sin z$ does not end or reflect: it re-enters at $-\sin z$ moving toward
+the center it just left. In comoving coordinates this is the statement that
+$X$ lives on a circle of circumference 2, with $X = +1$ and $X = -1$ the
+same point; with $d$ spatial axes, comoving space is a $d$-torus. Distances
+(and hence intersections) are computed in the minimum image. Two structures
+that a bounded model would possess are thereby not removed but rendered
+\emph{unstatable}: there is no wall, and no point is distinguishable as a
+center.
+
+\subsection{The spacetime view}
+
+A full worldline in $d{+}1$ dimensions is the parametric curve
+\begin{equation*}
+  \bigl(x_1(z),\, \ldots,\, x_d(z),\, z\bigr), \qquad z \in (0,\pi),
+\end{equation*}
+with an independent expansion~\eqref{eq:general} per axis: a $d$-dimensional
+path unfolding over time. All results in this paper are for $d = 2$ and
+$d = 3$ (``$2{+}1$'' and ``$3{+}1$''). It is worth noting what the family
+\eqref{eq:general} is, seen whole: since every closed path with bounded
+velocity admits a sine expansion, the model with all frequencies admitted is
+(a discretization of) the space of \emph{all} closed unit-rapidity paths on
+the loop --- the single-frequency sector studied below is its first, sparsest
+slice.
+
+\subsection{Intersections, unique groups, and subpaths}
+\label{sec:groups}
+
+Two worldlines \emph{intersect} if they come within the exclusion distance of
+each other (made precise in Section~\ref{sec:discrete}) at any moment of the
+loop. The organizing notion of the model is the \emph{unique group}: a set of
+paths that each intersect at least one other member of their own group and
+never intersect any path of another group. A unique group with several member
+paths is one object that exists in several places at once; a group with a
+single path is the degenerate case.
+
+The intended construction of a full universe proceeds in two stages. First,
+fill the loop with mutually non-intersecting paths --- every group a
+singleton --- until jamming (or any chosen earlier stopping point). Second,
+continue filling by adding \emph{subpaths}: new paths that intersect a member
+of an existing group (thereby joining it) while still avoiding all other
+groups. The first stage is a hard-sphere-like packing problem; the second
+redistributes the remaining room among the existing identities rather than
+creating new ones.
+
+Everything measured in this paper concerns the first stage. Subpaths, and
+worldlines carrying more than one budget frequency, are defined by the model
+but not yet explored; we return to what questions they open in
+Section~\ref{sec:disc}, and we deliberately draw no conclusions about them
+here.
+
+\subsection{Discrete analysis: timesteps, Nyquist, exclusion}
+\label{sec:discrete}
+
+Analysis proceeds at a chosen \emph{resolution} $T$: the loop is sampled at
+$T$ evenly spaced interior times $z_i = i\pi/(T{+}1)$, $i = 1,\ldots,T$. The
+resolution fixes everything else:
 \begin{itemize}
-  \item \textbf{Hard-wall (original) model.} A joint slope budget
-        $|ab| + |a_2| = 1$ per axis --- the ``speed of light'' constraint ---
-        which also confines $|X| \le 1$: comoving space is a box with hard
-        walls. The budget couples position to speed: a worldline sitting far
-        from the origin (large $|a_2|$) is necessarily slow (small $|ab|$).
-  \item \textbf{Torus model.} The budget binds the wiggle term alone,
-        $|ab| = 1$, and $a_2$ is drawn uniformly on $(-1,1)$ as a free
-        comoving offset. In comoving coordinates a uniform $a_2$ is exactly
-        the homogeneous measure. Since a full-budget wiggle plus a free offset
-        excurses past $|X|=1$, the domain is closed into a period-2 torus:
-        positions wrap, exclusion uses the minimum image, and there is no
-        wall and no preferred center --- these structures become
-        \emph{unstatable} rather than being removed by hand.
+  \item \textbf{Nyquist ceiling.} Frequencies are admitted up to $k \le T$
+        --- beyond that a component cannot be resolved by the grid.
+  \item \textbf{Exclusion.} Each path carries an exclusion radius of $1/T$
+        in comoving coordinates (Chebyshev metric, minimum-image on the
+        torus): two paths intersect if at any sampled time their comoving
+        separation is below $2/T$ per axis. The exclusion cell shrinks
+        exactly as the resolution grows, so ``how much fits at resolution
+        $T$'' is a well-posed scaling question.
 \end{itemize}
+Packing is random sequential adsorption: candidates are drawn from the
+measure described above (uniform $a_1$; frequencies from the admitted band
+with a high-frequency bias and pairwise-coprime axis frequencies; signs and
+phases uniform) and accepted iff they intersect no previously accepted path.
+True jamming is logarithmically slow to reach at large $T$, so runs stop at
+an acceptance-rate cutoff of $10^{-6}$ (one accepted candidate per million
+attempts); the flatness of the measured local scaling slopes across the
+ladder (Fig.~\ref{fig:jam}, lower panel) indicates the configurations are
+well inside the scaling regime, and the extrapolation to literal jamming is
+flagged as an open problem rather than assumed away.
 
-\subsection{Exclusion and jamming}
-
-Sample $z$ at $T$ evenly spaced timesteps. Two worldlines \emph{collide} if at
-\emph{any} timestep their comoving positions fall within $\CELL = 2/T$ of each
-other in the Chebyshev ($L^\infty$) metric, per axis, minimum-image on the
-torus. Candidates are drawn at random and accepted iff they collide with no
-previously accepted worldline --- textbook RSA, except that the excluded
-region of a candidate is determined jointly by \emph{all} $T$ timesteps.
-
-True jamming is logarithmically unreachable at large $T$, so runs stop at an
-acceptance-rate cutoff (fraction of recent candidates accepted): $10^{-7}$ for
-the original campaigns, $10^{-6}$ for the torus-era campaigns after a
-dedicated study showed a cutoff decade moves the measured exponent by less
-than $0.02$ in $d=3$ (about $0.04$ in the $d=2$ torus model) while the count
-moves only through a $T$-independent prefactor ($\Nsat^{10^{-6}} /
-\Nsat^{10^{-7}} \approx 0.82$ flat across $T$)
-\footnote{A constant multiplicative shift in $\Nsat$ moves the intercept of
-$\log \Nsat$ vs $\log T$, not the slope.}.
-
-Frequencies are drawn from the full Nyquist band $b \in [2, T]$ with a
-high-frequency bias and a pairwise-coprimality constraint among a worldline's
-axis frequencies (``smart'' sampling; it accelerates packing ${\sim}40\%$ and
-does not change the measured exponents).
-
-\subsection{Phase degrees of freedom}
-\label{sec:phasedef}
-
-The third model variant adds a free phase to the wiggle term,
-\begin{equation}
-  x(z) \;=\; a\left[\sin(bz + f) - \sin f\right] \;+\; a_2 \sin z,
-  \qquad f \sim U[0,\pi) \ \text{iff } b \text{ even},
-  \label{eq:phase}
-\end{equation}
-the $-\sin f$ offset re-pinning the component to zero at the endpoints. Odd
-frequencies must remain phase-free for the worldline to close at $z=\pi$
-($\sin(b\pi + f) = \pm\sin f$ only cancels the offset for even $b$).
-The significance of the deformation is kinematic: without phases, a component's
-turnaround velocity is $\dot X(\pi/2) \propto ab\cos(b\pi/2)$, which vanishes
-for odd $b$ and is maximal for even $b$ --- even-frequency worldlines are
-forced movers. With a phase, an even component's turnaround speed acquires a
-factor $|\cos f|$, so a phase near $\pi/2$ lets an even worldline sit
-arbitrarily close to rest. If the packing's observed preference for odd
-frequencies (Section~\ref{sec:parity}) were a turnaround-kinematics effect,
-phases should dissolve it.
-
-\section{Numerical method}
+\section{Generation at scale}
 \label{sec:method}
 
-Packing runs on CUDA engines (one for $d=2$, one for $d=3$). The collision
-test uses a per-timestep uniform spatial hash in comoving coordinates: because
-the exclusion threshold in \emph{physical} coordinates is $\sin(z)\cdot 2/T$,
-it collapses in comoving coordinates to the constant $\CELL = 2/T$, giving
-exactly $T$ cells per axis per timestep and an $O(NT)$ (rather than
-$O(N^2 T)$) test. On the torus the hash and the pair test wrap mod $T$
-(minimum image). Campaigns are dispatched over a small GPU fleet by a
-resumable orchestrator; each accepted worldline's parameters are dumped so
-that any configuration can be reconstructed analytically at any $z$ offline.
-$d=3$ memory scales as $T^4$ (the dense per-timestep grid), capping consumer
-GPUs near $T \approx 200$; $d=2$ scales as $T^3$ and reaches $T=400$ cheaply.
+The explored sector --- one budget frequency per axis, i.e.
+$x(z) = a\,[\sin(bz + f) - \sin f] + a_1 \sin z$ with $|ab| = 1$ per axis ---
+is packed by CUDA engines (one for each $d$). The engine's collision test
+exploits a small identity: the exclusion threshold in physical coordinates is
+$\sin(z_i)\cdot 2/T$, which in comoving coordinates collapses to the constant
+$2/T$ at every timestep, so a uniform spatial hash with exactly $T$ cells per
+axis per timestep gives an $O(NT)$ (rather than $O(N^2 T)$) test, wrapping
+mod $T$ for the minimum image. Memory scales as $T^{d+1}$; consumer GPUs
+reach $T = 200$ at $d = 3$ and $T = 400$ at $d = 2$. Campaigns are dispatched
+over a small GPU fleet by a resumable orchestrator, and each accepted
+worldline's parameters $(a, b, a_1, f)$ per axis are dumped, so any
+configuration can be reconstructed analytically at any $z$ offline. The
+datasets below are: $d = 3$, $T = 20$--$200$ in steps of 10, five seeds per
+$T$; $d = 2$, $T = 40$--$400$ in steps of 20, eight seeds per $T$.
 
-The campaigns quoted below are: hard-wall $d=3$, $T = 20$--$200$ step 10,
-5 seeds per $T$, at both cutoffs; hard-wall $d=2$, $T = 40$--$400$ step 20,
-8 seeds; and the same grids for the torus model and the torus{+}phase model
-(the latter at cutoff $10^{-6}$ with a matched-cutoff no-phase baseline).
-Exponents are fit as weighted log--log slopes with seed bootstrap errors;
-quoted uncertainties are statistical only.
+Four estimator families are used. The \emph{jam-count exponent} is the
+weighted log--log slope of $\Nsat$ vs $T$ with seed-bootstrap errors, checked
+for power-law quality via local pairwise slopes. The \emph{correlation
+dimension} $D_2$ of an equal-time slice uses the Grassberger--Procaccia
+integral \cite{gp} with both spherical ($L^2$) and cubic ($L^\infty$) probes;
+because the domain is periodic, the correct estimator wraps distances
+(minimum image; implemented with a periodic $k$-d tree), and we also report
+the naive open-boundary estimator on the same clouds as a deliberate
+control. \emph{Box-counting} of slices and of the full worldline bundle is
+reported as local slope vs scale and used diagnostically (it converges far
+too slowly in $T$ to serve as a headline estimator). Kinematic and
+equation-of-state quantities are computed analytically from the dumped
+parameters (Section~\ref{sec:kinematics}).
 
-\paragraph{Estimators.}
-(i) The \emph{jam-count exponent}: the slope $D$ of $\log \Nsat$ vs $\log T$,
-with power-law quality checked via the flatness of local (pairwise) slopes.
-(ii) The \emph{correlation dimension} $D_2$ of an equal-time slice, from the
-Grassberger--Procaccia integral \cite{gp} $C(r) \sim r^{D_2}$ over a fixed
-comoving window, with both spherical ($L^2$) and cubic ($L^\infty$) probes,
-in two variants: the standard open-boundary estimator, and a wrapped
-(minimum-image, periodic) estimator appropriate to the torus
-\footnote{Implemented with a periodic $k$-d tree; on a uniform periodic
-control cloud the wrapped estimator returns the exact ambient dimension for
-both probe shapes.}.
-(iii) \emph{Box-counting} dimensions of slices and of the full worldline
-bundle (in $d$ and $d{+}1$ dimensions), reported as local slope vs scale ---
-box-counting converges far too slowly in $T$ to be used as a headline number,
-and we use it diagnostically.
-(iv) \emph{Generalized dimensions} $D_q$ from the $q$-th order correlation
-integrals \cite{hp}.
-
-\section{The jam-count exponent}
+\section{How much fits: the jam-count exponent}
 \label{sec:count}
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\textwidth]{figs/jam_scaling.png}
-  \caption{Jam count $\Nsat$ vs resolution $T$ (log--log) for all model
-  variants, with $T^2$ and $T^3$ guides. Top group: $d=3$ (hard-wall at two
-  cutoffs, torus, torus{+}phase); bottom group: $d=2$. Lower panel: local
-  slopes --- flat, i.e.\ clean power laws, for every dataset. The torus and
-  torus{+}phase ladders lie on top of each other at a slope visibly below
-  their hard-wall counterparts.}
+  \caption{Jam count $\Nsat$ vs resolution $T$ (log--log) for the two
+  explored dimensions, with $T^2$ and $T^3$ guides. Lower panel: local
+  pairwise slopes --- flat across the ladder, i.e.\ clean power laws with no
+  crossover. Fitted exponents: $D = 2.27$ (full ladder) rising to $2.33$ on
+  the $T \ge 100$ half in $3{+}1$; $1.40$ full / $1.38$ high-$T$ in $2{+}1$.}
   \label{fig:jam}
 \end{figure}
 
-The count $\Nsat(T)$ is a clean power law in every variant measured
-(Fig.~\ref{fig:jam}): local slopes are flat across the ladder with no
-crossover, fits are cutoff-robust in the sense quantified above, and the
-result is insensitive to the shape of the exclusion region (replacing the
-Chebyshev cube by an $L^2$ ball moves converged dimensions by $<0.005$;
-Fig.~\ref{fig:collision}). The exponents:
+The jammed count is a clean power law, $\Nsat \sim T^D$, over the full
+measured ladder in both dimensions (Fig.~\ref{fig:jam}):
+\begin{equation*}
+  D_{3+1} = 2.273 \pm 0.003 \ \text{(full ladder)}, \quad
+  2.331 \pm 0.003 \ (T \ge 100);
+  \qquad
+  D_{2+1} = 1.396 \pm 0.002, \quad 1.375 \pm 0.004 .
+\end{equation*}
+Local slopes are flat (scatter $0.066$ in $3{+}1$, $0.080$ in $2{+}1$) with
+the mild low-$T$ bend absorbed by the high-$T$ fits; we quote $D \approx
+2.33$ and $D \approx 1.38$ as the converged values at this cutoff. At the top
+of the ladders the jams hold $\langle\Nsat\rangle \approx 1.6 \times 10^5$
+worldlines ($T = 200$, $d = 3$) and $6.1 \times 10^3$ ($T = 400$, $d = 2$).
 
-\begin{center}
-\begin{tabular}{lcc}
-\toprule
- & $d=2$ & $d=3$ \\
-\midrule
-hard-wall & $1.58$ & $2.46$ \\
-torus & $1.42$ ($10^{-7}$) / $1.38$ ($10^{-6}$) & $2.28$ full / $2.33$ ($T\ge100$) \\
-torus + phases & $1.40$ / $1.38$ ($T \ge 100$) & $2.27$ full / $2.33$ ($T\ge100$) \\
-\bottomrule
-\end{tabular}
-\end{center}
+The exponent sits well below the spatial dimension in both cases. Pure
+spatial packing would give $\Nsat \sim T^d$: each path excludes $O(1)$ cells
+of a $T^d$ comoving grid, and slices, as the next section shows, are packed
+homogeneously. The deficit --- $T^{2.33}$ against a $T^3$ ceiling --- is
+therefore not a matter of where the worldlines sit. It is the price of the
+\emph{joint} constraint: a candidate must thread the gaps of every one of
+$T$ time slices simultaneously, and the number of trajectories able to do so
+grows more slowly than the room available in any single slice. We call $D$ a
+\emph{packing-number exponent}, and Section~\ref{sec:notgeom} substantiates
+the name by showing no static set carries it as a geometric dimension.
 
-\noindent Statistical errors are $\pm 0.002$--$0.006$. Three observations:
-
-\begin{enumerate}
-\item $D$ is well below $d$ in every case: pure spatial packing would give
-      $\Nsat \sim T^d$ (each worldline excludes $O(1)$ cells of a $T^d$
-      grid), and the deficit is the cost of the joint across-time exclusion.
-\item Moving from the hard-wall to the torus model lowers $D$ by
-      ${\approx}0.15$ in both dimensions ($-0.16$ in $d=2$, $-0.14$ in $d=3$
-      at high $T$). The mechanism reads off the constraint change: under the
-      joint budget $|ab|+|a_2|=1$ a worldline could buy a small wiggle by
-      sitting far out (a ``cheap wall-hugger'' with tiny footprint), and such
-      worldlines padded the count. On the torus every worldline carries the
-      full unit swing, so the jam admits fewer objects and grows more slowly.
-      The similarity of the shift across $d$ suggests it is a property of the
-      budget, not of the embedding dimension.
-\item Adding phases does not move the exponent in either dimension (the
-      differences are at the $0.01$ level with mixed sign), and in $d=3$ the
-      phased ladder is the \emph{cleanest} power law measured (local-slope
-      scatter $0.066$ vs $0.114$ without phases), landing exactly on the
-      $2.33$ that the no-phase high-$T$ fit suggested as the converged value.
-      What phases do change is the prefactor: at fixed $T$ the phased jam
-      admits more worldlines (${+}2.8\%$ at $T=400$ in $d=2$; ${+}6.9\%$ at
-      $T=200$ in $d=3$). Phases are a packing-density knob, not a scaling
-      knob.
-\end{enumerate}
-
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=0.9\textwidth]{figs/collision_geometry.png}
-  \caption{Exclusion-shape control ($d=3$, hard-wall): correlation $D_2$ and
-  box-counting $D_0$ measured on cube-collision (solid) vs sphere-collision
-  (dashed) packings, probes held fixed. Converged over $T \ge 100$ the
-  collision shape moves $D_2$ by $0.004$ and $D_0$ by $0.003$ --- the
-  dimension does not care about the shape of the excluded region.}
-  \label{fig:collision}
-\end{figure}
-
-\section{An instructive artifact: the ``fractal'' hard-wall slice}
-\label{sec:artifact}
-
-The natural static object to interrogate is the turnaround slice: each
-worldline's comoving position at $z=\pi/2$, i.e.\ the matter distribution at
-maximum expansion. On the hard-wall model, the standard correlation estimator
-gave a stable, seed-robust, resolution-independent
-$D_2 = 2.79$ (spherical probe) --- convincingly fractal-looking, and for some
-time the headline number of the project. Two anomalies eventually broke it:
-the cubic probe read $2.73$ (a probe-shape split that a true dimension should
-not have), and the $q$-order spectrum $D_q$ showed only mild multifractality
-($D_1 \approx 2.80$ down to $D_5 \approx 2.72$), too weak to explain the
-split.
-
-The resolution is that the standard estimator
-$C(r) = \Pr(\text{pair within } r)$ silently assumes an unbounded or
-edge-corrected sample. The hard-wall model is neither: $|X| \le 1$ is a hard
-boundary and the sampler piles density against it, so every near-wall point
-is missing the neighbours that would lie outside, suppressing $C(r)$ at large
-$r$ and dragging the fitted slope down. Controls make this quantitative: on a
-\emph{uniform} cloud (true $D_2 = 3$) the naive estimator returns $2.87$
-(sphere) / $2.82$ (cube) --- wrong, and split by the same ${\sim}0.05$ ---
-while interior-only centers or periodic wrapping restore $3.000$ for both
-probes with the gap collapsed. The probe-shape split is thus itself an edge
-diagnostic: corners of the $L^\infty$ ball reach $\sqrt{d}\,r$ into the
-depleted zone, so the cube probe is hurt more, and indeed the split shrinks
-from ${\sim}0.06$ in $d=3$ to ${\sim}0.025$ in $d=2$ exactly as corner reach
-predicts.
-
-We flag this because the artifact was stable under every robustness test
-short of the boundary controls --- seeds, resolution, cutoff, collision
-shape --- and produced a plausible fractal dimension out of thin air. On a
-bounded, edge-crowded sample, an uncorrected pair-correlation dimension
-should be treated as a lower bound at best.
-
-\section{The torus jam is exactly homogeneous}
+\section{Where it sits: exact homogeneity}
 \label{sec:homog}
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\textwidth]{figs/wrapped_d2_3d.png}
   \caption{Wrapped (minimum-image) correlation dimension of the turnaround
-  slice vs $T$ for the $d=3$ torus{+}phase model (5 seeds per $T$): spherical
-  and cubic probes converge together onto the space-filling $D=3$ line
-  ($3.01$ at $T=200$), while the open-boundary estimator on the same clouds
-  reads ${\sim}2.89$ --- the boundary artifact of
-  Section~\ref{sec:artifact}, reproduced on demand. The no-phase torus
-  dataset is indistinguishable point by point.}
+  slice vs $T$ ($3{+}1$, five seeds per $T$): spherical and cubic probes
+  converge together onto the space-filling $D = 3$ line ($3.01$ at
+  $T = 200$). The open-boundary estimator on the same clouds (dotted) reads
+  ${\sim}2.89$ --- the artifact a non-periodic estimator commits on periodic
+  data, shown as a control.}
   \label{fig:wrapped}
 \end{figure}
-
-On the torus model the domain is genuinely periodic, the wrapped estimator is
-the physically self-consistent one, and the verdict is unambiguous
-(Fig.~\ref{fig:wrapped}): the turnaround slice is \emph{space-filling},
-\begin{equation*}
-  D_2^{\,\mathrm{wrapped}} =
-  \begin{cases}
-    3.019 \text{ (sphere)} / 3.010 \text{ (cube)}, & d=3 \text{ (with phases: } 3.021/3.011\text{ without)},\\[2pt]
-    2.032 / 2.025, & d=2 \text{ (}2.033/2.026\text{ without)},
-  \end{cases}
-\end{equation*}
-seed-averaged over $T \ge 100$, descending onto $D=d$ with the probe-shape
-gap collapsed. The homogeneity is not special to the turnaround: fixing one
-universe ($T=200$) and scanning all conformal times, the rms comoving spread
-sits at $\sqrt{1/3} \approx 0.5774$ --- the exact value for a uniform torus
---- flat across the entire loop through bang, turnaround, and crunch, and the
-slice box-counting dimension stays within a $2.61$--$2.66$ band
-(Fig.~\ref{fig:uniformity}; the residual deficit from $3$ is the usual slow
-convergence of box-counting, not structure). The uniform-offset proposal
-measure makes homogeneity true of the \emph{candidate} distribution by
-construction; the measurement shows that jamming \emph{preserves} it ---
-exclusion thins the cloud without structuring it at these scales.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\textwidth]{figs/uniformity.png}
-  \caption{In-universe uniformity over conformal time ($d=3$ torus with
-  phases, $T=200$, 5 seeds): slice box-counting dimension (top) and rms
-  comoving spread (bottom) vs $z/\pi$. The spread sits on $\sqrt{1/3}$
-  (uniform torus value) over the whole loop.}
+  \caption{One universe over its whole history ($3{+}1$, $T = 200$, five
+  seeds): slice box-counting dimension (top) and rms comoving spread
+  (bottom) vs conformal time. The spread sits on $\sqrt{1/3}$ --- the exact
+  uniform-torus value --- flat through bang, turnaround, and crunch.}
   \label{fig:uniformity}
 \end{figure}
 
-Together with Section~\ref{sec:count} this cleans up the model's story: the
-geometry of any single slice is featureless (no fractality, no center, no
-wall), and \emph{all} of the nontrivial structure lives in the packing-number
-exponent. The earlier $2.79$ was the hard-wall model's boundary structure
-talking, not the packing.
+The matter distribution of the jam is exactly uniform, and this holds in two
+senses. Across space: the wrapped correlation dimension of the turnaround
+slice converges onto the space-filling value with the probe-shape gap
+collapsed,
+\begin{equation*}
+  D_2 = 3.019 \ \text{(sphere)} \ / \ 3.010 \ \text{(cube)} \quad (d = 3),
+  \qquad
+  D_2 = 2.032 \ / \ 2.025 \quad (d = 2),
+\end{equation*}
+seed-averaged over $T \ge 100$ (Fig.~\ref{fig:wrapped}). Across time: fixing
+one universe and scanning every conformal time, the rms comoving spread sits
+at $\sqrt{1/3} \approx 0.5774$ --- the exact value for a uniform torus ---
+flat across the entire loop, with the slice box-counting dimension confined
+to a narrow band (Fig.~\ref{fig:uniformity}; its residual deficit from 3 is
+the generic slow convergence of box-counting, not structure).
 
-\section{$D$ is not the dimension of anything}
+Homogeneity of the \emph{proposal} measure is built in --- that is what the
+free comoving coordinate is for. The content of the measurement is that
+\emph{jamming preserves it}: the exclusion interaction thins the population
+by orders of magnitude without imprinting any density structure on the
+survivors at any measurable scale, at any time. The bang/crunch collapse
+lives entirely in the physical coordinates ($x = X \sin z \to 0$); the
+comoving arrangement never knows it is happening.
+
+One methodological remark, since it is easy to get wrong: the naive
+correlation estimator (unwrapped positions, open-boundary distances) applied
+to these same configurations reads $D_2 \approx 2.89$ ($d = 3$) and
+$\approx 1.93$ ($d = 2$) with a spurious probe-shape split --- a boundary
+artifact, reproduced deliberately in Fig.~\ref{fig:wrapped} as the dotted
+control. On periodic data the wrapped estimator is not a refinement but the
+definition; a uniform control cloud returns the exact ambient dimension
+under it, for both probes.
+
+\section{What the exponent is not: no geometric carrier}
 \label{sec:notgeom}
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=0.95\textwidth]{figs/spacetime_boxdim.png}
   \caption{Local box-counting dimension vs scale for the pooled worldline
-  bundle ($d=3$ torus, $T=200$, all timesteps pooled into one
-  ${\sim}10^7$-point cloud, seed-averaged). The local dimension sweeps from
-  ${\approx}1$ (resolving individual smooth curves) to ${\approx}3$
-  (space-filling), crossing the count exponent $2.33$ (line) only in
-  passing, with no plateau.}
+  bundle ($3{+}1$, $T = 200$, all timesteps pooled, three seeds). The local
+  dimension sweeps from ${\approx}1.3$ near the packing cell (resolving
+  individual smooth curves) through $2.76$ at intermediate scales to
+  $2.89$ at coarse ones, crossing the count exponent $2.33$ (line) only in
+  passing. No scale exhibits a plateau at $D$.}
   \label{fig:bundle}
 \end{figure}
 
-Since a slice is exactly $d$-dimensional, one might still hope the count
-exponent is the fractal dimension of the full worldline \emph{bundle}. It is
-not. Box-counting the pooled bundle (all timesteps, $d=3$) gives a local
-dimension that runs from ${\approx}1$ at fine scales --- where individual
-smooth curves are resolved --- to ${\approx}3$ at coarse scales, crossing
-$2.33$ only in passing with no plateau (Fig.~\ref{fig:bundle}). The honest
-$(d{+}1)$-dimensional version (conformal time as a fourth axis, under both a
-native and a cell-isotropic time scaling) does the same, sweeping $1 \to 4$
-through $2.33$ without pausing.
+Given a sub-dimensional exponent, the natural reflex is to look for a fractal
+--- some static set whose box or correlation dimension equals $2.33$. The
+slices cannot be it: they are exactly three-dimensional
+(Section~\ref{sec:homog}). The remaining candidate is the worldline bundle as
+a whole, and it fails too (Fig.~\ref{fig:bundle}): pooling all timesteps of a
+jam into one point cloud, the local box-counting dimension runs from
+${\approx}1.3$ at the finest resolved scale --- where the cloud looks like a
+union of smooth one-dimensional curves --- up to ${\approx}2.9$ at coarse
+scales, where it is space-filling. It crosses $2.33$ in passing, with no
+plateau; the same holds treating time as a fourth axis.
 
-For \emph{point} packings, packing number and box dimension coincide, which
-is why the intuition expects agreement. For packings of extended curves under
-a joint across-time constraint they need not, and here they demonstrably do
-not: the spatial arrangement is uniform (geometric dimension $\to d$), so the
-sub-$T^d$ count is not spatial clustering --- it is the across-time exclusion
-suppressing how many worldlines can be threaded through \emph{all} timesteps
-at once. $D$ is well-defined as a count exponent, with no static geometric
-carrier. We are not aware of a standard name for this object in the RSA
-literature; ``packing-number exponent of a curve packing'' seems accurate.
+For packings of \emph{points}, packing number and box dimension coincide,
+which is exactly why the reflex exists. For packings of extended curves under
+a joint across-time constraint the two notions separate, and this model
+separates them cleanly: geometry says ``uniform curves filling the space,''
+counting says ``$T^{2.33}$ of them fit.'' The exponent measures a
+\emph{dynamical} capacity --- how the number of globally non-intersecting
+threadings scales with resolution --- and appears to have no static shadow.
+We are not aware of a standard name for this quantity in the RSA literature.
 
-\section{Frequency parity: structure the jam does have}
+\section{What survives: parity, the arcsine law, and the equation of state}
+\label{sec:kinematics}
+
+\subsection{Parity structure of the surviving frequencies}
 \label{sec:parity}
-
-The comoving wiggle $\sin(bz)/\sin z$ is symmetric about the turnaround for
-odd $b$ (the worldline sits at a velocity extremum --- at rest) and
-antisymmetric for even $b$ (it swings through at speed). The jam has a
-definite composition along this axis: at $T=200$ ($d=3$, torus), $47$--$48\%$
-of packed worldlines are entirely odd-frequency, and $82$--$83\%$ of all
-accepted frequencies are odd, both essentially flat in $T$ above
-${\sim}50$ (Fig.~\ref{fig:parity}, left and right). Acceptance is also
-stage-resolved: in the sparse early quartile of the acceptance sequence, even
-frequencies are accepted at $20$--$27\%$ across the whole band, while in the
-final near-jam quartile they are squeezed to $3$--$13\%$, recovering with
-$b$ (Fig.~\ref{fig:stage}) --- odd worldlines are what still fits into the
-last gaps.
 
 \begin{figure}[t]
   \centering
   \includegraphics[width=\textwidth]{figs/parity_vs_t.png}
-  \caption{Parity composition of the jam vs $T$ ($d=3$ torus), phased (solid)
-  vs no-phase (dashed). Left: fraction of worldlines entirely odd-frequency
-  vs carrying at least one even frequency. Right: fraction of all accepted
-  frequencies that are odd. The phased and unphased curves coincide at every
-  $T$.}
+  \caption{Composition of the jam vs resolution ($3{+}1$). Left: fraction of
+  worldlines entirely odd-frequency vs carrying an even frequency. Right:
+  fraction of all accepted frequencies that are odd. Both are flat above
+  $T \approx 50$.}
   \label{fig:parity}
 \end{figure}
 
@@ -449,130 +431,185 @@ last gaps.
   \centering
   \includegraphics[width=0.8\textwidth]{figs/parity_stage.png}
   \caption{Even acceptance vs frequency value, resolved by packing stage
-  ($d=3$ torus, $T=200$, full ordered acceptance sequences,
-  $N \approx 1.5\times10^5$): first quartile (sparse, blue) vs last quartile
-  (near-jam, orange), phased (solid) vs no-phase (dashed). Near jamming the
-  survivors skew hard to odd at every $b$; phases change neither curve.}
+  ($3{+}1$, $T = 200$, a full ordered acceptance sequence of
+  $N = 1.6\times10^5$ paths): first quartile of acceptances (sparse
+  universe) vs last quartile (near jamming). The near-jam survivors skew
+  strongly odd at every frequency.}
   \label{fig:stage}
 \end{figure}
 
-In the hard-wall model this parity structure had a sharp kinematic
-signature: an even component's swing amplitude scales as $(1-|a_2|)/b$, so
-only high-frequency evens could thread the packing at all, and below
-$T \approx 40$ (where the Nyquist band contains no sufficiently large even
-integer) the turnaround population was \emph{exactly} $100\%$ at rest --- a
-geometric freeze-out with a near-discontinuous onset at $T \approx 40$--$48$,
-after which the moving fraction grew toward ${\sim}40$--$50\%$. The
-``forbidden zone'' (no evens below $b \approx 34$) is a wall-era feature: on
-the torus, sparse-stage evens appear at low $b$ freely
-(Fig.~\ref{fig:stage}), though near-jam suppression of low evens survives.
+The comoving wiggle $\sin(bz+f)/\sin z$ is symmetric about the turnaround
+when $b$ is odd (the worldline sits at a velocity extremum there --- at
+rest) and antisymmetric when $b$ is even (it swings through at speed). The
+jam has a definite, resolution-stable composition along this axis
+(Fig.~\ref{fig:parity}): $48\%$ of packed worldlines are entirely
+odd-frequency, and $82.7\%$ of all accepted frequencies are odd, both flat
+in $T$ above ${\sim}50$. The pairwise-coprimality rule permits at most one
+even frequency per worldline, so the population splits into a \emph{cold}
+component (all odd, exactly at rest at the turnaround) and a \emph{mobile}
+one (one even axis) --- and motion at maximum expansion is always
+single-axis.
 
-\subsection{Phases: a targeted null result}
-\label{sec:phases}
+The selection is dynamical, not just distributional: resolving acceptance by
+packing stage (Fig.~\ref{fig:stage}), even frequencies are accepted at
+$20$--$27\%$ across the band while the universe is sparse, but among the
+final quartile of survivors before jamming they are squeezed to $3$--$13\%$.
+What still fits into the last gaps is overwhelmingly odd --- the objects
+that hold still at the moment the universe is largest.
 
-The phase deformation of Section~\ref{sec:phasedef} was designed against
-exactly this structure: it hands every even-frequency component a free phase,
-letting it sit as close to rest at the turnaround as it likes, and thereby
-removes the kinematic penalty evens pay. If the odd preference were
-turnaround kinematics, phases should dissolve it; if the jam merely needed
-\emph{slow-at-turnaround} objects, phased evens are now such objects.
+\subsection{A parameter-free speed law, and how jamming bends it}
+\label{sec:arcsine}
 
-The measurement is a null across the board. With phases on (all at matched
-cutoff, same grids and seeds): the count exponents are unchanged
-(Section~\ref{sec:count}); the wrapped slice dimension is unchanged
-($3.019$ vs $3.021$, $2.032$ vs $2.033$); the uniformity profile over the
-loop is unchanged; and --- most pointedly --- the parity composition is
-unchanged at every $T$ and at every packing stage
-(Figs.~\ref{fig:parity}--\ref{fig:stage}): $48.0\%$ vs $47.3\%$ all-odd
-worldlines, $82.7\%$ vs $82.4\%$ odd frequencies, and coincident
-stage-resolved acceptance curves. The only effect of the added degrees of
-freedom is the jam density prefactor (${+}2.8\%$ / ${+}6.9\%$).
+The phase freedom of even frequencies turns the mobile component's
+kinematics into a closed-form prediction. At the turnaround ($\sin z = 1$,
+$\cos z = 0$) the peculiar velocity of an axis reduces to
+\begin{equation}
+  v \;=\; \bigl|\,a\,b \cos(b\pi/2 + f)\,\bigr|
+    \;=\; |\cos f| \quad \text{for even } b
+  \qquad (\text{and } v = 0 \text{ for odd } b),
+  \label{eq:speed}
+\end{equation}
+using the rapidity constraint $|ab| = 1$. The free comoving term drops out
+of the velocity entirely --- position and speed are independent by
+construction. With the proposal phases uniform, $f \sim U[0,\pi)$, the speed
+of a mover is arcsine-distributed:
+\begin{equation}
+  P(v) \;=\; \frac{2}{\pi\sqrt{1 - v^2}}, \qquad v \in [0,1),
+  \qquad
+  \langle v \rangle = \tfrac{2}{\pi}, \quad \langle v^2 \rangle = \tfrac12 .
+  \label{eq:arcsine}
+\end{equation}
+This is a parameter-free law, and a physically suggestive one: the density
+diverges (integrably) at the speed cap $v = 1$, a built-in relativistic
+pile-up, while the cap itself is never exceeded.
 
-The conclusion is that the odd-frequency preference is \emph{not} a
-turnaround-kinematics effect. What parity controls that a phase cannot undo
-is the \emph{whole-loop} shape of the trajectory --- how the swing budget and
-the coprimality constraint thread a component through every timestep
-simultaneously. This is consistent with everything else in the paper: each
-structural readout of the jam (exponent, slice geometry, composition) is set
-by the global exclusion constraint, and deformations that act locally in time
-change only how densely the same structure packs.
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figs/phase_kinematics.png}
+  \caption{Left: measured turnaround speed distribution of the mobile
+  component ($3{+}1$, $T = 200$, $1.6 \times 10^5$ movers across five seeds)
+  against the arcsine law of the proposal measure. The relativistic pile-up
+  at $v \to 1$ survives packing, but attenuated, with a compensating excess
+  of slow movers: jamming selects on phase. Right: the turnaround equation
+  of state vs resolution --- flat at $w = 0.070$ across the entire ladder,
+  ${\sim}20\%$ below the no-selection prediction
+  $w = \tfrac{1}{6}\times(\text{mobile fraction})$.}
+  \label{fig:kinematics}
+\end{figure}
 
-\section{Physical readouts of the hard-wall packing}
-\label{sec:physics}
+The packed state tells a sharper story (Fig.~\ref{fig:kinematics}, left).
+The measured mover distribution keeps the arcsine shape qualitatively ---
+including the pile-up against the cap --- but tilts: slow movers are
+overrepresented and the cap spike is attenuated, with
+\begin{equation*}
+  \langle v \rangle_{\text{packed}} = 0.539 \ \ (\text{proposal } 0.637),
+  \qquad
+  \langle v^2 \rangle_{\text{packed}} = 0.404 \ \ (\text{proposal } 0.500).
+\end{equation*}
+Nothing in the acceptance rule references velocity; the tilt means that
+\emph{jamming itself selects on phase}. A fast mover ($f$ near $0$ or
+$\pi$) sweeps more comoving ground around the turnaround and is
+correspondingly harder to thread through a crowded universe, so the
+survivors' phases concentrate toward quadrature. This is selection acting on
+a degree of freedom invisible to any single-time snapshot --- and it is
+resolution-independent: the suppression factor is the same at every $T$
+measured.
 
-For completeness we record the physical observables extracted from the
-hard-wall configurations, since they motivated much of the above (all at
-cutoff $10^{-7}$, $d=3$; these predate the torus model and should be read as
-properties of the wall-era packing). Interpreting worldline energy through
-either of two dictionaries ($E \propto b$, ``quantum wave'', or
-$E \propto$ arc length, ``string'') gives dictionary-robust results:
-\begin{itemize}
-  \item \textbf{Equation of state.} With
-        $w = P/\rho = \tfrac13 \langle E v^2 \rangle / \langle E \rangle$ and
-        the slope-1-capped velocities, the turnaround state is matter-like:
-        $w = 0.042$ under both dictionaries (agreeing to $1.6\%$).
-  \item \textbf{History.} Evaluating the same $w$ at every conformal time
-        gives a symmetric ``bathtub'': stiff ($w \approx 0.5$--$0.65$) near
-        the bang and crunch, crossing radiation ($w = 1/3$) on the way in and
-        out, with a razor-thin matter-like cusp ($w \approx 0.04$) exactly at
-        the turnaround --- a coherent closed-universe history, and
-        dictionary-robust across the entire cycle.
-  \item \textbf{Speed distribution.} The moving component's turnaround speeds
-        peak low (${\sim}0.1$) and terminate in a hard cutoff exactly at
-        $1.0$: the slope budget acts as a clean relativistic cap.
-  \item \textbf{Knot selection.} Using the reduced torus-knot size
-        $K(p,q) = (p/g-1)(q/g-1)$, $g = \gcd(p,q)$, as a knottiness proxy for
-        axis-frequency pairs: coprimality statistics alone are
-        scale-invariant (coprime fraction $6/\pi^2$, $\langle K \rangle
-        \propto N^{2.01}$ for random pairs --- no number-theoretic growth
-        exponent), but the \emph{packed} population runs $28$--$35\%$
-        knottier than its proposal distribution, with the enrichment growing
-        with $T$ before saturating. Jamming selects for high-frequency,
-        coprime, knottier worldlines --- the frequency-drives-packing story
-        seen through a topological proxy.
-\end{itemize}
+\subsection{The equation of state}
+\label{sec:eos}
 
-\section{Discussion and open problems}
+Assigning worldlines an energy $E$ and using the kinetic pressure of the
+mobile component, $w = P/\rho = \tfrac13 \langle E v^2\rangle / \langle E
+\rangle$, the turnaround equation of state is (Fig.~\ref{fig:kinematics},
+right):
+\begin{equation*}
+  w \;=\; 0.070, \qquad \text{flat over the full ladder } (T = 20\text{--}200),
+\end{equation*}
+computed under $E \propto \sum_k b_k$ (a frequency/``wave'' dictionary) and
+reproduced to $1\%$ under $E \propto$ arc length of the spatial path (a
+``string'' dictionary): $0.0692$ vs $0.0700$ at $T = 200$. Both dictionaries
+are parity-blind, and for any parity-blind $E$ the arcsine law predicts
+$w = \tfrac16 \times (\text{mobile fraction}) \approx 0.087$; the measured
+$w$ sits $20\%$ below it, which is precisely the phase-selection tilt of
+Section~\ref{sec:arcsine} expressed thermodynamically. The universe at
+maximum expansion is matter-like ($w \ll 1/3$), its pressure is carried by a
+single-axis-moving minority whose speeds follow a tilted arcsine law, and
+none of these statements depends on which of the two natural mass
+dictionaries one adopts, nor on the resolution.
+
+\section{Discussion}
 \label{sec:disc}
 
-The picture that survives all measurements to date: a jam of sinusoidal
-worldlines on the periodic loop is \emph{geometrically featureless} ---
-exactly homogeneous slices at every conformal time, space-filling
-correlation dimension, no fractal carrier for the count exponent --- while
-the count itself grows sub-dimensionally with a robust, variant-stable
-exponent ($2.33$ in $3{+}1$, $1.38$--$1.42$ in $2{+}1$ on the torus). The
-exponent quantifies the dynamical cost of threading extended objects through
-every time slice at once, and it is remarkably indifferent to microscopic
-deformations: exclusion shape (cube vs sphere), stopping cutoff, and
-rest-enabling phases all leave it fixed, the last of these also leaving the
-jam's parity composition untouched at every packing stage.
+\subsection{What kind of object is the jam?}
 
-Open problems we consider sharp:
+Assembling the measurements: the jam is spatially featureless at every
+moment (exactly uniform slices, no center, no boundary, no fractality),
+temporally featureless in comoving terms (statistically identical slices
+across the loop), and yet strongly structured in every non-spatial
+direction --- a sub-dimensional count exponent, a sharp parity composition,
+a phase-selected velocity law, a definite equation of state. All structure
+lives in the \emph{joint, whole-loop} character of the exclusion: which
+trajectories can coexist, not where anything is.
+
+Is the jam a strange attractor? The question is natural --- the toolset we
+use (correlation integrals, generalized dimensions) comes from that field
+\cite{gp,hp}, and the packing does exhibit attractor-like selection:
+iterating acceptance drives the surviving population onto a measure-zero-ish
+preferred subset of parameter space (odd-dominated frequencies, quadrature
+phases, coprime tuples) that is stable across seeds and resolutions. But the
+analogy has to be drawn in \emph{parameter space}, not physical space: the
+spatial sets are exactly space-filling, so nothing strange lives there. What
+would make the reading precise is currently open: one would want a
+well-defined map whose iteration the RSA process approximates, evidence of
+sensitive dependence (do neighbouring seeds diverge in composition?), and a
+fractal measurement on the selected parameter-space set itself --- e.g.\ the
+dimension spectrum of the accepted $(b, f, a_1)$ population --- none of
+which has been done. We record the hypothesis and its test surface rather
+than a claim.
+
+A second reading of the count exponent deserves note: $D/d$ is
+$0.78$ in $3{+}1$ and $0.69$--$0.70$ in $2{+}1$ at this cutoff. Whether $D$
+converges to something exact (the $3{+}1$ value is numerically close to
+$7/3$), and whether $D/d$ tends to a dimension-independent constant as the
+model family is enlarged, are open quantitative questions an analytic
+treatment of a reduced case ($1{+}1$; frequency-capped bands) might settle.
+
+\subsection{The unexplored model}
+
+Everything above concerns the single-budget-frequency sector with singleton
+groups. The model as defined (Section~\ref{sec:model}) is larger in three
+independent directions, and we flag expectations for none of them:
+
 \begin{enumerate}
-  \item \textbf{Is there an exact value?} $D = 2.33 \approx 7/3$ in $3{+}1$
-        and $1.38$--$1.42$ in $2{+}1$ at the accessible cutoffs; whether these
-        converge to rational values (and what fixes them) is open. An
-        analytic attack on a simplified version (e.g.\ frequency-1 worldlines
-        only, or a 1+1 reduction) may be tractable.
-  \item \textbf{The cutoff-to-jamming extrapolation.} The exponent is
-        cutoff-stable to $<0.02$/decade, but a principled extrapolation to
-        true jamming (Feder-law style \cite{evans}) has not been done for
-        curve packings.
-  \item \textbf{Why is parity composition invariant under phases?} The null
-        is clean but unexplained: the whole-loop constraint preserves the
-        even/odd acceptance statistics \emph{exactly} while admitting
-        $7\%$ more objects. A mean-field model of the across-time exclusion
-        that predicts both the exponent shift under the budget change
-        ($-0.15$) and the parity invariance would be substantial progress.
-  \item \textbf{Kinetics.} The attempts-to-jam cost grows as roughly $T^{10}$
-        --- far steeper than $\Nsat$ --- and the approach-to-jamming exponent
-        for extended worldlines (the analog of the Feder law) is unmeasured.
+  \item \textbf{Multi-frequency worldlines.} The rapidity budget can be
+        split across many components (Eq.~\eqref{eq:rapidity}); in the limit
+        of unrestricted splitting the family exhausts all closed
+        unit-rapidity paths. Whether the count exponent, the parity
+        structure, and the arcsine tilt are properties of the sector or of
+        the budget is the sharpest next measurement.
+  \item \textbf{Unique groups and subpaths.} Post-jam filling by subpaths
+        (Section~\ref{sec:groups}) redistributes remaining capacity among
+        existing identities --- one group present in several places at once.
+        Both the combinatorics (how much subpath capacity does a jam retain?)
+        and the physics reading of multi-place groups are untouched.
+  \item \textbf{Histories.} The equation of state here is a turnaround
+        measurement; the full $w(z)$ history of the phase model over the
+        loop, and its behaviour approaching the bang and crunch, require a
+        careful treatment of peculiar velocities away from $\sin z = 1$ and
+        are left to future work.
 \end{enumerate}
 
-\paragraph{Reproducibility.} Every figure in this paper is committed to the
-project repository alongside the code and the exact commit that generated it
-(the lab-notes convention); the packing engines, the orchestration layer, and
-all estimators are public at the repository above.
+Beyond these, the standing quantitative problems are the extrapolation from
+the acceptance-rate cutoff to literal jamming (a Feder-law analog for curve
+packings \cite{evans}), and a mechanism-level account of the two cleanest
+facts we cannot yet derive: the value of $D$, and the exactness with which
+jamming preserves homogeneity while selecting so strongly on everything
+else.
+
+\paragraph{Reproducibility.} Every figure is generated by committed analysis
+code from dumped worldline parameters, and the repository's lab notebook
+records each result with the commit that produced it. The packing engines,
+orchestration, and estimators are public at the repository above.
 
 \begin{thebibliography}{9}
 
