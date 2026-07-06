@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-07-06</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-07-06</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="phase-uniformity-parity">
+      <h2>Phase schema, second look: uniformity and frequency parity are phase-blind too</h2>
+      <p class="meta">
+        Yesterday&rsquo;s <code>torus3d_phase_e6</code> dumps + one-off ordered
+        dumps on the 3090 &middot; code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/2c3402e"><code>2c3402e</code></a>
+      </p>
+      <p>
+        Follow-up to yesterday&rsquo;s campaign results: the remaining
+        structural probes, repeated on the phased data. First, in-universe
+        uniformity over conformal time (T = 200, 5 seeds): the slice
+        box-counting dimension stays in a 2.61&ndash;2.66 band and the rms
+        comoving spread sits on &radic;&frac13; across the entire loop &mdash;
+        indistinguishable from the no-phase torus figure of 07-02. The phased
+        matter slices are exactly homogeneous at every conformal time, not just
+        at the turnaround.
+      </p>
+      <figure class="plot">
+        <img src="uniformity_over_time_phase.png"
+             alt="Slice box-counting dimension (flat near 2.6) and rms comoving spread (flat at 0.577) vs conformal time for the phased 3+1 torus packing." />
+        <figcaption>
+          In-universe uniformity vs conformal time, 3+1 torus with phases
+          (T = 200, 5 seeds): boxdim range 2.610&ndash;2.655 over the loop, rms
+          spread pinned at &radic;&frac13; &asymp; 0.5774 &mdash; flat through
+          bang, turnaround and crunch.
+        </figcaption>
+      </figure>
+      <p>
+        Second, the even/odd frequency structure
+        (<code>analyze_freq_parity</code>, new). The expectation was that
+        phases would move it: an even-frequency worldline&rsquo;s turnaround
+        speed becomes |a&middot;b&middot;cos(f)| &mdash; a free phase near
+        &pi;/2 lets even movers sit almost at rest, dissolving the reason the
+        packing prefers odd frequencies. The measurement says otherwise:
+      </p>
+      <ul>
+        <li>Per-worldline parity vs T: 48.0% entirely-odd with phases vs 47.3%
+            without at T = 200, coincident curves across the whole ladder.</li>
+        <li>Per-frequency parity: 82.7% vs 82.4% of accepted b values odd.</li>
+        <li>Stage-resolved even acceptance (needs acceptance order, so the
+            runner&rsquo;s shuffled subsamples cannot serve it &mdash; two
+            one-off full engine dumps at T = 200, N = 159,658 phased /
+            148,639 no-phase): in the sparse first quartile evens are accepted
+            at ~20&ndash;27% across the whole frequency band; near jam they are
+            squeezed to ~3&ndash;13%, recovering with b. Phased and no-phase
+            overlap within noise at every b, in both stages.</li>
+      </ul>
+      <figure class="plot">
+        <img src="freq_parity_3d.png"
+             alt="Two panels: per-worldline parity fractions vs T and per-frequency odd fraction vs T, phased solid vs no-phase dashed, curves coinciding." />
+        <figcaption>
+          Parity vs resolution, phased (solid) vs no-phase (dashed): the
+          even/odd mix of the jam is phase-independent at every T.
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="freq_parity_stage_3d.png"
+             alt="Percent even among accepted frequencies vs frequency value b, for the sparse first quartile and near-jam last quartile, phased and no-phase overlapping." />
+        <figcaption>
+          Even acceptance vs frequency value by packing stage (T = 200,
+          ordered dumps): sparse-stage acceptance is parity-mild at all b;
+          near-jam the survivors skew hard to odd. Phases (solid) change
+          neither curve.
+        </figcaption>
+      </figure>
+      <p>
+        Takeaway: the odd-frequency preference of the jam is <em>not</em> a
+        turnaround-kinematics effect &mdash; handing even worldlines a
+        rest-enabling phase buys them nothing. The parity structure must be set
+        by whole-loop geometry (the swing budget and coprimality shaping how a
+        trajectory threads <em>every</em> timestep), which fits yesterday&rsquo;s
+        picture: phases raise how much packs, but every scaling and structural
+        readout of the jam is unchanged. Also worth noting: the hard-wall
+        era&rsquo;s &ldquo;no evens below b &asymp; 34&rdquo; forbidden zone is
+        absent on the torus &mdash; sparse-stage evens appear at low b in both
+        variants; near jam, low-b evens are still the first casualties.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
