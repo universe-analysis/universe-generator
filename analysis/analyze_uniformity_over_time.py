@@ -68,6 +68,19 @@ def main() -> None:
         "Note the rms spread of a homogeneous torus sits at sqrt(1/3) ~ 0.577.",
     )
     parser.add_argument(
+        "--phase",
+        action="store_true",
+        help="phase-schema dumps: read fx/fy/fw phases (evaluated as "
+        "a*sin(b*z + f) - a*sin(f)) and use the symmetric z grid "
+        "(T interior points of (0, pi)) instead of the 0.01 endpoint clamp",
+    )
+    parser.add_argument(
+        "--suffix",
+        default="",
+        help="dump filename suffix before .csv (e.g. _tor_ph_e6) -- required "
+        "to pick one variant when campaigns share a dumps dir",
+    )
+    parser.add_argument(
         "--out", type=Path, default=Path("figures/uniformity_over_time.png")
     )
     args = parser.parse_args()
@@ -77,23 +90,31 @@ def main() -> None:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    z = 0.01 + np.arange(args.t) * (np.pi - 0.02) / (args.t - 1)
+    if args.phase:
+        step = np.pi / (args.t + 1)
+        z = step + np.arange(args.t) * step
+    else:
+        z = 0.01 + np.arange(args.t) * (np.pi - 0.02) / (args.t - 1)
     sinz = np.sin(z)
-    paths = sorted(glob.glob(f"{args.dumps}/d3_nyq_T{args.t}_s*.csv"))[: args.seeds]
-    print(f"T={args.t}, {len(paths)} seeds")
+    pattern = f"{args.dumps}/d3_nyq_T{args.t}_s*{args.suffix}.csv"
+    paths = sorted(glob.glob(pattern))[: args.seeds]
+    print(f"T={args.t}, {len(paths)} seeds ({pattern})")
 
-    def axis(cols, a, b, a2):  # (N, T)
-        out = (
-            cols[a][:, None] * np.sin(np.outer(cols[b], z)) / sinz + cols[a2][:, None]
-        )
+    def axis(cols, a, b, a2, f):  # (N, T)
+        # Phase-schema components carry a free phase on the wiggle term and an
+        # a*sin(f) offset re-pinning them to zero at the endpoints; f = 0 (and
+        # absent from pre-phase dumps) reduces to the original expression.
+        fv = cols.get(f, np.zeros(len(cols[a])))
+        wig = np.sin(np.outer(cols[b], z) + fv[:, None]) - np.sin(fv)[:, None]
+        out = cols[a][:, None] * wig / sinz + cols[a2][:, None]
         return wrap_unit(out) if args.torus else out
 
     rms_all, dim_all = [], []
     for p in paths:
         cols = load_params(p)
-        x = axis(cols, "ax", "bx", "ax2")
-        y = axis(cols, "ay", "by", "ay2")
-        w = axis(cols, "aw", "bw", "aw2")
+        x = axis(cols, "ax", "bx", "ax2", "fx")
+        y = axis(cols, "ay", "by", "ay2", "fy")
+        w = axis(cols, "aw", "bw", "aw2", "fw")
         rms_all.append(np.sqrt((x**2 + y**2 + w**2).mean(axis=0) / 3.0))
         dim_all.append(
             np.array(
