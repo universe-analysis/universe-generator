@@ -76,7 +76,7 @@
         <button id="importBtn" title="Load a CUDA --dump-params CSV">Import CSV</button>
         <span class="sep"></span>
         <button id="playBtn" class="on">Play ▶</button>
-        <label>Speed <input type="range" id="speedRange" min="0.05" max="5" step="0.05" value="1"><span id="speedVal" style="width:34px;display:inline-block;color:#9fb0d0">1.0×</span></label>
+        <label>Speed <input type="range" id="speedRange" min="0.05" max="5" step="0.05" value=".1"><span id="speedVal" style="width:34px;display:inline-block;color:#9fb0d0">1.0×</span></label>
         <label>Time <input type="range" id="timeScrub" min="0" max="1" step="0.001" value="0"></label>
         <span id="status">Idle — press Generate</span>
     </div>
@@ -85,7 +85,7 @@
         <details>
             <summary>Generation</summary>
             <div class="choices">
-                <label><input type="checkbox" id="smartFreqChk" checked> Smart frequencies (coprime, packs denser)</label>
+                <label><input type="checkbox" id="smartFreqChk"> Smart frequencies (coprime, packs denser)</label>
             </div>
         </details>
         <details>
@@ -132,14 +132,14 @@
         <details>
             <summary>Light cones</summary>
             <div class="choices">
-                <label><input type="checkbox" id="coneChk" checked> Show light cones</label>
+                <label><input type="checkbox" id="coneChk"> Show light cones</label>
                 <label><input type="checkbox" id="coneFoldChk"> Fold — refocus at the antipode</label>
             </div>
             <div class="row"><span>Rings</span><input type="range" id="coneRingsRange" min="1" max="60" step="1" value="3"><span class="val" id="coneRingsVal">3</span></div>
             <div class="row"><span>Emit rate</span><input type="range" id="coneRateRange" min="0.5" max="50" step="0.5" value="1.7"></div>
             <div class="row"><span>Fade</span><input type="range" id="coneFadeRange" min="0" max="0.6" step="0.01" value="0.3"></div>
             <div class="row"><span>Cone glow</span><input type="range" id="coneSizeRange" min="0.05" max="4" step="0.01" value="0.7"></div>
-            <div class="row"><span>Speed</span><input type="number" id="coneSpeedRange" min="0" step="0.05" value="1"></div>
+            <div class="row"><span>Speed</span><input type="number" id="coneSpeedRange" min="0" step="0.05" value=".2"></div>
             <div class="row"><span>Emitting paths</span><input type="number" id="coneMaxInput" value="1" min="1"></div>
             <div class="choices">
                 <span class="group-name">Colour</span>
@@ -288,7 +288,7 @@
     }
 
     // ---- frequency selection (Smart = coprime + high-frequency bias → ~40% denser packing) ----
-    let smartFreq = true;
+    let smartFreq = false;
     function gcd(a, b){ while (b){ const t = a % b; a = b; b = t; } return a; }
     function drawFreqs(){
         if (!smartFreq)
@@ -753,7 +753,7 @@
     }
 
     let cloud=null, sweep=null, showCloud=false, showSweep=true;   // start in Surface (one instant)
-    let cones=null, showCones=true, coneRings=3, coneMax=1;
+    let cones=null, showCones=false, coneRings=3, coneMax=1;
     function disposeObj(o){ if(o){ scene.remove(o); o.geometry.dispose(); } }
     function rebuildGPU(){
         disposeObj(cloud); disposeObj(sweep); cloud=sweep=null;
