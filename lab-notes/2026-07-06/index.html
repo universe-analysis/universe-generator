@@ -92,6 +92,48 @@
       </p>
     </article>
 
+    <article class="entry" id="arcsine-speed-law">
+      <h2>The arcsine speed law &mdash; and jamming selects on phase</h2>
+      <p class="meta">
+        Analytic prediction + measurement on the phase dumps &middot; code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/4c39bb4"><code>4c39bb4</code></a>
+      </p>
+      <p>
+        The phase model makes a parameter-free kinematic prediction. At the
+        turnaround, a worldline&rsquo;s peculiar speed collapses to
+        <code>|a&middot;b&middot;cos(b&pi;/2 + f)| = |cos f|</code> on its
+        (single, coprimality-enforced) even axis, and 0 on odd axes. With
+        proposal phases uniform on [0,&nbsp;&pi;), mover speeds should follow
+        the arcsine law <code>P(v) = 2/(&pi;&radic;(1&minus;v&sup2;))</code>
+        &mdash; mean 2/&pi;, &lang;v&sup2;&rang; = &frac12;, an integrable
+        divergence at the speed cap v&nbsp;=&nbsp;1.
+      </p>
+      <p>
+        The packed state keeps the law&rsquo;s shape &mdash; including the
+        relativistic pile-up at the cap &mdash; but tilts it:
+        &lang;v&rang; = 0.539 vs the proposal&rsquo;s 0.637,
+        &lang;v&sup2;&rang; = 0.404 vs 0.500. Nothing in the acceptance rule
+        references velocity, so <strong>jamming itself selects on phase</strong>:
+        fast movers sweep more comoving ground and are harder to thread, so
+        survivors&rsquo; phases concentrate toward quadrature. The suppression
+        is the same at every T. Thermodynamically: the turnaround equation of
+        state reads <strong>w = 0.070</strong>, flat over the whole ladder,
+        20% below the no-selection prediction (&frac16; &times; mobile
+        fraction &asymp; 0.087), and dictionary-robust (E&nbsp;~&nbsp;b gives
+        0.0692, E&nbsp;~&nbsp;arc-length gives 0.0700 at T = 200).
+      </p>
+      <figure class="plot">
+        <img src="phase_kinematics.png"
+             alt="Left: mover speed histogram at T=200 against the arcsine law, showing a surviving but attenuated pile-up at the speed cap and an excess of slow movers. Right: w vs T flat at 0.070 below the 0.087 prediction." />
+        <figcaption>
+          Left: mover speed distribution (T = 200, 1.6&times;10&#8309; movers,
+          5 seeds) vs the arcsine proposal law. Right: w at the turnaround vs
+          T &mdash; flat at 0.070, uniformly below the parity-blind
+          no-selection prediction.
+        </figcaption>
+      </figure>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
