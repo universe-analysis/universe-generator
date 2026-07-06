@@ -79,10 +79,11 @@
     </article>
 
     <article class="entry" id="corrdim-variant-mixing">
-      <h2>Corrdim was averaging variants together; corrected D2 is phase-blind</h2>
+      <h2>Corrdim was averaging variants together; the wrapped D2 is space-filling and phase-blind</h2>
       <p class="meta">
-        Bug fix in the report path &middot; code
-        <a href="https://github.com/universe-analysis/universe-generator/commit/3b39dd2"><code>3b39dd2</code></a>
+        Bug fix in the report path + wrapped estimator generalised &middot; code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/3b39dd2"><code>3b39dd2</code></a>,
+        <a href="https://github.com/universe-analysis/universe-generator/commit/bad6d88"><code>bad6d88</code></a>
       </p>
       <p>
         Caught because three different datasets returned <em>identical</em>
@@ -99,31 +100,97 @@
         landed sibling variants beside them.
       </p>
       <p>
-        With per-variant filtering, the wrapped (minimum-image) correlation
-        dimension of the turnaround slice, seed-averaged over the high-T tail:
-        <strong>1.915</strong> with phases, <strong>1.916</strong> without
-        (1e-6), and the 07-02 torus 1e-7 dataset reads <strong>1.913</strong>
-        under the same tooling &mdash; identical within error. Whatever the
-        phases rearrange along the loop, the equal-time slice geometry at the
-        turnaround does not see it.
+        A second catch followed: the <code>braidlab corrdim</code> report uses
+        the <em>non-periodic</em> estimator (unwrapped positions, open-boundary
+        distances). Its per-variant numbers &mdash; 1.915 with phases, 1.916
+        without, 1.913 for the 07-02 1e-7 set &mdash; are phase-blind but they
+        are the boundary artifact, the 2+1 sibling of the ~2.89 the 07-02 notes
+        flagged in 3+1. The physical measurement is the wrapped (minimum-image)
+        estimator, so <code>analyze_periodic_corrdim</code> grew
+        <code>--dim 2|3</code> and a variant <code>--suffix</code> filter.
+        Wrapped, seed-averaged over T &ge; 100: <strong>D2 = 2.032 (sphere) /
+        2.025 (cube)</strong> with phases, <strong>2.033 / 2.026</strong>
+        without &mdash; the 2+1 matter slices are space-filling, the
+        probe-shape gap collapses, and the 07-02 exact-homogeneity result
+        extends to 2+1 and survives the phase degrees of freedom. The
+        non-periodic reference on the same clouds reads 1.93 &mdash; the
+        artifact, reproduced on demand.
       </p>
       <figure class="plot">
         <img src="periodic_corrdim_2d_phase.png"
-             alt="Wrapped correlation dimension vs T for the 2+1 torus+phase dataset: sphere and cube estimators converge to ~1.92 by T=400." />
+             alt="Wrapped correlation dimension vs T for the 2+1 torus+phase dataset: periodic sphere and cube estimators sit on the space-filling D=2 line while the non-periodic reference reads ~1.93." />
         <figcaption>
-          Wrapped-estimator convergence, 2+1 torus with phases (8 seeds per T).
-          Sphere and cube probes converge together; the box-count column stays
-          noisy as usual.
+          Wrapped correlation dimension vs T, 2+1 torus with phases (8 seeds
+          per T): periodic sphere/cube on the D = 2 line, non-periodic
+          reference below &mdash; the boundary artifact made visible.
         </figcaption>
       </figure>
       <figure class="plot">
         <img src="periodic_corrdim_2d_nophase.png"
-             alt="Wrapped correlation dimension vs T for the 2+1 torus no-phase 1e-6 dataset: indistinguishable from the phase version, converging to ~1.92." />
+             alt="Wrapped correlation dimension vs T for the 2+1 torus no-phase 1e-6 dataset: indistinguishable from the phase version, on the D=2 line." />
         <figcaption>
           Same measurement, no-phase baseline at the same cutoff &mdash;
           indistinguishable from the phased dataset point by point.
         </figcaption>
       </figure>
+    </article>
+
+    <article class="entry" id="phase-3d-results">
+      <h2>3+1 with phases: exponent and homogeneity unchanged, jam +7%</h2>
+      <p class="meta">
+        Campaign <code>torus3d_phase_e6</code> (95 jobs, deep-thought +
+        mother + kitt) &middot; code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/88dd0f2"><code>88dd0f2</code></a>,
+        <a href="https://github.com/universe-analysis/universe-generator/commit/bad6d88"><code>bad6d88</code></a>
+      </p>
+      <p>
+        The 3+1 phase campaign landed (same grid as <code>torus3d_e6</code>:
+        T = 20&ndash;200 step 10, 5 seeds, 1e-6). The 2+1 picture repeats in
+        every particular:
+      </p>
+      <ul>
+        <li>Count exponent: <strong>2.273 &plusmn; 0.003</strong> full ladder /
+            <strong>2.331 &plusmn; 0.003</strong> for T &ge; 100, vs
+            2.282 / 2.328 without phases &mdash; unchanged. Notably the phased
+            ladder is <em>cleaner</em> (local-slope scatter 0.066 vs 0.114),
+            and its high-T half sits right at the 2.33 the 07-02 caveat
+            suspected was the converged no-phase value.</li>
+        <li>Jam prefactor: &lang;N_sat&rang; = 158,840 vs 148,606 at T = 200
+            (<strong>+6.9%</strong>) &mdash; the same more-packing-freedom
+            effect as 2+1, about twice the size.</li>
+        <li>Wrapped D2 (T &ge; 100 mean): <strong>3.019 (sphere) / 3.010
+            (cube)</strong> with phases vs 3.021 / 3.011 without; non-periodic
+            reference ~2.89 on both. Exact homogeneity survives the phases.</li>
+      </ul>
+      <figure class="plot">
+        <img src="jam_scaling_phase3d.png"
+             alt="Jam count vs T with the 3+1 torus+phase ladder added: it runs parallel to the no-phase torus ladder at slope ~2.28-2.33, offset a few percent above it." />
+        <figcaption>
+          All ladders with the 3+1 torus+phase dataset (pink) added: parallel
+          to the no-phase torus (red), a constant few-percent offset above it.
+          Lower panel: the phased local slope is the flattest 3+1 trace on the
+          chart.
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="periodic_corrdim_3d_phase.png"
+             alt="Wrapped correlation dimension vs T for the 3+1 torus+phase dataset: periodic sphere and cube on the space-filling D=3 line, non-periodic reference at ~2.89." />
+        <figcaption>
+          Wrapped correlation dimension vs T, 3+1 torus with phases: periodic
+          sphere/cube descend onto the space-filling D = 3 line with the
+          probe-shape gap collapsed, exactly as the no-phase torus did on
+          07-02.
+        </figcaption>
+      </figure>
+      <p>
+        Takeaway, both dimensions now in: the phase degrees of freedom change
+        <em>how much</em> packs (+2.8% in 2+1, +6.9% in 3+1 at the top of the
+        ladder) but not <em>how packing scales</em> (count exponents unchanged)
+        and not the slice geometry (wrapped D2 stays space-filling). The
+        structure of the model still lives entirely in the packing-number
+        exponent &mdash; and the phased 3+1 ladder&rsquo;s flatness firms up
+        2.33 as the converged 3+1 torus exponent.
+      </p>
     </article>
 
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
