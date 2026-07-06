@@ -43,6 +43,7 @@ DATASETS = [
     # cutoff). The 3+1 phase dataset joins this list when its campaign lands.
     ("2+1  torus 1e-6", "data/torus/run2d_e6.db", 2, "tab:olive"),
     ("2+1  torus+phase 1e-6", "data/torus/run2d_phase_e6.db", 2, "tab:cyan"),
+    ("3+1  torus+phase 1e-6", "data/torus/run3d_phase_e6.db", 3, "tab:pink"),
 ]
 BAND = "nyq"
 HIGH_T = 100  # high-T half cut for the robustness fit
