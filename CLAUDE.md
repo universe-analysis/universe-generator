@@ -33,7 +33,10 @@ result and the physics that emerges. Headline: **D ≈ 2.79 (3+1)**, **≈ 1.82
   `plot_campaign`, `make_report`) and the early `braid_solver/` Python
   prototypes (pre-CUDA), kept for reference.
 - `docs/` — the GitHub Pages site (`viewers/` interactive HTML + curated
-  `figures/`).
+  `figures/`). Pages serves the dedicated `gh_pages` branch (docs-only
+  history, `.nojekyll` static serving), not `main`: after pushing site
+  changes on `main`, republish with
+  `git subtree push --prefix docs origin gh_pages`.
 - `*.md` — findings and notes (`PHYSICS_FINDINGS`, `EXPERIMENTS_QUEUE`,
   `INVESTIGATION_menger`, …).
 
