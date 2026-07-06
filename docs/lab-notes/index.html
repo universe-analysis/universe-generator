@@ -22,12 +22,14 @@
     <a class="day" href="2026-07-05/">
       <div class="date">2026-07-05</div>
       <div class="summary">
-        The phase schema (engine <code>--phase</code>) reaches the fleet: in
-        2+1 the count exponent is unchanged (1.396 vs 1.382 at matched 1e-6
-        cutoff) and the wrapped turnaround D2 is phase-blind (1.915 vs 1.916);
-        phases only nudge the jam prefactor (+2.8% at T = 400). Plus a corrdim
-        report fix: variant dumps sharing a directory were being averaged
-        together. 3+1 phase campaign still running.
+        The phase schema (engine <code>--phase</code>) reaches the fleet, both
+        dimensions: count exponents unchanged (2+1: 1.396 vs 1.382; 3+1: 2.273
+        vs 2.282 at matched 1e-6 cutoff), wrapped D2 stays space-filling with
+        phases (2.03 in 2+1, 3.02 in 3+1), and phases only raise the jam
+        prefactor (+2.8% / +6.9%). Plus two corrdim report catches: variant
+        dumps sharing a directory were averaged together, and the CLI report
+        is the non-periodic estimator (its 1.92 / 2.89 are the boundary
+        artifact).
       </div>
     </a>
 
