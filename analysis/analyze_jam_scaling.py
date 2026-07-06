@@ -53,6 +53,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default=".", help="dir holding data/*/run.db")
     parser.add_argument("--out", type=Path, default=Path("figures/jam_scaling.png"))
+    parser.add_argument(
+        "--only",
+        default=None,
+        help="restrict to datasets whose label contains this substring "
+        "(e.g. 'torus+phase' for a phase-model-only chart)",
+    )
     args = parser.parse_args()
 
     import matplotlib
@@ -65,7 +71,8 @@ def main() -> None:
         2, 1, figsize=(11, 9), gridspec_kw={"height_ratios": [3, 2]}
     )
 
-    for label, db, dim, color in DATASETS:
+    datasets = [d for d in DATASETS if args.only is None or args.only in d[0]]
+    for label, db, dim, color in datasets:
         if not (root / db).exists():
             print(f"\n== {label} ==  (no db at {db}; skipped)")
             continue
@@ -78,16 +85,28 @@ def main() -> None:
         half = len(full.local_slopes) // 2
         lo_half = float(np.mean(full.local_slopes[:half]))
         hi_half = float(np.mean(full.local_slopes[half:]))
-        print(f"\n== {label} ==  ({len(ts):.0f} T in {ts.min():.0f}-{ts.max():.0f}, "
-              f"{full.n_seeds[0]} seeds)")
+        print(
+            f"\n== {label} ==  ({len(ts):.0f} T in {ts.min():.0f}-{ts.max():.0f}, "
+            f"{full.n_seeds[0]} seeds)"
+        )
         print(f"  D (full ladder)   = {full.d:.3f} +/- {full.d_err:.3f}")
         print(f"  D (T >= {HIGH_T})     = {high.d:.3f} +/- {high.d_err:.3f}")
-        print(f"  local slope: low-T half {lo_half:.2f}, high-T half {hi_half:.2f}, "
-              f"scatter {full.local_slope_std:.3f}")
+        print(
+            f"  local slope: low-T half {lo_half:.2f}, high-T half {hi_half:.2f}, "
+            f"scatter {full.local_slope_std:.3f}"
+        )
 
         # top: log-log N vs T with the full-ladder fit line
-        ax.errorbar(ts, n, yerr=full.n_sem, fmt="o", color=color, ms=5, capsize=3,
-                    label=f"{label}:  D = {full.d:.2f} +/- {full.d_err:.2f}")
+        ax.errorbar(
+            ts,
+            n,
+            yerr=full.n_sem,
+            fmt="o",
+            color=color,
+            ms=5,
+            capsize=3,
+            label=f"{label}:  D = {full.d:.2f} +/- {full.d_err:.2f}",
+        )
         fit = np.exp(full.intercept) * ts**full.d
         ax.plot(ts, fit, "-", color=color, lw=1, alpha=0.8)
 
@@ -96,14 +115,20 @@ def main() -> None:
         ax2.plot(mids, full.local_slopes, "o-", color=color, ms=4, label=label)
         ax2.axhline(full.d, color=color, ls=":", lw=1, alpha=0.6)
 
-    # reference slopes anchored to the 3+1 1e-7 low-T point
-    ref = measure_d(Store(root / DATASETS[0][1]).results(3, BAND), 3, BAND)
+    # reference slopes anchored to the first plotted dataset's low-T point
+    ref_label, ref_db, ref_dim, _ = datasets[0]
+    ref = measure_d(Store(root / ref_db).results(ref_dim, BAND), ref_dim, BAND)
     t0, n0 = ref.t_values[0], ref.n_mean[0]
     tt = np.array([t0, ref.t_values[-1]], dtype=float)
     for power, name in [(2.0, "T^2"), (3.0, "T^3")]:
         ax.plot(tt, n0 * (tt / t0) ** power, "--", color="gray", lw=1, alpha=0.5)
-        ax.annotate(name, (tt[-1], n0 * (tt[-1] / t0) ** power), color="gray",
-                    fontsize=9, va="center")
+        ax.annotate(
+            name,
+            (tt[-1], n0 * (tt[-1] / t0) ** power),
+            color="gray",
+            fontsize=9,
+            va="center",
+        )
 
     ax.set_xscale("log")
     ax.set_yscale("log")
