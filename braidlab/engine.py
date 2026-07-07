@@ -50,6 +50,8 @@ def build_command(job: Job, binary: str, curve_path: str) -> list[str]:
         cmd += ["--torus"]
     if job.phase:
         cmd += ["--phase"]
+    if job.sparse:
+        cmd += ["--sparse"]
     if job.maxfreq:
         cmd += ["--maxfreq", str(job.maxfreq)]
     # --curve stays last: render_runner truncates the argv here and supplies its own
