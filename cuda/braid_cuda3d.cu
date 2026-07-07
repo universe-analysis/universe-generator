@@ -211,7 +211,6 @@ __device__ bool collides_dev(const Path& p,
                              long gw2,
                              long gw3,
                              const int* cellStart,
-                             const int* cellLen,
                              const double* ptsX,
                              const double* ptsY,
                              const double* ptsW,
@@ -283,8 +282,10 @@ __device__ bool collides_dev(const Path& p,
                         continue;
 
                     const long gc = (long)i * gw3 + (long)gx * gw2 + (long)gy * gw + gz;
+                    // CSR with a sentinel: cell gc holds points
+                    // [cellStart[gc], cellStart[gc+1]) -- no separate length array.
                     const long st = cellStart[gc];
-                    const int ln = cellLen[gc];
+                    const int ln = cellStart[gc + 1] - (int)st;
 
                     for (int k = 0; k < ln; k++) {
                         double dX = X - ptsX[st + k];
@@ -329,7 +330,6 @@ __global__ void test_kernel(uint64_t baseSeed,
                             long gw2,
                             long gw3,
                             const int* cellStart,
-                            const int* cellLen,
                             const double* ptsX,
                             const double* ptsY,
                             const double* ptsW,
@@ -344,8 +344,8 @@ __global__ void test_kernel(uint64_t baseSeed,
     rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
     Path p = propose(r, modmax, smart, angle, torus, phase);
-    if (!collides_dev(p, T, z, sinz, invz, cell, gw, off, gw2, gw3, cellStart, cellLen, ptsX,
-                      ptsY, ptsW, order, euclid, torus)) {
+    if (!collides_dev(p, T, z, sinz, invz, cell, gw, off, gw2, gw3, cellStart, ptsX, ptsY, ptsW,
+                      order, euclid, torus)) {
         int slot = atomicAdd(survCount, 1);
         if (slot < survCap)
             survOut[slot] = p;
@@ -450,15 +450,15 @@ int main(int argc, char** argv) {
     size_t ncell = (size_t)T * gw3;
     fprintf(stderr, "3+1%s%s: T=%d  modmax=%u (maxfreq=%u)  grid cells=%.2e  (~%.1f GB)\n",
             torus ? " (torus)" : "", phase ? " (phase)" : "", T, modmax, modmax + 1,
-            (double)ncell, ncell * 8.0 / 1e9);
+            (double)ncell, (ncell + 1) * 4.0 / 1e9);
     // cellStart holds cumulative point offsets (< N*T, well within int32 even at
     // T=300), so a 32-bit grid index halves device memory vs a 64-bit one.
-    std::vector<int> cellStart(ncell);
-    std::vector<int> cellLen(ncell);
+    // One sentinel entry (cellStart[ncell] = npts) makes lengths derivable as
+    // cellStart[gc+1] - cellStart[gc], so no separate length array is stored.
+    std::vector<int> cellStart(ncell + 1);
+    std::vector<int> cellLen(ncell);  // host-side scratch for the counting pass
     int* dCellStart;
-    int* dCellLen;
-    CK(cudaMalloc(&dCellStart, ncell * 4));
-    CK(cudaMalloc(&dCellLen, ncell * 4));
+    CK(cudaMalloc(&dCellStart, (ncell + 1) * 4));
 
     std::vector<std::vector<double>> px(T), py(T), pw(T);
     std::vector<Path> acceptedPaths;  // populated only when --dump-params is set
@@ -547,6 +547,7 @@ int main(int argc, char** argv) {
                 cellStart[c] = (int)acc;
                 acc += cellLen[c];
             }
+            cellStart[ncell] = (int)acc;  // CSR sentinel: one past the last point
             if (npts > ptsCap) {
                 ptsCap = npts * 2;
                 CK(cudaFree(dPtsX));
@@ -559,7 +560,7 @@ int main(int argc, char** argv) {
             ptsXh.assign(npts, 0);
             ptsYh.assign(npts, 0);
             ptsWh.assign(npts, 0);
-            std::vector<int> cur(cellStart);
+            std::vector<int> cur(cellStart.begin(), cellStart.end() - 1);
             for (int i = 0; i < T; i++)
                 for (size_t j = 0; j < px[i].size(); j++) {
                     long gc = (long)i * gw3 + gix(px[i][j]) * gw2 + gix(py[i][j]) * gw +
@@ -569,8 +570,8 @@ int main(int argc, char** argv) {
                     ptsYh[s] = py[i][j];
                     ptsWh[s] = pw[i][j];
                 }
-            CK(cudaMemcpy(dCellStart, cellStart.data(), ncell * 4, cudaMemcpyHostToDevice));
-            CK(cudaMemcpy(dCellLen, cellLen.data(), ncell * 4, cudaMemcpyHostToDevice));
+            CK(cudaMemcpy(dCellStart, cellStart.data(), (ncell + 1) * 4,
+                          cudaMemcpyHostToDevice));
             if (npts) {
                 CK(cudaMemcpy(dPtsX, ptsXh.data(), npts * 8, cudaMemcpyHostToDevice));
                 CK(cudaMemcpy(dPtsY, ptsYh.data(), npts * 8, cudaMemcpyHostToDevice));
@@ -583,8 +584,8 @@ int main(int argc, char** argv) {
         int threads = 256, blocks = (int)((batch + threads - 1) / threads);
         test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, smart, angle, euclid,
                                          torus, phase, T, dz, dsinz, dinvz, cell, gw, off, gw2,
-                                         gw3, dCellStart, dCellLen, dPtsX, dPtsY, dPtsW, dorder,
-                                         dSurv, dSurvCount, survCap);
+                                         gw3, dCellStart, dPtsX, dPtsY, dPtsW, dorder, dSurv,
+                                         dSurvCount, survCap);
         CK(cudaDeviceSynchronize());
         int sc;
         CK(cudaMemcpy(&sc, dSurvCount, 4, cudaMemcpyDeviceToHost));
