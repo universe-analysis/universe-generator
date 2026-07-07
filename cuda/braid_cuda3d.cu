@@ -15,6 +15,14 @@
 // to close), each component is offset by a*sin(f) so it still starts at zero,
 // and the z grid becomes the symmetric T-interior-points-of-(0, pi) indexing.
 //
+// --sparse replaces the dense per-timestep grid (T*gw^3 cells, the T^4 VRAM
+// hog) with per-timestep sorted occupied-cell keys + CSR offsets, looked up by
+// binary search, and stores device points as float32. VRAM becomes O(N*T), so
+// the T ceiling is set by runtime rather than card memory. The float prefilter
+// only flags CERTAIN hits (threshold shrunk below the float error); gray-zone
+// candidates are settled by the exact double-precision host recheck, so the
+// admitted packing obeys the same collision rule as the dense path.
+//
 // Build:  nvcc -O3 -arch=sm_86 -o braid_cuda3d braid_cuda3d.cu
 // Run:    ./braid_cuda3d -t 80 --attempts 5e9 --seed 1 --curve out.csv
 
@@ -117,6 +125,28 @@ __host__ __device__ inline double torus_delta(double d) {
         return d + 2.0;
     return d;
 }
+__device__ inline float torus_delta_f(float d) {
+    if (d > 1.0f)
+        return d - 2.0f;
+    if (d < -1.0f)
+        return d + 2.0f;
+    return d;
+}
+
+// Binary search over a per-timestep span [lo, hi) of the sorted occupied-cell
+// key array (sparse grid). Returns the index of `key`, or -1 if the cell holds
+// no points.
+__device__ inline int find_key(const int* keys, int lo, int hi, int key) {
+    const int hi0 = hi;
+    while (lo < hi) {
+        const int mid = (lo + hi) >> 1;
+        if (keys[mid] < key)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return (lo < hi0 && keys[lo] == key) ? lo : -1;
+}
 
 __host__ __device__ inline Path propose(
     Rng& r, uint32_t modmax, bool smart, bool angle, bool torus, bool phase) {
@@ -216,7 +246,15 @@ __device__ bool collides_dev(const Path& p,
                              const double* ptsW,
                              const int* order,
                              bool euclid,
-                             bool torus) {
+                             bool torus,
+                             bool sparse,
+                             const int* keys,
+                             const int* keyStart,
+                             const int* cellOff,
+                             const float* ptsXf,
+                             const float* ptsYf,
+                             const float* ptsWf,
+                             double cellTight) {
     const double edge = 1.0 - 0.5 * cell;  // path radius CELL/2 hits the wall at |X|=1
     // Phase offsets re-pin each component to zero at the endpoints.
     const double offx = p.ax * sin(p.fx);
@@ -281,11 +319,52 @@ __device__ bool collides_dev(const Path& p,
                     if (gz < 0 || gz >= gw)
                         continue;
 
-                    const long gc = (long)i * gw3 + (long)gx * gw2 + (long)gy * gw + gz;
-                    // CSR with a sentinel: cell gc holds points
-                    // [cellStart[gc], cellStart[gc+1]) -- no separate length array.
-                    const long st = cellStart[gc];
-                    const int ln = cellStart[gc + 1] - (int)st;
+                    // Locate this cell's point span [st, st+ln). Dense: direct
+                    // CSR index (sentinel gives the length). Sparse: binary
+                    // search the timestep's sorted occupied-cell keys.
+                    long st;
+                    int ln;
+                    if (sparse) {
+                        const int c = (int)((long)gx * gw2 + (long)gy * gw + gz);
+                        const int j = find_key(keys, keyStart[i], keyStart[i + 1], c);
+                        if (j < 0)
+                            continue;
+                        st = cellOff[j];
+                        ln = cellOff[j + 1] - (int)st;
+                    } else {
+                        const long gc = (long)i * gw3 + (long)gx * gw2 + (long)gy * gw + gz;
+                        st = cellStart[gc];
+                        ln = cellStart[gc + 1] - (int)st;
+                    }
+
+                    if (sparse) {
+                        // Float points: flag only CERTAIN hits (<= cellTight,
+                        // the exclusion shrunk by more than the float error).
+                        // Gray-zone candidates survive the prefilter and are
+                        // settled by the host's exact double recheck, so the
+                        // admitted packing obeys the same rule as the dense
+                        // path.
+                        const float Xf = (float)X, Yf = (float)Y, Wf = (float)W;
+                        const float ct = (float)cellTight;
+                        for (int k = 0; k < ln; k++) {
+                            float dX = Xf - ptsXf[st + k];
+                            float dY = Yf - ptsYf[st + k];
+                            float dW = Wf - ptsWf[st + k];
+                            if (torus) {
+                                dX = torus_delta_f(dX);
+                                dY = torus_delta_f(dY);
+                                dW = torus_delta_f(dW);
+                            }
+                            bool hit;
+                            if (euclid)
+                                hit = dX * dX + dY * dY + dW * dW <= ct * ct;
+                            else
+                                hit = fabsf(dX) <= ct && fabsf(dY) <= ct && fabsf(dW) <= ct;
+                            if (hit)
+                                return true;
+                        }
+                        continue;
+                    }
 
                     for (int k = 0; k < ln; k++) {
                         double dX = X - ptsX[st + k];
@@ -334,6 +413,14 @@ __global__ void test_kernel(uint64_t baseSeed,
                             const double* ptsY,
                             const double* ptsW,
                             const int* order,
+                            bool sparse,
+                            const int* keys,
+                            const int* keyStart,
+                            const int* cellOff,
+                            const float* ptsXf,
+                            const float* ptsYf,
+                            const float* ptsWf,
+                            double cellTight,
                             Path* survOut,
                             int* survCount,
                             int survCap) {
@@ -345,7 +432,8 @@ __global__ void test_kernel(uint64_t baseSeed,
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
     Path p = propose(r, modmax, smart, angle, torus, phase);
     if (!collides_dev(p, T, z, sinz, invz, cell, gw, off, gw2, gw3, cellStart, ptsX, ptsY, ptsW,
-                      order, euclid, torus)) {
+                      order, euclid, torus, sparse, keys, keyStart, cellOff, ptsXf, ptsYf,
+                      ptsWf, cellTight)) {
         int slot = atomicAdd(survCount, 1);
         if (slot < survCap)
             survOut[slot] = p;
@@ -364,6 +452,7 @@ int main(int argc, char** argv) {
     bool euclid = false;      // L2-ball exclusion (vs the default Chebyshev cube)
     bool torus = false;       // new-dogma model: |a*b|=1, free sin1 offset, periodic domain
     bool phase = false;       // phase schema: even-frequency phases + symmetric z grid
+    bool sparse = false;      // sparse grid (sorted keys + float32 points): VRAM ~ N*T
     const char* diagPrefix = nullptr;  // if set, write occupancy + probe diagnostics
     long long probeN = 5000000;        // fresh proposals fired at the final state
     const char* paramPath = nullptr;   // if set, dump accepted worldline parameters
@@ -392,6 +481,8 @@ int main(int argc, char** argv) {
             torus = true;
         else if (!strcmp(argv[i], "--phase"))
             phase = true;
+        else if (!strcmp(argv[i], "--sparse"))
+            sparse = true;
         else if (!strcmp(argv[i], "--diag"))
             diagPrefix = argv[++i];
         else if (!strcmp(argv[i], "--probe-n"))
@@ -408,6 +499,13 @@ int main(int argc, char** argv) {
     // --maxfreq F sets the ACTUAL max frequency to F (freq draw is [2, modmax+1], so
     // modmax=F-1). Default (no flag) keeps the model's T/2+1 cap (modmax=T/2).
     double cell = 2.0 / T;
+    // Sparse prefilter threshold: the float32 point coordinates carry at most
+    // ~2e-7 absolute error (values in [-1, 1]), so a hit within cell - 1e-6 is
+    // CERTAIN even in float. Candidates in the (cellTight, cell] gray zone
+    // survive the GPU prefilter and are settled by the exact double-precision
+    // host recheck -- the admitted packing obeys the same rule as the dense
+    // path, at the cost of a handful of extra host rechecks.
+    const double cellTight = cell - 1e-6;
     uint32_t modmax =
         (maxfreq > 2) ? (uint32_t)(maxfreq - 1) : (uint32_t)(T / 2 > 2 ? T / 2 : 2);
     // Torus grid: exactly T cells of width CELL span [-1, 1), so the modular
@@ -448,17 +546,34 @@ int main(int argc, char** argv) {
     CK(cudaMemcpy(dorder, order.data(), T * 4, cudaMemcpyHostToDevice));
 
     size_t ncell = (size_t)T * gw3;
-    fprintf(stderr, "3+1%s%s: T=%d  modmax=%u (maxfreq=%u)  grid cells=%.2e  (~%.1f GB)\n",
-            torus ? " (torus)" : "", phase ? " (phase)" : "", T, modmax, modmax + 1,
-            (double)ncell, (ncell + 1) * 4.0 / 1e9);
-    // cellStart holds cumulative point offsets (< N*T, well within int32 even at
-    // T=300), so a 32-bit grid index halves device memory vs a 64-bit one.
-    // One sentinel entry (cellStart[ncell] = npts) makes lengths derivable as
-    // cellStart[gc+1] - cellStart[gc], so no separate length array is stored.
-    std::vector<int> cellStart(ncell + 1);
-    std::vector<int> cellLen(ncell);  // host-side scratch for the counting pass
-    int* dCellStart;
-    CK(cudaMalloc(&dCellStart, (ncell + 1) * 4));
+    if (sparse)
+        fprintf(stderr, "3+1%s%s (sparse): T=%d  modmax=%u (maxfreq=%u)  grid VRAM ~ N*T\n",
+                torus ? " (torus)" : "", phase ? " (phase)" : "", T, modmax, modmax + 1);
+    else
+        fprintf(stderr, "3+1%s%s: T=%d  modmax=%u (maxfreq=%u)  grid cells=%.2e  (~%.1f GB)\n",
+                torus ? " (torus)" : "", phase ? " (phase)" : "", T, modmax, modmax + 1,
+                (double)ncell, (ncell + 1) * 4.0 / 1e9);
+    // Dense grid: cellStart holds cumulative point offsets (< N*T, well within
+    // int32 even at T=300), so a 32-bit grid index halves device memory vs a
+    // 64-bit one. One sentinel entry (cellStart[ncell] = npts) makes lengths
+    // derivable as cellStart[gc+1] - cellStart[gc], so no separate length array
+    // is stored. In sparse mode the dense arrays are never allocated (they are
+    // the T^4 memory hog, on host and device alike).
+    std::vector<int> cellStart, cellLen;
+    int* dCellStart = nullptr;
+    if (!sparse) {
+        cellStart.resize(ncell + 1);
+        cellLen.resize(ncell);  // host-side scratch for the counting pass
+        CK(cudaMalloc(&dCellStart, (ncell + 1) * 4));
+    }
+    // Sparse grid: per timestep, the sorted keys of occupied cells (linear cell
+    // index within the timestep; gw^3 fits int32 comfortably to beyond T=1000)
+    // plus a CSR offset per key into the point arrays. keyStart[i] delimits
+    // timestep i's span of keys; cellOff gets one global sentinel (= npts).
+    std::vector<int> keysH, keyStartH(T + 1), cellOffH;
+    int *dKeys = nullptr, *dKeyStart = nullptr, *dCellOff = nullptr;
+    if (sparse)
+        CK(cudaMalloc(&dKeyStart, (T + 1) * 4));
 
     std::vector<std::vector<double>> px(T), py(T), pw(T);
     std::vector<Path> acceptedPaths;  // populated only when --dump-params is set
@@ -519,11 +634,38 @@ int main(int argc, char** argv) {
     CK(cudaMalloc(&dSurvCount, 4));
     std::vector<Path> hSurv(survCap);
     size_t ptsCap = 1 << 16;
-    double *dPtsX, *dPtsY, *dPtsW;
-    CK(cudaMalloc(&dPtsX, ptsCap * 8));
-    CK(cudaMalloc(&dPtsY, ptsCap * 8));
-    CK(cudaMalloc(&dPtsW, ptsCap * 8));
+    double *dPtsX = nullptr, *dPtsY = nullptr, *dPtsW = nullptr;
+    float *dPtsXf = nullptr, *dPtsYf = nullptr, *dPtsWf = nullptr;
     std::vector<double> ptsXh, ptsYh, ptsWh;
+    std::vector<float> ptsXfH, ptsYfH, ptsWfH;
+    // Keys and offsets are bounded by the point count, so they share ptsCap.
+    auto alloc_pts = [&]() {
+        if (sparse) {
+            CK(cudaMalloc(&dPtsXf, ptsCap * 4));
+            CK(cudaMalloc(&dPtsYf, ptsCap * 4));
+            CK(cudaMalloc(&dPtsWf, ptsCap * 4));
+            CK(cudaMalloc(&dKeys, (ptsCap + 1) * 4));
+            CK(cudaMalloc(&dCellOff, (ptsCap + 1) * 4));
+        } else {
+            CK(cudaMalloc(&dPtsX, ptsCap * 8));
+            CK(cudaMalloc(&dPtsY, ptsCap * 8));
+            CK(cudaMalloc(&dPtsW, ptsCap * 8));
+        }
+    };
+    auto free_pts = [&]() {
+        if (sparse) {
+            CK(cudaFree(dPtsXf));
+            CK(cudaFree(dPtsYf));
+            CK(cudaFree(dPtsWf));
+            CK(cudaFree(dKeys));
+            CK(cudaFree(dCellOff));
+        } else {
+            CK(cudaFree(dPtsX));
+            CK(cudaFree(dPtsY));
+            CK(cudaFree(dPtsW));
+        }
+    };
+    alloc_pts();
 
     long long attempts = 0, N = 0, nextMs = 1000;
     long batch = 1 << 16;
@@ -535,47 +677,94 @@ int main(int argc, char** argv) {
     while (attempts < (long long)budget) {
         if (lastN < 0 || N - lastN > N / 100 + 1) {  // rebuild grid only when it changed enough
             size_t npts = (size_t)N * T;
-            std::fill(cellLen.begin(), cellLen.end(), 0);
-            for (int i = 0; i < T; i++)
-                for (size_t j = 0; j < px[i].size(); j++) {
-                    long gc = (long)i * gw3 + gix(px[i][j]) * gw2 + gix(py[i][j]) * gw +
-                              gix(pw[i][j]);
-                    cellLen[gc]++;
-                }
-            long acc = 0;
-            for (size_t c = 0; c < ncell; c++) {
-                cellStart[c] = (int)acc;
-                acc += cellLen[c];
-            }
-            cellStart[ncell] = (int)acc;  // CSR sentinel: one past the last point
             if (npts > ptsCap) {
                 ptsCap = npts * 2;
-                CK(cudaFree(dPtsX));
-                CK(cudaFree(dPtsY));
-                CK(cudaFree(dPtsW));
-                CK(cudaMalloc(&dPtsX, ptsCap * 8));
-                CK(cudaMalloc(&dPtsY, ptsCap * 8));
-                CK(cudaMalloc(&dPtsW, ptsCap * 8));
+                free_pts();
+                alloc_pts();
             }
-            ptsXh.assign(npts, 0);
-            ptsYh.assign(npts, 0);
-            ptsWh.assign(npts, 0);
-            std::vector<int> cur(cellStart.begin(), cellStart.end() - 1);
-            for (int i = 0; i < T; i++)
-                for (size_t j = 0; j < px[i].size(); j++) {
-                    long gc = (long)i * gw3 + gix(px[i][j]) * gw2 + gix(py[i][j]) * gw +
-                              gix(pw[i][j]);
-                    long s = cur[gc]++;
-                    ptsXh[s] = px[i][j];
-                    ptsYh[s] = py[i][j];
-                    ptsWh[s] = pw[i][j];
+            if (sparse) {
+                // Sparse rebuild: sort each timestep's points by cell, emit the
+                // unique occupied-cell keys with CSR offsets. O(N log N) per
+                // timestep -- no pass over the T*gw^3 dense cells at all.
+                keysH.clear();
+                cellOffH.clear();
+                ptsXfH.resize(npts);
+                ptsYfH.resize(npts);
+                ptsWfH.resize(npts);
+                std::vector<std::pair<int, int>> cp;  // (cell key, point index)
+                size_t base = 0;
+                for (int i = 0; i < T; i++) {
+                    keyStartH[i] = (int)keysH.size();
+                    const size_t n = px[i].size();
+                    cp.clear();
+                    cp.reserve(n);
+                    for (size_t j = 0; j < n; j++) {
+                        int c = (int)(gix(px[i][j]) * gw2 + gix(py[i][j]) * gw + gix(pw[i][j]));
+                        cp.push_back({c, (int)j});
+                    }
+                    std::sort(cp.begin(), cp.end());
+                    int prev = -1;
+                    for (size_t k = 0; k < n; k++) {
+                        if (cp[k].first != prev) {
+                            keysH.push_back(cp[k].first);
+                            cellOffH.push_back((int)(base + k));
+                            prev = cp[k].first;
+                        }
+                        const int j = cp[k].second;
+                        ptsXfH[base + k] = (float)px[i][j];
+                        ptsYfH[base + k] = (float)py[i][j];
+                        ptsWfH[base + k] = (float)pw[i][j];
+                    }
+                    base += n;
                 }
-            CK(cudaMemcpy(dCellStart, cellStart.data(), (ncell + 1) * 4,
-                          cudaMemcpyHostToDevice));
-            if (npts) {
-                CK(cudaMemcpy(dPtsX, ptsXh.data(), npts * 8, cudaMemcpyHostToDevice));
-                CK(cudaMemcpy(dPtsY, ptsYh.data(), npts * 8, cudaMemcpyHostToDevice));
-                CK(cudaMemcpy(dPtsW, ptsWh.data(), npts * 8, cudaMemcpyHostToDevice));
+                keyStartH[T] = (int)keysH.size();
+                cellOffH.push_back((int)npts);  // CSR sentinel
+                CK(cudaMemcpy(dKeyStart, keyStartH.data(), (T + 1) * 4,
+                              cudaMemcpyHostToDevice));
+                if (!keysH.empty())
+                    CK(cudaMemcpy(dKeys, keysH.data(), keysH.size() * 4,
+                                  cudaMemcpyHostToDevice));
+                CK(cudaMemcpy(dCellOff, cellOffH.data(), cellOffH.size() * 4,
+                              cudaMemcpyHostToDevice));
+                if (npts) {
+                    CK(cudaMemcpy(dPtsXf, ptsXfH.data(), npts * 4, cudaMemcpyHostToDevice));
+                    CK(cudaMemcpy(dPtsYf, ptsYfH.data(), npts * 4, cudaMemcpyHostToDevice));
+                    CK(cudaMemcpy(dPtsWf, ptsWfH.data(), npts * 4, cudaMemcpyHostToDevice));
+                }
+            } else {
+                std::fill(cellLen.begin(), cellLen.end(), 0);
+                for (int i = 0; i < T; i++)
+                    for (size_t j = 0; j < px[i].size(); j++) {
+                        long gc = (long)i * gw3 + gix(px[i][j]) * gw2 + gix(py[i][j]) * gw +
+                                  gix(pw[i][j]);
+                        cellLen[gc]++;
+                    }
+                long acc = 0;
+                for (size_t c = 0; c < ncell; c++) {
+                    cellStart[c] = (int)acc;
+                    acc += cellLen[c];
+                }
+                cellStart[ncell] = (int)acc;  // CSR sentinel: one past the last point
+                ptsXh.assign(npts, 0);
+                ptsYh.assign(npts, 0);
+                ptsWh.assign(npts, 0);
+                std::vector<int> cur(cellStart.begin(), cellStart.end() - 1);
+                for (int i = 0; i < T; i++)
+                    for (size_t j = 0; j < px[i].size(); j++) {
+                        long gc = (long)i * gw3 + gix(px[i][j]) * gw2 + gix(py[i][j]) * gw +
+                                  gix(pw[i][j]);
+                        long s = cur[gc]++;
+                        ptsXh[s] = px[i][j];
+                        ptsYh[s] = py[i][j];
+                        ptsWh[s] = pw[i][j];
+                    }
+                CK(cudaMemcpy(dCellStart, cellStart.data(), (ncell + 1) * 4,
+                              cudaMemcpyHostToDevice));
+                if (npts) {
+                    CK(cudaMemcpy(dPtsX, ptsXh.data(), npts * 8, cudaMemcpyHostToDevice));
+                    CK(cudaMemcpy(dPtsY, ptsYh.data(), npts * 8, cudaMemcpyHostToDevice));
+                    CK(cudaMemcpy(dPtsW, ptsWh.data(), npts * 8, cudaMemcpyHostToDevice));
+                }
             }
             lastN = N;
         }
@@ -584,8 +773,9 @@ int main(int argc, char** argv) {
         int threads = 256, blocks = (int)((batch + threads - 1) / threads);
         test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, smart, angle, euclid,
                                          torus, phase, T, dz, dsinz, dinvz, cell, gw, off, gw2,
-                                         gw3, dCellStart, dPtsX, dPtsY, dPtsW, dorder, dSurv,
-                                         dSurvCount, survCap);
+                                         gw3, dCellStart, dPtsX, dPtsY, dPtsW, dorder, sparse,
+                                         dKeys, dKeyStart, dCellOff, dPtsXf, dPtsYf, dPtsWf,
+                                         cellTight, dSurv, dSurvCount, survCap);
         CK(cudaDeviceSynchronize());
         int sc;
         CK(cudaMemcpy(&sc, dSurvCount, 4, cudaMemcpyDeviceToHost));
