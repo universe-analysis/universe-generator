@@ -23,6 +23,13 @@
 // candidates are settled by the exact double-precision host recheck, so the
 // admitted packing obeys the same collision rule as the dense path.
 //
+// The main loop is pipelined: two survivor buffers on one CUDA stream, so
+// round r+1's kernel overlaps the host-side admission of round r. The device
+// grid lags admissions by a round (on top of the 1%-growth rebuild filter);
+// points are never removed, so the stale grid is a subset of the current
+// packing and the prefilter can only pass extra candidates -- all settled by
+// the authoritative host recheck.
+//
 // Build:  nvcc -O3 -arch=sm_86 -o braid_cuda3d braid_cuda3d.cu
 // Run:    ./braid_cuda3d -t 80 --attempts 5e9 --seed 1 --curve out.csv
 
@@ -627,12 +634,34 @@ int main(int argc, char** argv) {
         return torus ? (long)floor((v + 1.0) / cell) : (long)((int)floor(v / cell) + off);
     };
 
-    int survCap = 1 << 20;
-    Path* dSurv;
-    int* dSurvCount;
-    CK(cudaMalloc(&dSurv, survCap * sizeof(Path)));
-    CK(cudaMalloc(&dSurvCount, 4));
-    std::vector<Path> hSurv(survCap);
+    // Pipelined survivor buffers: two sets on one stream, so round r+1's
+    // kernel runs while the host admits round r's survivors. The kernel is
+    // only a prefilter and points are never removed, so the one-round-stale
+    // device grid is a SUBSET of the current packing: staleness can only pass
+    // extra candidates, and every survivor is settled by the authoritative
+    // host recheck. Each round copies back a fixed pinned prefix of copyCap
+    // survivors without waiting for the count; the (rare, early-run) overflow
+    // past copyCap is fetched afterwards on a second stream.
+    const int survCap = 1 << 20;
+    const int copyCap = 1 << 13;
+    cudaStream_t st, stCopy;
+    CK(cudaStreamCreate(&st));
+    CK(cudaStreamCreate(&stCopy));
+    Path* dSurv[2];
+    int* dSurvCount[2];
+    Path* hSurvPin[2];
+    int* hCount[2];
+    cudaEvent_t ev[2];
+    for (int b = 0; b < 2; b++) {
+        CK(cudaMalloc(&dSurv[b], survCap * sizeof(Path)));
+        CK(cudaMalloc(&dSurvCount[b], 4));
+        CK(cudaMallocHost(&hSurvPin[b], copyCap * sizeof(Path)));
+        CK(cudaMallocHost(&hCount[b], 4));
+        CK(cudaEventCreate(&ev[b]));
+    }
+    cudaEvent_t uploadEv;  // last grid upload; wait before rewriting staging
+    CK(cudaEventCreate(&uploadEv));
+    std::vector<Path> hSurvOver(survCap);  // overflow staging (pageable)
     size_t ptsCap = 1 << 16;
     double *dPtsX = nullptr, *dPtsY = nullptr, *dPtsW = nullptr;
     float *dPtsXf = nullptr, *dPtsYf = nullptr, *dPtsWf = nullptr;
@@ -674,11 +703,22 @@ int main(int argc, char** argv) {
     std::vector<double> Xb(T), Yb(T), Wb(T);
     long long lastN = -1;  // grid rebuilt only when N grew enough (deep-tail speedup)
 
-    while (attempts < (long long)budget) {
-        if (lastN < 0 || N - lastN > N / 100 + 1) {  // rebuild grid only when it changed enough
+    // Rebuild + upload the device grid when N grew enough. Uploads are
+    // enqueued on the compute stream, so they land between the in-flight
+    // kernel and the next one -- the in-flight kernel never sees a partial
+    // grid, and the next kernel sees the whole update.
+    auto maybe_rebuild = [&]() {
+        if (!(lastN < 0 || N - lastN > N / 100 + 1))
+            return;
+        // The previous upload may still be in flight from these same staging
+        // vectors; do not rewrite them under it.
+        CK(cudaEventSynchronize(uploadEv));
+        {
             size_t npts = (size_t)N * T;
             if (npts > ptsCap) {
                 ptsCap = npts * 2;
+                // The in-flight kernel reads the old buffers; drain it first.
+                CK(cudaStreamSynchronize(st));
                 free_pts();
                 alloc_pts();
             }
@@ -719,17 +759,20 @@ int main(int argc, char** argv) {
                 }
                 keyStartH[T] = (int)keysH.size();
                 cellOffH.push_back((int)npts);  // CSR sentinel
-                CK(cudaMemcpy(dKeyStart, keyStartH.data(), (T + 1) * 4,
-                              cudaMemcpyHostToDevice));
+                CK(cudaMemcpyAsync(dKeyStart, keyStartH.data(), (T + 1) * 4,
+                                   cudaMemcpyHostToDevice, st));
                 if (!keysH.empty())
-                    CK(cudaMemcpy(dKeys, keysH.data(), keysH.size() * 4,
-                                  cudaMemcpyHostToDevice));
-                CK(cudaMemcpy(dCellOff, cellOffH.data(), cellOffH.size() * 4,
-                              cudaMemcpyHostToDevice));
+                    CK(cudaMemcpyAsync(dKeys, keysH.data(), keysH.size() * 4,
+                                       cudaMemcpyHostToDevice, st));
+                CK(cudaMemcpyAsync(dCellOff, cellOffH.data(), cellOffH.size() * 4,
+                                   cudaMemcpyHostToDevice, st));
                 if (npts) {
-                    CK(cudaMemcpy(dPtsXf, ptsXfH.data(), npts * 4, cudaMemcpyHostToDevice));
-                    CK(cudaMemcpy(dPtsYf, ptsYfH.data(), npts * 4, cudaMemcpyHostToDevice));
-                    CK(cudaMemcpy(dPtsWf, ptsWfH.data(), npts * 4, cudaMemcpyHostToDevice));
+                    CK(cudaMemcpyAsync(dPtsXf, ptsXfH.data(), npts * 4, cudaMemcpyHostToDevice,
+                                       st));
+                    CK(cudaMemcpyAsync(dPtsYf, ptsYfH.data(), npts * 4, cudaMemcpyHostToDevice,
+                                       st));
+                    CK(cudaMemcpyAsync(dPtsWf, ptsWfH.data(), npts * 4, cudaMemcpyHostToDevice,
+                                       st));
                 }
             } else {
                 std::fill(cellLen.begin(), cellLen.end(), 0);
@@ -758,36 +801,78 @@ int main(int argc, char** argv) {
                         ptsYh[s] = py[i][j];
                         ptsWh[s] = pw[i][j];
                     }
-                CK(cudaMemcpy(dCellStart, cellStart.data(), (ncell + 1) * 4,
-                              cudaMemcpyHostToDevice));
+                CK(cudaMemcpyAsync(dCellStart, cellStart.data(), (ncell + 1) * 4,
+                                   cudaMemcpyHostToDevice, st));
                 if (npts) {
-                    CK(cudaMemcpy(dPtsX, ptsXh.data(), npts * 8, cudaMemcpyHostToDevice));
-                    CK(cudaMemcpy(dPtsY, ptsYh.data(), npts * 8, cudaMemcpyHostToDevice));
-                    CK(cudaMemcpy(dPtsW, ptsWh.data(), npts * 8, cudaMemcpyHostToDevice));
+                    CK(cudaMemcpyAsync(dPtsX, ptsXh.data(), npts * 8, cudaMemcpyHostToDevice,
+                                       st));
+                    CK(cudaMemcpyAsync(dPtsY, ptsYh.data(), npts * 8, cudaMemcpyHostToDevice,
+                                       st));
+                    CK(cudaMemcpyAsync(dPtsW, ptsWh.data(), npts * 8, cudaMemcpyHostToDevice,
+                                       st));
                 }
             }
             lastN = N;
         }
+        CK(cudaEventRecord(uploadEv, st));
+    };
 
-        CK(cudaMemset(dSurvCount, 0, 4));
+    // Enqueue one prefilter round into buffer b: zero the count, launch the
+    // kernel, and start the count + fixed-prefix survivor copies back to
+    // pinned memory. Everything is on the compute stream; ev[b] fires when
+    // the round's results are readable on the host.
+    long roundBatch[2] = {0, 0};
+    long long attemptsEnqueued = 0;
+    auto enqueue_round = [&](int b) {
+        CK(cudaMemsetAsync(dSurvCount[b], 0, 4, st));
         int threads = 256, blocks = (int)((batch + threads - 1) / threads);
-        test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, smart, angle, euclid,
-                                         torus, phase, T, dz, dsinz, dinvz, cell, gw, off, gw2,
-                                         gw3, dCellStart, dPtsX, dPtsY, dPtsW, dorder, sparse,
-                                         dKeys, dKeyStart, dCellOff, dPtsXf, dPtsYf, dPtsWf,
-                                         cellTight, dSurv, dSurvCount, survCap);
-        CK(cudaDeviceSynchronize());
-        int sc;
-        CK(cudaMemcpy(&sc, dSurvCount, 4, cudaMemcpyDeviceToHost));
-        int got = sc < survCap ? sc : survCap;
-        if (got)
-            CK(cudaMemcpy(hSurv.data(), dSurv, got * sizeof(Path), cudaMemcpyDeviceToHost));
-        attempts += batch;
+        test_kernel<<<blocks, threads, 0, st>>>(
+            seed, round, (int)batch, modmax, smart, angle, euclid, torus, phase, T, dz, dsinz,
+            dinvz, cell, gw, off, gw2, gw3, dCellStart, dPtsX, dPtsY, dPtsW, dorder, sparse,
+            dKeys, dKeyStart, dCellOff, dPtsXf, dPtsYf, dPtsWf, cellTight, dSurv[b],
+            dSurvCount[b], survCap);
+        CK(cudaMemcpyAsync(hCount[b], dSurvCount[b], 4, cudaMemcpyDeviceToHost, st));
+        CK(cudaMemcpyAsync(hSurvPin[b], dSurv[b], copyCap * sizeof(Path),
+                           cudaMemcpyDeviceToHost, st));
+        CK(cudaEventRecord(ev[b], st));
+        roundBatch[b] = batch;
+        attemptsEnqueued += batch;
         round++;
+    };
+
+    maybe_rebuild();  // initial (empty) grid upload
+    bool stopEnqueue = false;
+    int cur = 0;
+    enqueue_round(cur);
+    while (true) {
+        // Keep the GPU fed: enqueue the next round (against the device grid,
+        // which lags admissions by a round) before draining this one.
+        bool enqueuedNext = false;
+        if (attemptsEnqueued < (long long)budget && !stopEnqueue) {
+            enqueue_round(cur ^ 1);
+            enqueuedNext = true;
+        }
+        // Drain round `cur`: wait for its survivors while its successor runs.
+        CK(cudaEventSynchronize(ev[cur]));
+        int sc = *hCount[cur];
+        int got = sc < survCap ? sc : survCap;
+        const Path* surv = hSurvPin[cur];
+        if (got > copyCap) {
+            // Rare (early rounds): fetch everything past the pinned prefix on
+            // the copy stream, so it does not serialize behind the in-flight
+            // kernel on the compute stream.
+            memcpy(hSurvOver.data(), hSurvPin[cur], copyCap * sizeof(Path));
+            CK(cudaMemcpyAsync(hSurvOver.data() + copyCap, dSurv[cur] + copyCap,
+                               (size_t)(got - copyCap) * sizeof(Path), cudaMemcpyDeviceToHost,
+                               stCopy));
+            CK(cudaStreamSynchronize(stCopy));
+            surv = hSurvOver.data();
+        }
+        attempts += roundBatch[cur];
 
         long long admitted = 0;
         for (int s = 0; s < got; s++) {
-            Path& p = hSurv[s];
+            const Path& p = surv[s];
             const double offx = p.ax * sin(p.fx);
             const double offy = p.ay * sin(p.fy);
             const double offw = p.aw * sin(p.fw);
@@ -833,8 +918,8 @@ int main(int argc, char** argv) {
             nextMs = (long long)(nextMs * 1.15) + 1;
         }
         if (winTarget) {
-            window.push_back({batch, admitted});
-            winAtt += batch;
+            window.push_back({roundBatch[cur], admitted});
+            winAtt += roundBatch[cur];
             winAdm += admitted;
             while (window.size() > 1 && winAtt - window.front().first >= winTarget) {
                 winAtt -= window.front().first;
@@ -843,9 +928,14 @@ int main(int argc, char** argv) {
             }
             if (winAtt >= winTarget && attempts > 1000000 &&
                 (double)winAdm / (double)winAtt < acceptThresh)
-                break;
+                stopEnqueue = true;  // drain the in-flight round, then stop
         }
+        maybe_rebuild();
+        if (!enqueuedNext)
+            break;
+        cur ^= 1;
     }
+    CK(cudaStreamSynchronize(st));
     curve.push_back({attempts, N});
     fprintf(stderr, "done: N=%lld in %lld attempts\n", N, attempts);
     if (curvePath) {
