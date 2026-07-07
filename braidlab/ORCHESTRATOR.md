@@ -125,20 +125,35 @@ Notes:
 
 ## GPU memory caps (T ceilings)
 
-VRAM is dominated by a dense per-timestep collision grid (breakdown below), so
-the safe T ceiling is set by card VRAM:
+In the default **dense-grid** mode, VRAM is dominated by a dense per-timestep
+collision grid (breakdown below), so the safe T ceiling is set by card VRAM:
 
-| Card | VRAM | Safe T ceiling (3+1) |
+| Card | VRAM | Safe T ceiling (3+1, dense grid) |
 |---|---|---|
-| RTX 3080 | 10 GB | **160** (≈5.6 GB grid + ~0.7 GB points + context); T≥170 risks OOM |
-| RTX 3090 | 24 GB | **~215** (grid is 19.8 GB at T=220, 27.9 GB at T=240) |
+| RTX 3080 | 10 GB | **~190** (≈5.9 GB grid at T=190 + points + context) |
+| RTX 3090 | 24 GB | **~255** (grid is 11.3 GB at T=250, 14.0 GB at T=260) |
 
-Pass caps with `--host-max host1=160,host2=160`. `plan_assignment` only assigns a
+(The ceilings above reflect the sentinel-CSR grid — one int32 array, half the
+pre-2026-07 footprint. Old notes citing T=160/T=215 predate that change.)
+
+Pass caps with `--host-max host1=190,host2=190`. `plan_assignment` only assigns a
 job to hosts whose cap it fits, and **raises** if no host can run some T (so a
 typo that strands the high-T jobs fails loudly instead of silently dropping
-them). With these caps the high-T tail (T=170–200) lands only on host3.
+them). With these caps the highest-T jobs land only on host3.
 
-### VRAM breakdown (where it actually goes)
+**For T beyond the dense cap, use the sparse grid** (`Campaign(sparse=True)` /
+engine `--sparse`): per-timestep sorted occupied-cell keys + CSR offsets looked
+up by binary search, with float32 device points (the GPU prefilter only flags
+certain hits; gray-zone candidates fall through to the exact double host
+recheck, so the packing obeys the same collision rule). VRAM becomes **O(N·T)**
+— measured 3.0 GB peak at T=240 on a 10 GB 3080, where the dense grid (13.9 GB)
+does not even allocate. Cost: ~20% slower at moderate T (binary-search lookup);
+sparse job names carry an `_sp` suffix so they never collide with dense runs in
+the shared workspace. Validated against the stored corrdim3d T=60 experiment:
+dense/sparse final N differ by 0.5%, both inside the 5-seed spread (see
+`analysis/compare_jamming.py`).
+
+### VRAM breakdown (dense mode: where it actually goes)
 
 For a high-T 3+1 run the memory is dominated by the **dense per-timestep
 collision grid**. Collisions are checked per timestep, so the engine allocates a
@@ -146,30 +161,34 @@ full spatial lattice at every one of the T timesteps:
 
 ```
 grid cells = T × (T+4)³ ≈ T⁴
-grid VRAM  = cells × 8 bytes      # cellStart + cellLen, two int32 arrays (4B each)
+grid VRAM  = cells × 4 bytes      # cellStart, one int32 array (sentinel CSR)
 ```
 
-The `× 8` (not 16) is the int32-index optimization — without it the grid doubles
-and T=200 would not fit a 3090. The grid is the wall; everything else is small:
+The int32 indices plus the sentinel-CSR layout (lengths derived from adjacent
+offsets, no `cellLen` array) are what keep this to ×4 — the original two-array
+double-index layout was ×16. The grid is the wall; everything else is small:
 
 | Term | Scaling | At T=200 |
 |---|---|---|
-| Collision grid (`dCellStart`+`dCellLen`) | ~T⁴ | **13.6 GB** |
+| Collision grid (`dCellStart`) | ~T⁴ | **6.8 GB** |
 | Accepted points (`dPtsX/Y/W`, 3×8B × N·T) | ~N·T | ~1.6 GB |
-| Survivor buffer (survCap 2²⁰ × 72 B Path) | fixed | ~75 MB |
+| Survivor buffer (survCap 2²⁰ × 96 B Path) | fixed | ~100 MB |
 | `z/sinz/invz/order` per-timestep arrays | ~T | KB |
 | CUDA context / runtime | fixed | ~0.7 GB |
-| **Total** | | **~16 GB alloc → ~17.6 GB resident** |
+| **Total** | | **~9 GB alloc** |
 
 Consequences:
-- **3+1 caps at T≈215 on 24 GB** because the grid is T⁴; **2+1 is ~T³** (T × a T²
-  lattice), so even T=400 is ~0.5 GB — that is why `corrdim2d` can push T high.
+- **Dense 3+1 caps at T≈255 on 24 GB** because the grid is T⁴; **2+1 is ~T³**
+  (T × a T² lattice), so even T=400 is small — that is why `corrdim2d` can push
+  T high.
 - The grid is **mostly empty at high T** (the pack fills a ~2.8-D fractal subset
-  of a 4-D lattice): a speed-for-memory trade. A sparse/hashed grid would cut
-  memory hugely at the cost of lookup speed.
-- **Host RAM matters too**: the host mirrors `cellStart`/`cellLen` (another
-  ~13.6 GB at T=200) plus per-timestep point maps for grid rebuilds. A big GPU
-  alone is not enough — the driver host needs the RAM as well.
+  of a 4-D lattice) — which is exactly why `--sparse` works: it stores only the
+  occupied cells and removes the T⁴ term entirely.
+- **Host RAM matters too (dense mode)**: the host mirrors `cellStart` (another
+  ~6.8 GB at T=200) plus per-timestep point maps for grid rebuilds. A big GPU
+  alone is not enough — the driver host needs the RAM as well. Sparse mode
+  never allocates the dense arrays on either side, but at very high T the
+  accepted-point structures still grow (~10 GB host RSS at T=240, N≈293k).
 
 ## Resumability & idempotency
 
