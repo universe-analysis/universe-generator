@@ -46,20 +46,31 @@ def load_params(path: str) -> dict[str, np.ndarray]:
 
 
 def pooled_4d(
-    cols: dict[str, np.ndarray], t: int, packed: bool, torus: bool = False
+    cols: dict[str, np.ndarray],
+    t: int,
+    packed: bool,
+    torus: bool = False,
+    phase: bool = False,
 ) -> np.ndarray:
     """Return the pooled (N*T)x4 (x, y, w, z) cloud for one dump."""
-    z = 0.01 + np.arange(t) * (np.pi - 0.02) / (t - 1)
+    if phase:
+        step = np.pi / (t + 1)
+        z = step + np.arange(t) * step
+    else:
+        z = 0.01 + np.arange(t) * (np.pi - 0.02) / (t - 1)
     sinz = np.sin(z)
+    n = len(cols["ax"])
 
-    def axis(a, b, a2):  # X(z) = a*sin(b*z)/sin(z) + a2, shape (N, T)
-        out = a[:, None] * np.sin(np.outer(b, z)) / sinz + a2[:, None]
+    def axis(a, b, a2, f):  # X(z) = a*[sin(b*z + f) - sin f]/sin(z) + a2, shape (N, T)
+        fv = cols.get(f, np.zeros(n))
+        wig = np.sin(np.outer(b, z) + fv[:, None]) - np.sin(fv)[:, None]
+        out = a[:, None] * wig / sinz + a2[:, None]
         return wrap_unit(out) if torus else out
 
-    x = axis(cols["ax"], cols["bx"], cols["ax2"]).ravel()
-    y = axis(cols["ay"], cols["by"], cols["ay2"]).ravel()
-    w = axis(cols["aw"], cols["bw"], cols["aw2"]).ravel()
-    zt = np.tile(z, len(cols["ax"]))
+    x = axis(cols["ax"], cols["bx"], cols["ax2"], "fx").ravel()
+    y = axis(cols["ay"], cols["by"], cols["ay2"], "fy").ravel()
+    w = axis(cols["aw"], cols["bw"], cols["aw2"], "fw").ravel()
+    zt = np.tile(z, n)
     zc = zt * (2.0 / np.pi) if packed else zt
     return np.stack([x, y, w, zc], axis=1)
 
@@ -90,6 +101,17 @@ def main() -> None:
         default=COUNT_D,
         help="count-scaling packing dimension drawn as the reference line",
     )
+    parser.add_argument(
+        "--phase",
+        action="store_true",
+        help="phase-schema dumps: fx/fy/fw phases + the symmetric z grid",
+    )
+    parser.add_argument(
+        "--suffix",
+        default="",
+        help="dump filename suffix before .csv (e.g. _tor_ph_e6) -- required "
+        "to pick one variant when campaigns share a dumps dir",
+    )
     parser.add_argument("--out", type=Path, default=Path("figures/spacetime_4d.png"))
     args = parser.parse_args()
 
@@ -100,18 +122,18 @@ def main() -> None:
 
     cell = 2.0 / args.t
     sizes = np.logspace(np.log10(cell), np.log10(0.4), 18)
-    paths = sorted(glob.glob(f"{args.dumps}/d3_nyq_T{args.t}_s*.csv"))[: args.seeds]
+    pattern = f"{args.dumps}/d3_nyq_T{args.t}_s*{args.suffix}.csv"
+    paths = sorted(glob.glob(pattern))[: args.seeds]
     print(f"T={args.t}, CELL={cell:.4f}, {len(paths)} seeds")
 
     curves = {}
     for packed in (False, True):
         counts = []
         for p in paths:
-            counts.append(
-                box_count_4d(
-                    pooled_4d(load_params(p), args.t, packed, torus=args.torus), sizes
-                )
+            cloud = pooled_4d(
+                load_params(p), args.t, packed, torus=args.torus, phase=args.phase
             )
+            counts.append(box_count_4d(cloud, sizes))
         n = np.mean(counts, axis=0)
         curves["packed" if packed else "native"] = (
             n,
