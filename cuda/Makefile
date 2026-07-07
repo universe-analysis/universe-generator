@@ -10,7 +10,8 @@
 
 NVCC ?= nvcc
 ARCH ?= sm_86
-NVCCFLAGS ?= -O3 -arch=$(ARCH)
+# -pthread: the 3+1 engine multithreads its host-side work (std::thread).
+NVCCFLAGS ?= -O3 -arch=$(ARCH) -Xcompiler -pthread
 
 BINARIES := braid_cuda braid_cuda3d
 

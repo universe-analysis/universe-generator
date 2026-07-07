@@ -30,6 +30,12 @@
 // packing and the prefilter can only pass extra candidates -- all settled by
 // the authoritative host recheck.
 //
+// Host work is multithreaded (plain std::thread): survivor admission runs a
+// parallel collision precheck (serial only for same-chunk mutual collisions,
+// preserving RSA admission order exactly), and the sparse rebuild sorts only
+// the points admitted since the last rebuild, merging them into a persistent
+// per-timestep sorted order with all timesteps in parallel.
+//
 // Build:  nvcc -O3 -arch=sm_86 -o braid_cuda3d braid_cuda3d.cu
 // Run:    ./braid_cuda3d -t 80 --attempts 5e9 --seed 1 --curve out.csv
 
@@ -44,6 +50,7 @@
 #include <cstring>
 #include <deque>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -102,6 +109,30 @@ __host__ __device__ inline uint32_t igcd(uint32_t a, uint32_t b) {
 }
 
 constexpr double kPi = 3.14159265358979323846;
+
+// Chunked parallel-for over [0, n): fn(lo, hi) runs on worker threads over
+// disjoint ranges. Plain std::thread (no OpenMP) so the heterogeneous fleet's
+// nvcc host-compiler combos all build it. Small n runs inline.
+template <typename Fn>
+void parallel_for(size_t n, const Fn& fn) {
+    const unsigned hw = std::thread::hardware_concurrency();
+    const size_t nt = std::min<size_t>(hw ? hw : 4, 16);
+    if (n < 2 * nt) {
+        fn(0, n);
+        return;
+    }
+    std::vector<std::thread> ts;
+    const size_t chunk = (n + nt - 1) / nt;
+    for (size_t t = 0; t < nt; t++) {
+        const size_t lo = t * chunk;
+        const size_t hi = std::min(n, lo + chunk);
+        if (lo >= hi)
+            break;
+        ts.emplace_back([&fn, lo, hi]() { fn(lo, hi); });
+    }
+    for (auto& th : ts)
+        th.join();
+}
 
 struct Path {
     double ax, ay, aw, bx, by, bw, ax2, ay2, aw2;
@@ -583,6 +614,11 @@ int main(int argc, char** argv) {
         CK(cudaMalloc(&dKeyStart, (T + 1) * 4));
 
     std::vector<std::vector<double>> px(T), py(T), pw(T);
+    // Incremental sparse-rebuild state: per timestep, the point indices sorted
+    // by cell key (kept across rebuilds so only fresh points need sorting),
+    // plus per-timestep key/offset scratch for the parallel emit.
+    std::vector<std::vector<int>> sortedCell(T), sortedIdx(T);
+    std::vector<std::vector<int>> tkeys(T), toffs(T);
     std::vector<Path> acceptedPaths;  // populated only when --dump-params is set
     std::vector<std::unordered_map<long, std::vector<std::array<double, 3>>>> hgrid(T);
     auto key3 = [&](int cx, int cy, int cw) -> long {
@@ -632,6 +668,32 @@ int main(int argc, char** argv) {
     // Device-grid cell index for the CSR rebuild (must mirror collides_dev).
     auto gix = [&](double v) -> long {
         return torus ? (long)floor((v + 1.0) / cell) : (long)((int)floor(v / cell) + off);
+    };
+    // Comoving trajectory of a path at every timestep (wrapped on the torus).
+    // Same expressions as collides_dev; thread-safe (read-only captures).
+    auto eval_path = [&](const Path& p, double* X, double* Y, double* W) {
+        const double offx = p.ax * sin(p.fx);
+        const double offy = p.ay * sin(p.fy);
+        const double offw = p.aw * sin(p.fw);
+        // Same rule as collides_dev: phase-free paths take the verbatim
+        // pre-phase expression (per-candidate math identical to pre-phase).
+        const bool phased = (p.fx != 0.0) || (p.fy != 0.0) || (p.fw != 0.0);
+        for (int i = 0; i < T; i++) {
+            if (phased) {
+                X[i] = (p.ax * sin(p.bx * z[i] + p.fx) + p.ax2 * sinz[i] - offx) * invz[i];
+                Y[i] = (p.ay * sin(p.by * z[i] + p.fy) + p.ay2 * sinz[i] - offy) * invz[i];
+                W[i] = (p.aw * sin(p.bw * z[i] + p.fw) + p.aw2 * sinz[i] - offw) * invz[i];
+            } else {
+                X[i] = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
+                Y[i] = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
+                W[i] = (p.aw * sin(p.bw * z[i]) + p.aw2 * sinz[i]) * invz[i];
+            }
+            if (torus) {
+                X[i] = torus_wrap(X[i]);
+                Y[i] = torus_wrap(Y[i]);
+                W[i] = torus_wrap(W[i]);
+            }
+        }
     };
 
     // Pipelined survivor buffers: two sets on one stream, so round r+1's
@@ -700,7 +762,13 @@ int main(int argc, char** argv) {
     long batch = 1 << 16;
     uint64_t round = 0;
     std::vector<std::pair<long long, long long>> curve;
-    std::vector<double> Xb(T), Yb(T), Wb(T);
+    // Admission chunking (see the admission loop): per-chunk trajectory
+    // buffers, precheck flags, and the chunk's admitted survivor slots.
+    const int admitChunk = 64;
+    std::vector<double> Xc((size_t)admitChunk * T), Yc((size_t)admitChunk * T),
+        Wc((size_t)admitChunk * T);
+    std::vector<uint8_t> preHit(admitChunk);
+    std::vector<int> chunkAdm;
     long long lastN = -1;  // grid rebuilt only when N grew enough (deep-tail speedup)
 
     // Rebuild + upload the device grid when N grew enough. Uploads are
@@ -723,39 +791,79 @@ int main(int argc, char** argv) {
                 alloc_pts();
             }
             if (sparse) {
-                // Sparse rebuild: sort each timestep's points by cell, emit the
-                // unique occupied-cell keys with CSR offsets. O(N log N) per
-                // timestep -- no pass over the T*gw^3 dense cells at all.
-                keysH.clear();
-                cellOffH.clear();
+                // Incremental sparse rebuild: only the points admitted since
+                // the last rebuild get sorted (a ~1% sliver); they are then
+                // linear-merged into the persistent per-timestep sorted order
+                // and the staging arrays + CSR are re-emitted. Timesteps are
+                // independent, so the whole pass fans out across cores.
                 ptsXfH.resize(npts);
                 ptsYfH.resize(npts);
                 ptsWfH.resize(npts);
-                std::vector<std::pair<int, int>> cp;  // (cell key, point index)
-                size_t base = 0;
+                std::vector<size_t> baseOf(T + 1, 0);
+                for (int i = 0; i < T; i++)
+                    baseOf[i + 1] = baseOf[i] + px[i].size();
+                parallel_for((size_t)T, [&](size_t lo, size_t hi) {
+                    std::vector<std::pair<int, int>> fresh;  // (cell key, point index)
+                    std::vector<int> mcell, midx;
+                    for (size_t i = lo; i < hi; i++) {
+                        auto& sc = sortedCell[i];
+                        auto& si = sortedIdx[i];
+                        const size_t n = px[i].size();
+                        const size_t oldn = sc.size();
+                        fresh.clear();
+                        fresh.reserve(n - oldn);
+                        for (size_t j = oldn; j < n; j++)
+                            fresh.push_back({(int)(gix(px[i][j]) * gw2 + gix(py[i][j]) * gw +
+                                                   gix(pw[i][j])),
+                                             (int)j});
+                        std::sort(fresh.begin(), fresh.end());
+                        // Merge the fresh sliver into the persistent order.
+                        // Old-first on equal cells keeps the exact order a
+                        // full (cell, index) sort would produce.
+                        mcell.resize(n);
+                        midx.resize(n);
+                        size_t a = 0, b = 0;
+                        for (size_t k = 0; k < n; k++) {
+                            const bool takeOld =
+                                a < oldn && (b >= fresh.size() || sc[a] <= fresh[b].first);
+                            if (takeOld) {
+                                mcell[k] = sc[a];
+                                midx[k] = si[a];
+                                a++;
+                            } else {
+                                mcell[k] = fresh[b].first;
+                                midx[k] = fresh[b].second;
+                                b++;
+                            }
+                        }
+                        sc.swap(mcell);
+                        si.swap(midx);
+                        // Emit this timestep's staging points + keys/offsets.
+                        auto& tk = tkeys[i];
+                        auto& to = toffs[i];
+                        tk.clear();
+                        to.clear();
+                        int prev = -1;
+                        const size_t base = baseOf[i];
+                        for (size_t k = 0; k < n; k++) {
+                            if (sc[k] != prev) {
+                                tk.push_back(sc[k]);
+                                to.push_back((int)(base + k));
+                                prev = sc[k];
+                            }
+                            const int j = si[k];
+                            ptsXfH[base + k] = (float)px[i][j];
+                            ptsYfH[base + k] = (float)py[i][j];
+                            ptsWfH[base + k] = (float)pw[i][j];
+                        }
+                    }
+                });
+                keysH.clear();
+                cellOffH.clear();
                 for (int i = 0; i < T; i++) {
                     keyStartH[i] = (int)keysH.size();
-                    const size_t n = px[i].size();
-                    cp.clear();
-                    cp.reserve(n);
-                    for (size_t j = 0; j < n; j++) {
-                        int c = (int)(gix(px[i][j]) * gw2 + gix(py[i][j]) * gw + gix(pw[i][j]));
-                        cp.push_back({c, (int)j});
-                    }
-                    std::sort(cp.begin(), cp.end());
-                    int prev = -1;
-                    for (size_t k = 0; k < n; k++) {
-                        if (cp[k].first != prev) {
-                            keysH.push_back(cp[k].first);
-                            cellOffH.push_back((int)(base + k));
-                            prev = cp[k].first;
-                        }
-                        const int j = cp[k].second;
-                        ptsXfH[base + k] = (float)px[i][j];
-                        ptsYfH[base + k] = (float)py[i][j];
-                        ptsWfH[base + k] = (float)pw[i][j];
-                    }
-                    base += n;
+                    keysH.insert(keysH.end(), tkeys[i].begin(), tkeys[i].end());
+                    cellOffH.insert(cellOffH.end(), toffs[i].begin(), toffs[i].end());
                 }
                 keyStartH[T] = (int)keysH.size();
                 cellOffH.push_back((int)npts);  // CSR sentinel
@@ -870,44 +978,74 @@ int main(int argc, char** argv) {
         }
         attempts += roundBatch[cur];
 
+        // Admission runs in chunks with two phases. Phase 1 (parallel): each
+        // survivor's trajectory + collision check against the packing as
+        // committed so far -- hgrid/px are read-only there, so it fans out
+        // across cores. Phase 2 (serial, slot order): the only collisions
+        // phase 1 cannot see are against this same chunk's admissions, so
+        // each admittee is compared pairwise against the chunk's admitted
+        // trajectories. Chunks are small to keep that quadratic tail short.
+        // The admitted set is identical to the old fully-serial loop.
         long long admitted = 0;
-        for (int s = 0; s < got; s++) {
-            const Path& p = surv[s];
-            const double offx = p.ax * sin(p.fx);
-            const double offy = p.ay * sin(p.fy);
-            const double offw = p.aw * sin(p.fw);
-            // Same rule as collides_dev: phase-free paths take the verbatim
-            // pre-phase expression (per-candidate math identical to pre-phase).
-            const bool phased = (p.fx != 0.0) || (p.fy != 0.0) || (p.fw != 0.0);
-            for (int i = 0; i < T; i++) {
-                if (phased) {
-                    Xb[i] = (p.ax * sin(p.bx * z[i] + p.fx) + p.ax2 * sinz[i] - offx) * invz[i];
-                    Yb[i] = (p.ay * sin(p.by * z[i] + p.fy) + p.ay2 * sinz[i] - offy) * invz[i];
-                    Wb[i] = (p.aw * sin(p.bw * z[i] + p.fw) + p.aw2 * sinz[i] - offw) * invz[i];
-                } else {
-                    Xb[i] = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
-                    Yb[i] = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
-                    Wb[i] = (p.aw * sin(p.bw * z[i]) + p.aw2 * sinz[i]) * invz[i];
+        for (int s0 = 0; s0 < got; s0 += admitChunk) {
+            const int c = std::min(admitChunk, got - s0);
+            auto precheck = [&](size_t lo, size_t hi) {
+                for (size_t q = lo; q < hi; q++) {
+                    double *X = &Xc[q * T], *Y = &Yc[q * T], *W = &Wc[q * T];
+                    eval_path(surv[s0 + q], X, Y, W);
+                    preHit[q] = host_collides(X, Y, W) ? 1 : 0;
                 }
-                if (torus) {
-                    Xb[i] = torus_wrap(Xb[i]);
-                    Yb[i] = torus_wrap(Yb[i]);
-                    Wb[i] = torus_wrap(Wb[i]);
+            };
+            if (c >= 24)
+                parallel_for((size_t)c, precheck);
+            else
+                precheck(0, (size_t)c);
+            chunkAdm.clear();
+            for (int q = 0; q < c; q++) {
+                if (preHit[q])
+                    continue;
+                const double *X = &Xc[(size_t)q * T], *Y = &Yc[(size_t)q * T],
+                             *W = &Wc[(size_t)q * T];
+                bool hit = false;
+                for (int a : chunkAdm) {
+                    const double *Xa = &Xc[(size_t)a * T], *Ya = &Yc[(size_t)a * T],
+                                 *Wa = &Wc[(size_t)a * T];
+                    for (int oi = 0; oi < T; oi++) {
+                        const int i = order[oi];
+                        double dX = X[i] - Xa[i];
+                        double dY = Y[i] - Ya[i];
+                        double dW = W[i] - Wa[i];
+                        if (torus) {
+                            dX = torus_delta(dX);
+                            dY = torus_delta(dY);
+                            dW = torus_delta(dW);
+                        }
+                        const bool h =
+                            euclid ? dX * dX + dY * dY + dW * dW <= cell * cell
+                                   : fabs(dX) <= cell && fabs(dY) <= cell && fabs(dW) <= cell;
+                        if (h) {
+                            hit = true;
+                            break;
+                        }
+                    }
+                    if (hit)
+                        break;
                 }
+                if (hit)
+                    continue;
+                for (int i = 0; i < T; i++) {
+                    px[i].push_back(X[i]);
+                    py[i].push_back(Y[i]);
+                    pw[i].push_back(W[i]);
+                    hgrid[i][key3(hix(X[i]), hix(Y[i]), hix(W[i]))].push_back(
+                        {X[i], Y[i], W[i]});
+                }
+                if (paramPath)
+                    acceptedPaths.push_back(surv[s0 + q]);
+                chunkAdm.push_back(q);
+                N++;
+                admitted++;
             }
-            if (host_collides(Xb.data(), Yb.data(), Wb.data()))
-                continue;
-            for (int i = 0; i < T; i++) {
-                px[i].push_back(Xb[i]);
-                py[i].push_back(Yb[i]);
-                pw[i].push_back(Wb[i]);
-                hgrid[i][key3(hix(Xb[i]), hix(Yb[i]), hix(Wb[i]))].push_back(
-                    {Xb[i], Yb[i], Wb[i]});
-            }
-            if (paramPath)
-                acceptedPaths.push_back(p);
-            N++;
-            admitted++;
         }
         if (got > 512 && batch > 4096)
             batch /= 2;
@@ -998,26 +1136,7 @@ int main(int argc, char** argv) {
         std::vector<double> X(T), Y(T), W(T);
         for (long long t = 0; t < probeN; t++) {
             Path p = propose(pr, modmax, smart, angle, torus, phase);
-            const double offx = p.ax * sin(p.fx);
-            const double offy = p.ay * sin(p.fy);
-            const double offw = p.aw * sin(p.fw);
-            const bool phased = (p.fx != 0.0) || (p.fy != 0.0) || (p.fw != 0.0);
-            for (int i = 0; i < T; i++) {
-                if (phased) {
-                    X[i] = (p.ax * sin(p.bx * z[i] + p.fx) + p.ax2 * sinz[i] - offx) * invz[i];
-                    Y[i] = (p.ay * sin(p.by * z[i] + p.fy) + p.ay2 * sinz[i] - offy) * invz[i];
-                    W[i] = (p.aw * sin(p.bw * z[i] + p.fw) + p.aw2 * sinz[i] - offw) * invz[i];
-                } else {
-                    X[i] = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
-                    Y[i] = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
-                    W[i] = (p.aw * sin(p.bw * z[i]) + p.aw2 * sinz[i]) * invz[i];
-                }
-                if (torus) {
-                    X[i] = torus_wrap(X[i]);
-                    Y[i] = torus_wrap(Y[i]);
-                    W[i] = torus_wrap(W[i]);
-                }
-            }
+            eval_path(p, X.data(), Y.data(), W.data());
             int b = bin_of(p.ax2);  // bin by the X-centre of the proposal
             prop[b]++;
             if (!host_collides(X.data(), Y.data(), W.data()))
