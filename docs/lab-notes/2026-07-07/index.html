@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-07-07</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-07-07</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="spacetime-boxcount-phase">
+      <h2>Spacetime box-counts revisited with phases: still no plateau, still dust-fine</h2>
+      <p class="meta">
+        3D + 4D box-counts of the phased torus worldline bundle
+        (<code>torus3d_phase_e6</code> dumps, T = 200, 3 seeds) &middot; code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/145a85a"><code>145a85a</code></a>
+      </p>
+      <p>
+        Revisit of the 07-02 spacetime box-count pair on the phase-schema
+        dumps (the 4D analysis learned <code>--phase</code>/<code>--suffix</code>
+        for this; the phased trajectory is
+        X(z) = a&middot;[sin(b&middot;z + f) &minus; sin&nbsp;f]/sin(z) + a2 on
+        the symmetric z grid). The question: does giving every axis a free
+        phase &mdash; which adds ~7% to the jam count and reshapes turnaround
+        kinematics &mdash; give the bundle a geometric dimension at the count
+        exponent? It does not; both charts reproduce the no-phase shapes point
+        for point.
+      </p>
+      <ul>
+        <li>Pooled 3D cloud: local D runs 1.31 (fine) &rarr; 2.76 (mid)
+            &rarr; 2.89 (coarse) vs 1.3 &rarr; 2.9 without phases, crossing
+            the 2.33 count exponent only in passing &mdash; no plateau.</li>
+        <li>Full 4D bundle (native and cell-packed z): the sweep runs
+            ~0 &rarr; ~3.7 with the same overshoot-and-dip at coarse scales;
+            no 2.33 plateau under either scaling.</li>
+        <li>The dust-fine feature survives: finest-scale 4D local D = 0.00
+            (native) / 0.04 (packed). Phases shift where a worldline sits in
+            its cell but not the fact that consecutive-timestep positions
+            land in distinct cells.</li>
+        <li>Cell-scale occupancy: 0.75% of 4D cells &mdash; same figure as
+            the no-phase run (both measured on equal-size 60k-worldline
+            subsample dumps, so this compares geometry, not jam count).</li>
+      </ul>
+      <figure class="plot">
+        <img src="spacetime_dim_torus_phase.png"
+             alt="Local box-counting dimension vs scale for the pooled phased torus worldline cloud: runs from ~1.3 at fine scales to ~2.9 at coarse, crossing 2.33 only in passing." />
+        <figcaption>
+          Pooled 3D box-count of the phased torus bundle: local D runs
+          1.3 &rarr; 2.9 with scale, crossing the count exponent (2.33, red)
+          only in passing &mdash; identical to the no-phase chart of 07-02.
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="spacetime_4d_torus_phase.png"
+             alt="Local 4D box-counting dimension vs scale for the phased torus bundle under native and packed time scalings: sweeps from ~0 at the finest scale to ~3.7 at coarse, no plateau at 2.33." />
+        <figcaption>
+          Full 4D box-count of the phased bundle (time as a spatial axis,
+          native and cell-packed z scalings): the sweep crosses 2.33 in
+          passing with no plateau; cell-scale occupancy is 0.75% of 4D cells.
+        </figcaption>
+      </figure>
+      <p>
+        Takeaway: the phase degrees of freedom leave the geometric story
+        exactly where the no-phase torus and the hard-wall model left it. The
+        count-scaling exponent (2.33 here, unchanged by phases per the 07-05
+        ladder) is a packing-<em>number</em> exponent taken across resolution
+        T, not the box-counting dimension of any static bundle &mdash; the
+        third model variant in a row where the bundle sweeps 1 &rarr; 3 (3D)
+        and &rarr; 4 (4D) with no plateau. This closes out the phase-schema
+        re-checks: scaling, uniformity, parity, and now spacetime geometry
+        are all phase-blind; only the prefactor and the turnaround kinematics
+        move.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
