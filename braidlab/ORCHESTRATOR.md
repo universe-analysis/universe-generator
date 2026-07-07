@@ -147,10 +147,12 @@ up by binary search, with float32 device points (the GPU prefilter only flags
 certain hits; gray-zone candidates fall through to the exact double host
 recheck, so the packing obeys the same collision rule). VRAM becomes **O(N·T)**
 — measured 3.0 GB peak at T=240 on a 10 GB 3080, where the dense grid (13.9 GB)
-does not even allocate. Cost: ~20% slower at moderate T (binary-search lookup);
-sparse job names carry an `_sp` suffix so they never collide with dense runs in
-the shared workspace. Validated against the stored corrdim3d T=60 experiment:
-dense/sparse final N differ by 0.5%, both inside the 5-seed spread (see
+does not even allocate. The sparse prefilter runs entirely in fp32 with
+table-driven trig, so it is also the *fast* mode (~10% faster than dense at
+T=60 on a 3080, despite the binary-search lookup); sparse job names carry an
+`_sp` suffix so they never collide with dense runs in the shared workspace.
+Validated against the stored corrdim3d T=60 experiment: dense/sparse tail
+deviation < 1%, both inside the 5-seed spread (see
 `analysis/compare_jamming.py`).
 
 ### VRAM breakdown (dense mode: where it actually goes)

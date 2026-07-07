@@ -17,11 +17,14 @@
 //
 // --sparse replaces the dense per-timestep grid (T*gw^3 cells, the T^4 VRAM
 // hog) with per-timestep sorted occupied-cell keys + CSR offsets, looked up by
-// binary search, and stores device points as float32. VRAM becomes O(N*T), so
-// the T ceiling is set by runtime rather than card memory. The float prefilter
-// only flags CERTAIN hits (threshold shrunk below the float error); gray-zone
-// candidates are settled by the exact double-precision host recheck, so the
-// admitted packing obeys the same collision rule as the dense path.
+// binary search, and runs the whole prefilter in fp32: device points stored as
+// float32 and candidate trajectories evaluated from precomputed sin(b*z)
+// tables, no trig in the kernel (GeForce fp64 is 1/64 throughput). VRAM
+// becomes O(N*T), so the T ceiling is set by runtime rather than card memory.
+// The fp32 prefilter makes only CERTAIN decisions (hit threshold shrunk, wall
+// pushed out, each by more than the fp32 error); gray-zone candidates are
+// settled by the exact double-precision host recheck, so the admitted packing
+// obeys the same collision rule as the dense path.
 //
 // The main loop is pipelined: two survivor buffers on one CUDA stream, so
 // round r+1's kernel overlaps the host-side admission of round r. The device
@@ -170,6 +173,9 @@ __device__ inline float torus_delta_f(float d) {
         return d + 2.0f;
     return d;
 }
+__device__ inline float torus_wrap_f(float x) {
+    return x - 2.0f * floorf((x + 1.0f) * 0.5f);
+}
 
 // Binary search over a per-timestep span [lo, hi) of the sorted occupied-cell
 // key array (sparse grid). Returns the index of `key`, or -1 if the cell holds
@@ -268,6 +274,9 @@ __host__ __device__ inline Path propose(
     return p;
 }
 
+// Dense-grid collision test: exact double-precision trajectory + Chebyshev /
+// L2 exclusion. This is the reference prefilter -- bit-compatible with the
+// historical engine.
 __device__ bool collides_dev(const Path& p,
                              int T,
                              const double* z,
@@ -284,15 +293,7 @@ __device__ bool collides_dev(const Path& p,
                              const double* ptsW,
                              const int* order,
                              bool euclid,
-                             bool torus,
-                             bool sparse,
-                             const int* keys,
-                             const int* keyStart,
-                             const int* cellOff,
-                             const float* ptsXf,
-                             const float* ptsYf,
-                             const float* ptsWf,
-                             double cellTight) {
+                             bool torus) {
     const double edge = 1.0 - 0.5 * cell;  // path radius CELL/2 hits the wall at |X|=1
     // Phase offsets re-pin each component to zero at the endpoints.
     const double offx = p.ax * sin(p.fx);
@@ -357,52 +358,11 @@ __device__ bool collides_dev(const Path& p,
                     if (gz < 0 || gz >= gw)
                         continue;
 
-                    // Locate this cell's point span [st, st+ln). Dense: direct
-                    // CSR index (sentinel gives the length). Sparse: binary
-                    // search the timestep's sorted occupied-cell keys.
-                    long st;
-                    int ln;
-                    if (sparse) {
-                        const int c = (int)((long)gx * gw2 + (long)gy * gw + gz);
-                        const int j = find_key(keys, keyStart[i], keyStart[i + 1], c);
-                        if (j < 0)
-                            continue;
-                        st = cellOff[j];
-                        ln = cellOff[j + 1] - (int)st;
-                    } else {
-                        const long gc = (long)i * gw3 + (long)gx * gw2 + (long)gy * gw + gz;
-                        st = cellStart[gc];
-                        ln = cellStart[gc + 1] - (int)st;
-                    }
-
-                    if (sparse) {
-                        // Float points: flag only CERTAIN hits (<= cellTight,
-                        // the exclusion shrunk by more than the float error).
-                        // Gray-zone candidates survive the prefilter and are
-                        // settled by the host's exact double recheck, so the
-                        // admitted packing obeys the same rule as the dense
-                        // path.
-                        const float Xf = (float)X, Yf = (float)Y, Wf = (float)W;
-                        const float ct = (float)cellTight;
-                        for (int k = 0; k < ln; k++) {
-                            float dX = Xf - ptsXf[st + k];
-                            float dY = Yf - ptsYf[st + k];
-                            float dW = Wf - ptsWf[st + k];
-                            if (torus) {
-                                dX = torus_delta_f(dX);
-                                dY = torus_delta_f(dY);
-                                dW = torus_delta_f(dW);
-                            }
-                            bool hit;
-                            if (euclid)
-                                hit = dX * dX + dY * dY + dW * dW <= ct * ct;
-                            else
-                                hit = fabsf(dX) <= ct && fabsf(dY) <= ct && fabsf(dW) <= ct;
-                            if (hit)
-                                return true;
-                        }
-                        continue;
-                    }
+                    // CSR with a sentinel: cell gc holds points
+                    // [cellStart[gc], cellStart[gc+1]).
+                    const long gc = (long)i * gw3 + (long)gx * gw2 + (long)gy * gw + gz;
+                    const long st = cellStart[gc];
+                    const int ln = cellStart[gc + 1] - (int)st;
 
                     for (int k = 0; k < ln; k++) {
                         double dX = X - ptsX[st + k];
@@ -418,6 +378,135 @@ __device__ bool collides_dev(const Path& p,
                             hit = dX * dX + dY * dY + dW * dW <= cell * cell;
                         else
                             hit = fabs(dX) <= cell && fabs(dY) <= cell && fabs(dW) <= cell;
+                        if (hit)
+                            return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
+// Sparse-grid collision test, all in fp32 with NO trig in the loop: the
+// trajectory comes from precomputed tables (sinbT[(b-2)*T + i] = sin(b*z_i);
+// for the phase schema also cosbm1T = cos(b*z_i) - 1, stored pre-subtracted
+// in double so the near-endpoint cancellation costs no precision). GeForce
+// cards run fp64 at 1/64 throughput, so this is the difference between a
+// trig-bound and a memory-bound kernel.
+//
+// Decisions stay one-sided so the exact double host recheck remains the
+// authority: a hit is flagged only when CERTAIN (<= cellTight, the exclusion
+// shrunk by more than the fp32 trajectory error), and the wall rejects only
+// when CERTAIN (> edgeLoose, the wall pushed out by the same margin).
+// Gray-zone candidates survive the prefilter and are settled on the host.
+__device__ bool collides_sparse_dev(const Path& p,
+                                    int T,
+                                    const float* sinbT,
+                                    const float* cosbm1T,
+                                    const float* sinzF,
+                                    const float* invzF,
+                                    float cellF,
+                                    float cellTightF,
+                                    float edgeLooseF,
+                                    int gw,
+                                    int off,
+                                    long gw2,
+                                    const int* keys,
+                                    const int* keyStart,
+                                    const int* cellOff,
+                                    const float* ptsXf,
+                                    const float* ptsYf,
+                                    const float* ptsWf,
+                                    const int* order,
+                                    bool euclid,
+                                    bool torus,
+                                    bool phase) {
+    const float ax = (float)p.ax, ay = (float)p.ay, aw = (float)p.aw;
+    const float ax2 = (float)p.ax2, ay2 = (float)p.ay2, aw2 = (float)p.aw2;
+    const float* sbx = sinbT + ((int)p.bx - 2) * T;
+    const float* sby = sinbT + ((int)p.by - 2) * T;
+    const float* sbw = sinbT + ((int)p.bw - 2) * T;
+    const float* cbx = phase ? cosbm1T + ((int)p.bx - 2) * T : nullptr;
+    const float* cby = phase ? cosbm1T + ((int)p.by - 2) * T : nullptr;
+    const float* cbw = phase ? cosbm1T + ((int)p.bw - 2) * T : nullptr;
+    // Per-candidate phase factors (once, not per timestep). With the a*sin(f)
+    // offset folded in, sin(b*z + f) - sin(f) = sinb*cos(f) + (cosb - 1)*sin(f).
+    const float cfx = cosf((float)p.fx), sfx = sinf((float)p.fx);
+    const float cfy = cosf((float)p.fy), sfy = sinf((float)p.fy);
+    const float cfw = cosf((float)p.fw), sfw = sinf((float)p.fw);
+
+    for (int oi = 0; oi < T; oi++) {
+        const int i = order[oi];
+
+        float X, Y, W;
+        if (phase) {
+            X = (ax * (sbx[i] * cfx + cbx[i] * sfx) + ax2 * sinzF[i]) * invzF[i];
+            Y = (ay * (sby[i] * cfy + cby[i] * sfy) + ay2 * sinzF[i]) * invzF[i];
+            W = (aw * (sbw[i] * cfw + cbw[i] * sfw) + aw2 * sinzF[i]) * invzF[i];
+        } else {
+            X = (ax * sbx[i] + ax2 * sinzF[i]) * invzF[i];
+            Y = (ay * sby[i] + ay2 * sinzF[i]) * invzF[i];
+            W = (aw * sbw[i] + aw2 * sinzF[i]) * invzF[i];
+        }
+
+        int cx, cy, cw;
+        if (torus) {
+            X = torus_wrap_f(X);
+            Y = torus_wrap_f(Y);
+            W = torus_wrap_f(W);
+            cx = (int)floorf((X + 1.0f) / cellF);
+            cy = (int)floorf((Y + 1.0f) / cellF);
+            cw = (int)floorf((W + 1.0f) / cellF);
+        } else {
+            if (fabsf(X) > edgeLooseF || fabsf(Y) > edgeLooseF || fabsf(W) > edgeLooseF)
+                return true;
+            cx = (int)floorf(X / cellF);
+            cy = (int)floorf(Y / cellF);
+            cw = (int)floorf(W / cellF);
+        }
+
+        // The fp32 cell index can differ from the exact one only for points a
+        // float-error away from a cell boundary; the 3x3x3 scan still covers
+        // every point within cellTight of the position, and boundary cases it
+        // could miss are gray-zone by construction (host settles them).
+        for (int dx = -1; dx <= 1; dx++) {
+            int gx = torus ? (cx + dx + gw) % gw : cx + dx + off;
+            if (gx < 0 || gx >= gw)
+                continue;
+
+            for (int dy = -1; dy <= 1; dy++) {
+                int gy = torus ? (cy + dy + gw) % gw : cy + dy + off;
+                if (gy < 0 || gy >= gw)
+                    continue;
+
+                for (int dz = -1; dz <= 1; dz++) {
+                    int gz = torus ? (cw + dz + gw) % gw : cw + dz + off;
+                    if (gz < 0 || gz >= gw)
+                        continue;
+
+                    const int c = (int)((long)gx * gw2 + (long)gy * gw + gz);
+                    const int j = find_key(keys, keyStart[i], keyStart[i + 1], c);
+                    if (j < 0)
+                        continue;
+                    const int st = cellOff[j];
+                    const int ln = cellOff[j + 1] - st;
+
+                    for (int k = 0; k < ln; k++) {
+                        float dX = X - ptsXf[st + k];
+                        float dY = Y - ptsYf[st + k];
+                        float dW = W - ptsWf[st + k];
+                        if (torus) {
+                            dX = torus_delta_f(dX);
+                            dY = torus_delta_f(dY);
+                            dW = torus_delta_f(dW);
+                        }
+                        bool hit;
+                        if (euclid)
+                            hit = dX * dX + dY * dY + dW * dW <= cellTightF * cellTightF;
+                        else
+                            hit = fabsf(dX) <= cellTightF && fabsf(dY) <= cellTightF &&
+                                  fabsf(dW) <= cellTightF;
                         if (hit)
                             return true;
                     }
@@ -451,14 +540,6 @@ __global__ void test_kernel(uint64_t baseSeed,
                             const double* ptsY,
                             const double* ptsW,
                             const int* order,
-                            bool sparse,
-                            const int* keys,
-                            const int* keyStart,
-                            const int* cellOff,
-                            const float* ptsXf,
-                            const float* ptsYf,
-                            const float* ptsWf,
-                            double cellTight,
                             Path* survOut,
                             int* survCount,
                             int survCap) {
@@ -470,8 +551,53 @@ __global__ void test_kernel(uint64_t baseSeed,
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
     Path p = propose(r, modmax, smart, angle, torus, phase);
     if (!collides_dev(p, T, z, sinz, invz, cell, gw, off, gw2, gw3, cellStart, ptsX, ptsY, ptsW,
-                      order, euclid, torus, sparse, keys, keyStart, cellOff, ptsXf, ptsYf,
-                      ptsWf, cellTight)) {
+                      order, euclid, torus)) {
+        int slot = atomicAdd(survCount, 1);
+        if (slot < survCap)
+            survOut[slot] = p;
+    }
+}
+
+__global__ void test_kernel_sparse(uint64_t baseSeed,
+                                   uint64_t round,
+                                   int batch,
+                                   uint32_t modmax,
+                                   bool smart,
+                                   bool angle,
+                                   bool euclid,
+                                   bool torus,
+                                   bool phase,
+                                   int T,
+                                   const float* sinbT,
+                                   const float* cosbm1T,
+                                   const float* sinzF,
+                                   const float* invzF,
+                                   float cellF,
+                                   float cellTightF,
+                                   float edgeLooseF,
+                                   int gw,
+                                   int off,
+                                   long gw2,
+                                   const int* keys,
+                                   const int* keyStart,
+                                   const int* cellOff,
+                                   const float* ptsXf,
+                                   const float* ptsYf,
+                                   const float* ptsWf,
+                                   const int* order,
+                                   Path* survOut,
+                                   int* survCount,
+                                   int survCap) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid >= batch)
+        return;
+    Rng r;
+    rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
+                    ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
+    Path p = propose(r, modmax, smart, angle, torus, phase);
+    if (!collides_sparse_dev(p, T, sinbT, cosbm1T, sinzF, invzF, cellF, cellTightF, edgeLooseF,
+                             gw, off, gw2, keys, keyStart, cellOff, ptsXf, ptsYf, ptsWf, order,
+                             euclid, torus, phase)) {
         int slot = atomicAdd(survCount, 1);
         if (slot < survCap)
             survOut[slot] = p;
@@ -537,13 +663,19 @@ int main(int argc, char** argv) {
     // --maxfreq F sets the ACTUAL max frequency to F (freq draw is [2, modmax+1], so
     // modmax=F-1). Default (no flag) keeps the model's T/2+1 cap (modmax=T/2).
     double cell = 2.0 / T;
-    // Sparse prefilter threshold: the float32 point coordinates carry at most
-    // ~2e-7 absolute error (values in [-1, 1]), so a hit within cell - 1e-6 is
-    // CERTAIN even in float. Candidates in the (cellTight, cell] gray zone
-    // survive the GPU prefilter and are settled by the exact double-precision
-    // host recheck -- the admitted packing obeys the same rule as the dense
-    // path, at the cost of a handful of extra host rechecks.
-    const double cellTight = cell - 1e-6;
+    // Sparse prefilter margins. The fp32 table trajectory carries a worst-case
+    // absolute error of a few 1e-7 (the physical terms scale with sin z, so
+    // the 1/sin z endpoint amplification cancels; the phase schema's
+    // (cos(bz) - 1)*sin(f) term, stored pre-subtracted, stays at the same
+    // scale). 2e-5 is ~40x that bound and still only 0.3% of a cell at T=300.
+    // Decisions are one-sided: a hit is flagged only when CERTAIN (within
+    // cell - margin), the wall rejects only when CERTAIN (beyond
+    // edge + margin); the (cell - margin, cell] gray zone survives the
+    // prefilter and is settled by the exact double-precision host recheck, so
+    // the admitted packing obeys the same rule as the dense path.
+    const double kF32Margin = 2e-5;
+    const double cellTight = cell - kF32Margin;
+    const double edgeLoose = 1.0 - 0.5 * cell + kF32Margin;
     uint32_t modmax =
         (maxfreq > 2) ? (uint32_t)(maxfreq - 1) : (uint32_t)(T / 2 > 2 ? T / 2 : 2);
     // Torus grid: exactly T cells of width CELL span [-1, 1), so the modular
@@ -582,6 +714,38 @@ int main(int argc, char** argv) {
     CK(cudaMemcpy(dsinz, sinz.data(), T * 8, cudaMemcpyHostToDevice));
     CK(cudaMemcpy(dinvz, invz.data(), T * 8, cudaMemcpyHostToDevice));
     CK(cudaMemcpy(dorder, order.data(), T * 4, cudaMemcpyHostToDevice));
+
+    // Sparse-mode frequency tables: the kernel evaluates trajectories from
+    // sinbT[(b-2)*T + i] = sin(b * z_i) (fp32, computed in double) instead of
+    // calling sin() -- modmax x T floats, small enough to live in L2. The
+    // phase schema also needs cosbm1T = cos(b * z_i) - 1, pre-subtracted in
+    // double so the near-endpoint cancellation costs no precision.
+    float *dSinbT = nullptr, *dCosbm1T = nullptr, *dSinzF = nullptr, *dInvzF = nullptr;
+    if (sparse) {
+        std::vector<float> sinbT((size_t)modmax * T), sinzF(T), invzF(T);
+        std::vector<float> cosbm1T(phase ? (size_t)modmax * T : 0);
+        for (uint32_t b = 2; b <= modmax + 1; b++)
+            for (int i = 0; i < T; i++) {
+                sinbT[(size_t)(b - 2) * T + i] = (float)sin((double)b * z[i]);
+                if (phase)
+                    cosbm1T[(size_t)(b - 2) * T + i] = (float)(cos((double)b * z[i]) - 1.0);
+            }
+        for (int i = 0; i < T; i++) {
+            sinzF[i] = (float)sinz[i];
+            invzF[i] = (float)invz[i];
+        }
+        CK(cudaMalloc(&dSinbT, sinbT.size() * 4));
+        CK(cudaMemcpy(dSinbT, sinbT.data(), sinbT.size() * 4, cudaMemcpyHostToDevice));
+        if (phase) {
+            CK(cudaMalloc(&dCosbm1T, cosbm1T.size() * 4));
+            CK(cudaMemcpy(dCosbm1T, cosbm1T.data(), cosbm1T.size() * 4,
+                          cudaMemcpyHostToDevice));
+        }
+        CK(cudaMalloc(&dSinzF, T * 4));
+        CK(cudaMalloc(&dInvzF, T * 4));
+        CK(cudaMemcpy(dSinzF, sinzF.data(), T * 4, cudaMemcpyHostToDevice));
+        CK(cudaMemcpy(dInvzF, invzF.data(), T * 4, cudaMemcpyHostToDevice));
+    }
 
     size_t ncell = (size_t)T * gw3;
     if (sparse)
@@ -934,11 +1098,17 @@ int main(int argc, char** argv) {
     auto enqueue_round = [&](int b) {
         CK(cudaMemsetAsync(dSurvCount[b], 0, 4, st));
         int threads = 256, blocks = (int)((batch + threads - 1) / threads);
-        test_kernel<<<blocks, threads, 0, st>>>(
-            seed, round, (int)batch, modmax, smart, angle, euclid, torus, phase, T, dz, dsinz,
-            dinvz, cell, gw, off, gw2, gw3, dCellStart, dPtsX, dPtsY, dPtsW, dorder, sparse,
-            dKeys, dKeyStart, dCellOff, dPtsXf, dPtsYf, dPtsWf, cellTight, dSurv[b],
-            dSurvCount[b], survCap);
+        if (sparse)
+            test_kernel_sparse<<<blocks, threads, 0, st>>>(
+                seed, round, (int)batch, modmax, smart, angle, euclid, torus, phase, T, dSinbT,
+                dCosbm1T, dSinzF, dInvzF, (float)cell, (float)cellTight, (float)edgeLoose, gw,
+                off, gw2, dKeys, dKeyStart, dCellOff, dPtsXf, dPtsYf, dPtsWf, dorder, dSurv[b],
+                dSurvCount[b], survCap);
+        else
+            test_kernel<<<blocks, threads, 0, st>>>(
+                seed, round, (int)batch, modmax, smart, angle, euclid, torus, phase, T, dz,
+                dsinz, dinvz, cell, gw, off, gw2, gw3, dCellStart, dPtsX, dPtsY, dPtsW, dorder,
+                dSurv[b], dSurvCount[b], survCap);
         CK(cudaMemcpyAsync(hCount[b], dSurvCount[b], 4, cudaMemcpyDeviceToHost, st));
         CK(cudaMemcpyAsync(hSurvPin[b], dSurv[b], copyCap * sizeof(Path),
                            cudaMemcpyDeviceToHost, st));
