@@ -55,6 +55,9 @@ class Job:
     #: Phase schema (--phase): free phase on the wiggle term for even
     #: frequencies, plus the symmetric endpoint-free z grid.
     phase: bool = False
+    #: Sparse collision grid (--sparse, 3+1 engine): sorted-key lookup +
+    #: float32 points; VRAM ~ N*T instead of ~T^4, for T beyond the dense cap.
+    sparse: bool = False
     #: Free-form variant tag (e.g. "e6" for a different cutoff). Not part of the
     #: key; appended to the name so variant runs do not collide in the shared
     #: remote workspace.
@@ -81,6 +84,8 @@ class Job:
             base += "_tor"
         if self.phase:
             base += "_ph"
+        if self.sparse:
+            base += "_sp"
         if self.tag:
             base += f"_{self.tag}"
         return base
@@ -112,6 +117,8 @@ class Campaign:
     torus: bool = False
     #: Use the phase schema: even-frequency phases + symmetric z grid.
     phase: bool = False
+    #: Use the sparse collision grid (3+1): VRAM ~ N*T, for T beyond dense cap.
+    sparse: bool = False
     #: Variant tag appended to job names (e.g. "e6" for a different cutoff).
     tag: str = ""
 
@@ -137,6 +144,7 @@ class Campaign:
                 euclid=self.euclid,
                 torus=self.torus,
                 phase=self.phase,
+                sparse=self.sparse,
                 tag=self.tag,
             )
             for t in self.t_values

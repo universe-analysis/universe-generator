@@ -19,6 +19,11 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 packages = ["braidlab"]
 
+[tool.pytest.ini_options]
+# Repo root on sys.path so tests can import the `analysis` modules (which are
+# run as `python -m analysis.…` from the root, not installed as a package).
+pythonpath = ["."]
+
 [tool.ruff]
 line-length = 88
 target-version = "py310"

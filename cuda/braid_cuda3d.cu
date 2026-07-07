@@ -15,6 +15,30 @@
 // to close), each component is offset by a*sin(f) so it still starts at zero,
 // and the z grid becomes the symmetric T-interior-points-of-(0, pi) indexing.
 //
+// --sparse replaces the dense per-timestep grid (T*gw^3 cells, the T^4 VRAM
+// hog) with per-timestep sorted occupied-cell keys + CSR offsets, looked up by
+// binary search, and runs the whole prefilter in fp32: device points stored as
+// float32 and candidate trajectories evaluated from precomputed sin(b*z)
+// tables, no trig in the kernel (GeForce fp64 is 1/64 throughput). VRAM
+// becomes O(N*T), so the T ceiling is set by runtime rather than card memory.
+// The fp32 prefilter makes only CERTAIN decisions (hit threshold shrunk, wall
+// pushed out, each by more than the fp32 error); gray-zone candidates are
+// settled by the exact double-precision host recheck, so the admitted packing
+// obeys the same collision rule as the dense path.
+//
+// The main loop is pipelined: two survivor buffers on one CUDA stream, so
+// round r+1's kernel overlaps the host-side admission of round r. The device
+// grid lags admissions by a round (on top of the 1%-growth rebuild filter);
+// points are never removed, so the stale grid is a subset of the current
+// packing and the prefilter can only pass extra candidates -- all settled by
+// the authoritative host recheck.
+//
+// Host work is multithreaded (plain std::thread): survivor admission runs a
+// parallel collision precheck (serial only for same-chunk mutual collisions,
+// preserving RSA admission order exactly), and the sparse rebuild sorts only
+// the points admitted since the last rebuild, merging them into a persistent
+// per-timestep sorted order with all timesteps in parallel.
+//
 // Build:  nvcc -O3 -arch=sm_86 -o braid_cuda3d braid_cuda3d.cu
 // Run:    ./braid_cuda3d -t 80 --attempts 5e9 --seed 1 --curve out.csv
 
@@ -29,6 +53,7 @@
 #include <cstring>
 #include <deque>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -88,6 +113,30 @@ __host__ __device__ inline uint32_t igcd(uint32_t a, uint32_t b) {
 
 constexpr double kPi = 3.14159265358979323846;
 
+// Chunked parallel-for over [0, n): fn(lo, hi) runs on worker threads over
+// disjoint ranges. Plain std::thread (no OpenMP) so the heterogeneous fleet's
+// nvcc host-compiler combos all build it. Small n runs inline.
+template <typename Fn>
+void parallel_for(size_t n, const Fn& fn) {
+    const unsigned hw = std::thread::hardware_concurrency();
+    const size_t nt = std::min<size_t>(hw ? hw : 4, 16);
+    if (n < 2 * nt) {
+        fn(0, n);
+        return;
+    }
+    std::vector<std::thread> ts;
+    const size_t chunk = (n + nt - 1) / nt;
+    for (size_t t = 0; t < nt; t++) {
+        const size_t lo = t * chunk;
+        const size_t hi = std::min(n, lo + chunk);
+        if (lo >= hi)
+            break;
+        ts.emplace_back([&fn, lo, hi]() { fn(lo, hi); });
+    }
+    for (auto& th : ts)
+        th.join();
+}
+
 struct Path {
     double ax, ay, aw, bx, by, bw, ax2, ay2, aw2;
     double fx, fy, fw;  // per-axis phase on the wiggle term (0 unless --phase)
@@ -116,6 +165,31 @@ __host__ __device__ inline double torus_delta(double d) {
     if (d < -1.0)
         return d + 2.0;
     return d;
+}
+__device__ inline float torus_delta_f(float d) {
+    if (d > 1.0f)
+        return d - 2.0f;
+    if (d < -1.0f)
+        return d + 2.0f;
+    return d;
+}
+__device__ inline float torus_wrap_f(float x) {
+    return x - 2.0f * floorf((x + 1.0f) * 0.5f);
+}
+
+// Binary search over a per-timestep span [lo, hi) of the sorted occupied-cell
+// key array (sparse grid). Returns the index of `key`, or -1 if the cell holds
+// no points.
+__device__ inline int find_key(const int* keys, int lo, int hi, int key) {
+    const int hi0 = hi;
+    while (lo < hi) {
+        const int mid = (lo + hi) >> 1;
+        if (keys[mid] < key)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return (lo < hi0 && keys[lo] == key) ? lo : -1;
 }
 
 __host__ __device__ inline Path propose(
@@ -200,6 +274,9 @@ __host__ __device__ inline Path propose(
     return p;
 }
 
+// Dense-grid collision test: exact double-precision trajectory + Chebyshev /
+// L2 exclusion. This is the reference prefilter -- bit-compatible with the
+// historical engine.
 __device__ bool collides_dev(const Path& p,
                              int T,
                              const double* z,
@@ -211,7 +288,6 @@ __device__ bool collides_dev(const Path& p,
                              long gw2,
                              long gw3,
                              const int* cellStart,
-                             const int* cellLen,
                              const double* ptsX,
                              const double* ptsY,
                              const double* ptsW,
@@ -282,9 +358,11 @@ __device__ bool collides_dev(const Path& p,
                     if (gz < 0 || gz >= gw)
                         continue;
 
+                    // CSR with a sentinel: cell gc holds points
+                    // [cellStart[gc], cellStart[gc+1]).
                     const long gc = (long)i * gw3 + (long)gx * gw2 + (long)gy * gw + gz;
                     const long st = cellStart[gc];
-                    const int ln = cellLen[gc];
+                    const int ln = cellStart[gc + 1] - (int)st;
 
                     for (int k = 0; k < ln; k++) {
                         double dX = X - ptsX[st + k];
@@ -300,6 +378,135 @@ __device__ bool collides_dev(const Path& p,
                             hit = dX * dX + dY * dY + dW * dW <= cell * cell;
                         else
                             hit = fabs(dX) <= cell && fabs(dY) <= cell && fabs(dW) <= cell;
+                        if (hit)
+                            return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
+// Sparse-grid collision test, all in fp32 with NO trig in the loop: the
+// trajectory comes from precomputed tables (sinbT[(b-2)*T + i] = sin(b*z_i);
+// for the phase schema also cosbm1T = cos(b*z_i) - 1, stored pre-subtracted
+// in double so the near-endpoint cancellation costs no precision). GeForce
+// cards run fp64 at 1/64 throughput, so this is the difference between a
+// trig-bound and a memory-bound kernel.
+//
+// Decisions stay one-sided so the exact double host recheck remains the
+// authority: a hit is flagged only when CERTAIN (<= cellTight, the exclusion
+// shrunk by more than the fp32 trajectory error), and the wall rejects only
+// when CERTAIN (> edgeLoose, the wall pushed out by the same margin).
+// Gray-zone candidates survive the prefilter and are settled on the host.
+__device__ bool collides_sparse_dev(const Path& p,
+                                    int T,
+                                    const float* sinbT,
+                                    const float* cosbm1T,
+                                    const float* sinzF,
+                                    const float* invzF,
+                                    float cellF,
+                                    float cellTightF,
+                                    float edgeLooseF,
+                                    int gw,
+                                    int off,
+                                    long gw2,
+                                    const int* keys,
+                                    const int* keyStart,
+                                    const int* cellOff,
+                                    const float* ptsXf,
+                                    const float* ptsYf,
+                                    const float* ptsWf,
+                                    const int* order,
+                                    bool euclid,
+                                    bool torus,
+                                    bool phase) {
+    const float ax = (float)p.ax, ay = (float)p.ay, aw = (float)p.aw;
+    const float ax2 = (float)p.ax2, ay2 = (float)p.ay2, aw2 = (float)p.aw2;
+    const float* sbx = sinbT + ((int)p.bx - 2) * T;
+    const float* sby = sinbT + ((int)p.by - 2) * T;
+    const float* sbw = sinbT + ((int)p.bw - 2) * T;
+    const float* cbx = phase ? cosbm1T + ((int)p.bx - 2) * T : nullptr;
+    const float* cby = phase ? cosbm1T + ((int)p.by - 2) * T : nullptr;
+    const float* cbw = phase ? cosbm1T + ((int)p.bw - 2) * T : nullptr;
+    // Per-candidate phase factors (once, not per timestep). With the a*sin(f)
+    // offset folded in, sin(b*z + f) - sin(f) = sinb*cos(f) + (cosb - 1)*sin(f).
+    const float cfx = cosf((float)p.fx), sfx = sinf((float)p.fx);
+    const float cfy = cosf((float)p.fy), sfy = sinf((float)p.fy);
+    const float cfw = cosf((float)p.fw), sfw = sinf((float)p.fw);
+
+    for (int oi = 0; oi < T; oi++) {
+        const int i = order[oi];
+
+        float X, Y, W;
+        if (phase) {
+            X = (ax * (sbx[i] * cfx + cbx[i] * sfx) + ax2 * sinzF[i]) * invzF[i];
+            Y = (ay * (sby[i] * cfy + cby[i] * sfy) + ay2 * sinzF[i]) * invzF[i];
+            W = (aw * (sbw[i] * cfw + cbw[i] * sfw) + aw2 * sinzF[i]) * invzF[i];
+        } else {
+            X = (ax * sbx[i] + ax2 * sinzF[i]) * invzF[i];
+            Y = (ay * sby[i] + ay2 * sinzF[i]) * invzF[i];
+            W = (aw * sbw[i] + aw2 * sinzF[i]) * invzF[i];
+        }
+
+        int cx, cy, cw;
+        if (torus) {
+            X = torus_wrap_f(X);
+            Y = torus_wrap_f(Y);
+            W = torus_wrap_f(W);
+            cx = (int)floorf((X + 1.0f) / cellF);
+            cy = (int)floorf((Y + 1.0f) / cellF);
+            cw = (int)floorf((W + 1.0f) / cellF);
+        } else {
+            if (fabsf(X) > edgeLooseF || fabsf(Y) > edgeLooseF || fabsf(W) > edgeLooseF)
+                return true;
+            cx = (int)floorf(X / cellF);
+            cy = (int)floorf(Y / cellF);
+            cw = (int)floorf(W / cellF);
+        }
+
+        // The fp32 cell index can differ from the exact one only for points a
+        // float-error away from a cell boundary; the 3x3x3 scan still covers
+        // every point within cellTight of the position, and boundary cases it
+        // could miss are gray-zone by construction (host settles them).
+        for (int dx = -1; dx <= 1; dx++) {
+            int gx = torus ? (cx + dx + gw) % gw : cx + dx + off;
+            if (gx < 0 || gx >= gw)
+                continue;
+
+            for (int dy = -1; dy <= 1; dy++) {
+                int gy = torus ? (cy + dy + gw) % gw : cy + dy + off;
+                if (gy < 0 || gy >= gw)
+                    continue;
+
+                for (int dz = -1; dz <= 1; dz++) {
+                    int gz = torus ? (cw + dz + gw) % gw : cw + dz + off;
+                    if (gz < 0 || gz >= gw)
+                        continue;
+
+                    const int c = (int)((long)gx * gw2 + (long)gy * gw + gz);
+                    const int j = find_key(keys, keyStart[i], keyStart[i + 1], c);
+                    if (j < 0)
+                        continue;
+                    const int st = cellOff[j];
+                    const int ln = cellOff[j + 1] - st;
+
+                    for (int k = 0; k < ln; k++) {
+                        float dX = X - ptsXf[st + k];
+                        float dY = Y - ptsYf[st + k];
+                        float dW = W - ptsWf[st + k];
+                        if (torus) {
+                            dX = torus_delta_f(dX);
+                            dY = torus_delta_f(dY);
+                            dW = torus_delta_f(dW);
+                        }
+                        bool hit;
+                        if (euclid)
+                            hit = dX * dX + dY * dY + dW * dW <= cellTightF * cellTightF;
+                        else
+                            hit = fabsf(dX) <= cellTightF && fabsf(dY) <= cellTightF &&
+                                  fabsf(dW) <= cellTightF;
                         if (hit)
                             return true;
                     }
@@ -329,7 +536,6 @@ __global__ void test_kernel(uint64_t baseSeed,
                             long gw2,
                             long gw3,
                             const int* cellStart,
-                            const int* cellLen,
                             const double* ptsX,
                             const double* ptsY,
                             const double* ptsW,
@@ -344,8 +550,54 @@ __global__ void test_kernel(uint64_t baseSeed,
     rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
     Path p = propose(r, modmax, smart, angle, torus, phase);
-    if (!collides_dev(p, T, z, sinz, invz, cell, gw, off, gw2, gw3, cellStart, cellLen, ptsX,
-                      ptsY, ptsW, order, euclid, torus)) {
+    if (!collides_dev(p, T, z, sinz, invz, cell, gw, off, gw2, gw3, cellStart, ptsX, ptsY, ptsW,
+                      order, euclid, torus)) {
+        int slot = atomicAdd(survCount, 1);
+        if (slot < survCap)
+            survOut[slot] = p;
+    }
+}
+
+__global__ void test_kernel_sparse(uint64_t baseSeed,
+                                   uint64_t round,
+                                   int batch,
+                                   uint32_t modmax,
+                                   bool smart,
+                                   bool angle,
+                                   bool euclid,
+                                   bool torus,
+                                   bool phase,
+                                   int T,
+                                   const float* sinbT,
+                                   const float* cosbm1T,
+                                   const float* sinzF,
+                                   const float* invzF,
+                                   float cellF,
+                                   float cellTightF,
+                                   float edgeLooseF,
+                                   int gw,
+                                   int off,
+                                   long gw2,
+                                   const int* keys,
+                                   const int* keyStart,
+                                   const int* cellOff,
+                                   const float* ptsXf,
+                                   const float* ptsYf,
+                                   const float* ptsWf,
+                                   const int* order,
+                                   Path* survOut,
+                                   int* survCount,
+                                   int survCap) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid >= batch)
+        return;
+    Rng r;
+    rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
+                    ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
+    Path p = propose(r, modmax, smart, angle, torus, phase);
+    if (!collides_sparse_dev(p, T, sinbT, cosbm1T, sinzF, invzF, cellF, cellTightF, edgeLooseF,
+                             gw, off, gw2, keys, keyStart, cellOff, ptsXf, ptsYf, ptsWf, order,
+                             euclid, torus, phase)) {
         int slot = atomicAdd(survCount, 1);
         if (slot < survCap)
             survOut[slot] = p;
@@ -364,6 +616,7 @@ int main(int argc, char** argv) {
     bool euclid = false;      // L2-ball exclusion (vs the default Chebyshev cube)
     bool torus = false;       // new-dogma model: |a*b|=1, free sin1 offset, periodic domain
     bool phase = false;       // phase schema: even-frequency phases + symmetric z grid
+    bool sparse = false;      // sparse grid (sorted keys + float32 points): VRAM ~ N*T
     const char* diagPrefix = nullptr;  // if set, write occupancy + probe diagnostics
     long long probeN = 5000000;        // fresh proposals fired at the final state
     const char* paramPath = nullptr;   // if set, dump accepted worldline parameters
@@ -392,6 +645,8 @@ int main(int argc, char** argv) {
             torus = true;
         else if (!strcmp(argv[i], "--phase"))
             phase = true;
+        else if (!strcmp(argv[i], "--sparse"))
+            sparse = true;
         else if (!strcmp(argv[i], "--diag"))
             diagPrefix = argv[++i];
         else if (!strcmp(argv[i], "--probe-n"))
@@ -408,6 +663,19 @@ int main(int argc, char** argv) {
     // --maxfreq F sets the ACTUAL max frequency to F (freq draw is [2, modmax+1], so
     // modmax=F-1). Default (no flag) keeps the model's T/2+1 cap (modmax=T/2).
     double cell = 2.0 / T;
+    // Sparse prefilter margins. The fp32 table trajectory carries a worst-case
+    // absolute error of a few 1e-7 (the physical terms scale with sin z, so
+    // the 1/sin z endpoint amplification cancels; the phase schema's
+    // (cos(bz) - 1)*sin(f) term, stored pre-subtracted, stays at the same
+    // scale). 2e-5 is ~40x that bound and still only 0.3% of a cell at T=300.
+    // Decisions are one-sided: a hit is flagged only when CERTAIN (within
+    // cell - margin), the wall rejects only when CERTAIN (beyond
+    // edge + margin); the (cell - margin, cell] gray zone survives the
+    // prefilter and is settled by the exact double-precision host recheck, so
+    // the admitted packing obeys the same rule as the dense path.
+    const double kF32Margin = 2e-5;
+    const double cellTight = cell - kF32Margin;
+    const double edgeLoose = 1.0 - 0.5 * cell + kF32Margin;
     uint32_t modmax =
         (maxfreq > 2) ? (uint32_t)(maxfreq - 1) : (uint32_t)(T / 2 > 2 ? T / 2 : 2);
     // Torus grid: exactly T cells of width CELL span [-1, 1), so the modular
@@ -447,20 +715,74 @@ int main(int argc, char** argv) {
     CK(cudaMemcpy(dinvz, invz.data(), T * 8, cudaMemcpyHostToDevice));
     CK(cudaMemcpy(dorder, order.data(), T * 4, cudaMemcpyHostToDevice));
 
+    // Sparse-mode frequency tables: the kernel evaluates trajectories from
+    // sinbT[(b-2)*T + i] = sin(b * z_i) (fp32, computed in double) instead of
+    // calling sin() -- modmax x T floats, small enough to live in L2. The
+    // phase schema also needs cosbm1T = cos(b * z_i) - 1, pre-subtracted in
+    // double so the near-endpoint cancellation costs no precision.
+    float *dSinbT = nullptr, *dCosbm1T = nullptr, *dSinzF = nullptr, *dInvzF = nullptr;
+    if (sparse) {
+        std::vector<float> sinbT((size_t)modmax * T), sinzF(T), invzF(T);
+        std::vector<float> cosbm1T(phase ? (size_t)modmax * T : 0);
+        for (uint32_t b = 2; b <= modmax + 1; b++)
+            for (int i = 0; i < T; i++) {
+                sinbT[(size_t)(b - 2) * T + i] = (float)sin((double)b * z[i]);
+                if (phase)
+                    cosbm1T[(size_t)(b - 2) * T + i] = (float)(cos((double)b * z[i]) - 1.0);
+            }
+        for (int i = 0; i < T; i++) {
+            sinzF[i] = (float)sinz[i];
+            invzF[i] = (float)invz[i];
+        }
+        CK(cudaMalloc(&dSinbT, sinbT.size() * 4));
+        CK(cudaMemcpy(dSinbT, sinbT.data(), sinbT.size() * 4, cudaMemcpyHostToDevice));
+        if (phase) {
+            CK(cudaMalloc(&dCosbm1T, cosbm1T.size() * 4));
+            CK(cudaMemcpy(dCosbm1T, cosbm1T.data(), cosbm1T.size() * 4,
+                          cudaMemcpyHostToDevice));
+        }
+        CK(cudaMalloc(&dSinzF, T * 4));
+        CK(cudaMalloc(&dInvzF, T * 4));
+        CK(cudaMemcpy(dSinzF, sinzF.data(), T * 4, cudaMemcpyHostToDevice));
+        CK(cudaMemcpy(dInvzF, invzF.data(), T * 4, cudaMemcpyHostToDevice));
+    }
+
     size_t ncell = (size_t)T * gw3;
-    fprintf(stderr, "3+1%s%s: T=%d  modmax=%u (maxfreq=%u)  grid cells=%.2e  (~%.1f GB)\n",
-            torus ? " (torus)" : "", phase ? " (phase)" : "", T, modmax, modmax + 1,
-            (double)ncell, ncell * 8.0 / 1e9);
-    // cellStart holds cumulative point offsets (< N*T, well within int32 even at
-    // T=300), so a 32-bit grid index halves device memory vs a 64-bit one.
-    std::vector<int> cellStart(ncell);
-    std::vector<int> cellLen(ncell);
-    int* dCellStart;
-    int* dCellLen;
-    CK(cudaMalloc(&dCellStart, ncell * 4));
-    CK(cudaMalloc(&dCellLen, ncell * 4));
+    if (sparse)
+        fprintf(stderr, "3+1%s%s (sparse): T=%d  modmax=%u (maxfreq=%u)  grid VRAM ~ N*T\n",
+                torus ? " (torus)" : "", phase ? " (phase)" : "", T, modmax, modmax + 1);
+    else
+        fprintf(stderr, "3+1%s%s: T=%d  modmax=%u (maxfreq=%u)  grid cells=%.2e  (~%.1f GB)\n",
+                torus ? " (torus)" : "", phase ? " (phase)" : "", T, modmax, modmax + 1,
+                (double)ncell, (ncell + 1) * 4.0 / 1e9);
+    // Dense grid: cellStart holds cumulative point offsets (< N*T, well within
+    // int32 even at T=300), so a 32-bit grid index halves device memory vs a
+    // 64-bit one. One sentinel entry (cellStart[ncell] = npts) makes lengths
+    // derivable as cellStart[gc+1] - cellStart[gc], so no separate length array
+    // is stored. In sparse mode the dense arrays are never allocated (they are
+    // the T^4 memory hog, on host and device alike).
+    std::vector<int> cellStart, cellLen;
+    int* dCellStart = nullptr;
+    if (!sparse) {
+        cellStart.resize(ncell + 1);
+        cellLen.resize(ncell);  // host-side scratch for the counting pass
+        CK(cudaMalloc(&dCellStart, (ncell + 1) * 4));
+    }
+    // Sparse grid: per timestep, the sorted keys of occupied cells (linear cell
+    // index within the timestep; gw^3 fits int32 comfortably to beyond T=1000)
+    // plus a CSR offset per key into the point arrays. keyStart[i] delimits
+    // timestep i's span of keys; cellOff gets one global sentinel (= npts).
+    std::vector<int> keysH, keyStartH(T + 1), cellOffH;
+    int *dKeys = nullptr, *dKeyStart = nullptr, *dCellOff = nullptr;
+    if (sparse)
+        CK(cudaMalloc(&dKeyStart, (T + 1) * 4));
 
     std::vector<std::vector<double>> px(T), py(T), pw(T);
+    // Incremental sparse-rebuild state: per timestep, the point indices sorted
+    // by cell key (kept across rebuilds so only fresh points need sorting),
+    // plus per-timestep key/offset scratch for the parallel emit.
+    std::vector<std::vector<int>> sortedCell(T), sortedIdx(T);
+    std::vector<std::vector<int>> tkeys(T), toffs(T);
     std::vector<Path> acceptedPaths;  // populated only when --dump-params is set
     std::vector<std::unordered_map<long, std::vector<std::array<double, 3>>>> hgrid(T);
     auto key3 = [&](int cx, int cy, int cw) -> long {
@@ -511,127 +833,389 @@ int main(int argc, char** argv) {
     auto gix = [&](double v) -> long {
         return torus ? (long)floor((v + 1.0) / cell) : (long)((int)floor(v / cell) + off);
     };
+    // Comoving trajectory of a path at every timestep (wrapped on the torus).
+    // Same expressions as collides_dev; thread-safe (read-only captures).
+    auto eval_path = [&](const Path& p, double* X, double* Y, double* W) {
+        const double offx = p.ax * sin(p.fx);
+        const double offy = p.ay * sin(p.fy);
+        const double offw = p.aw * sin(p.fw);
+        // Same rule as collides_dev: phase-free paths take the verbatim
+        // pre-phase expression (per-candidate math identical to pre-phase).
+        const bool phased = (p.fx != 0.0) || (p.fy != 0.0) || (p.fw != 0.0);
+        for (int i = 0; i < T; i++) {
+            if (phased) {
+                X[i] = (p.ax * sin(p.bx * z[i] + p.fx) + p.ax2 * sinz[i] - offx) * invz[i];
+                Y[i] = (p.ay * sin(p.by * z[i] + p.fy) + p.ay2 * sinz[i] - offy) * invz[i];
+                W[i] = (p.aw * sin(p.bw * z[i] + p.fw) + p.aw2 * sinz[i] - offw) * invz[i];
+            } else {
+                X[i] = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
+                Y[i] = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
+                W[i] = (p.aw * sin(p.bw * z[i]) + p.aw2 * sinz[i]) * invz[i];
+            }
+            if (torus) {
+                X[i] = torus_wrap(X[i]);
+                Y[i] = torus_wrap(Y[i]);
+                W[i] = torus_wrap(W[i]);
+            }
+        }
+    };
 
-    int survCap = 1 << 20;
-    Path* dSurv;
-    int* dSurvCount;
-    CK(cudaMalloc(&dSurv, survCap * sizeof(Path)));
-    CK(cudaMalloc(&dSurvCount, 4));
-    std::vector<Path> hSurv(survCap);
+    // Pipelined survivor buffers: two sets on one stream, so round r+1's
+    // kernel runs while the host admits round r's survivors. The kernel is
+    // only a prefilter and points are never removed, so the one-round-stale
+    // device grid is a SUBSET of the current packing: staleness can only pass
+    // extra candidates, and every survivor is settled by the authoritative
+    // host recheck. Each round copies back a fixed pinned prefix of copyCap
+    // survivors without waiting for the count; the (rare, early-run) overflow
+    // past copyCap is fetched afterwards on a second stream.
+    const int survCap = 1 << 20;
+    const int copyCap = 1 << 13;
+    cudaStream_t st, stCopy;
+    CK(cudaStreamCreate(&st));
+    CK(cudaStreamCreate(&stCopy));
+    Path* dSurv[2];
+    int* dSurvCount[2];
+    Path* hSurvPin[2];
+    int* hCount[2];
+    cudaEvent_t ev[2];
+    for (int b = 0; b < 2; b++) {
+        CK(cudaMalloc(&dSurv[b], survCap * sizeof(Path)));
+        CK(cudaMalloc(&dSurvCount[b], 4));
+        CK(cudaMallocHost(&hSurvPin[b], copyCap * sizeof(Path)));
+        CK(cudaMallocHost(&hCount[b], 4));
+        CK(cudaEventCreate(&ev[b]));
+    }
+    cudaEvent_t uploadEv;  // last grid upload; wait before rewriting staging
+    CK(cudaEventCreate(&uploadEv));
+    std::vector<Path> hSurvOver(survCap);  // overflow staging (pageable)
     size_t ptsCap = 1 << 16;
-    double *dPtsX, *dPtsY, *dPtsW;
-    CK(cudaMalloc(&dPtsX, ptsCap * 8));
-    CK(cudaMalloc(&dPtsY, ptsCap * 8));
-    CK(cudaMalloc(&dPtsW, ptsCap * 8));
+    double *dPtsX = nullptr, *dPtsY = nullptr, *dPtsW = nullptr;
+    float *dPtsXf = nullptr, *dPtsYf = nullptr, *dPtsWf = nullptr;
     std::vector<double> ptsXh, ptsYh, ptsWh;
+    std::vector<float> ptsXfH, ptsYfH, ptsWfH;
+    // Keys and offsets are bounded by the point count, so they share ptsCap.
+    auto alloc_pts = [&]() {
+        if (sparse) {
+            CK(cudaMalloc(&dPtsXf, ptsCap * 4));
+            CK(cudaMalloc(&dPtsYf, ptsCap * 4));
+            CK(cudaMalloc(&dPtsWf, ptsCap * 4));
+            CK(cudaMalloc(&dKeys, (ptsCap + 1) * 4));
+            CK(cudaMalloc(&dCellOff, (ptsCap + 1) * 4));
+        } else {
+            CK(cudaMalloc(&dPtsX, ptsCap * 8));
+            CK(cudaMalloc(&dPtsY, ptsCap * 8));
+            CK(cudaMalloc(&dPtsW, ptsCap * 8));
+        }
+    };
+    auto free_pts = [&]() {
+        if (sparse) {
+            CK(cudaFree(dPtsXf));
+            CK(cudaFree(dPtsYf));
+            CK(cudaFree(dPtsWf));
+            CK(cudaFree(dKeys));
+            CK(cudaFree(dCellOff));
+        } else {
+            CK(cudaFree(dPtsX));
+            CK(cudaFree(dPtsY));
+            CK(cudaFree(dPtsW));
+        }
+    };
+    alloc_pts();
 
     long long attempts = 0, N = 0, nextMs = 1000;
     long batch = 1 << 16;
     uint64_t round = 0;
     std::vector<std::pair<long long, long long>> curve;
-    std::vector<double> Xb(T), Yb(T), Wb(T);
+    // Admission chunking (see the admission loop): per-chunk trajectory
+    // buffers, precheck flags, and the chunk's admitted survivor slots.
+    const int admitChunk = 64;
+    std::vector<double> Xc((size_t)admitChunk * T), Yc((size_t)admitChunk * T),
+        Wc((size_t)admitChunk * T);
+    std::vector<uint8_t> preHit(admitChunk);
+    std::vector<int> chunkAdm;
     long long lastN = -1;  // grid rebuilt only when N grew enough (deep-tail speedup)
 
-    while (attempts < (long long)budget) {
-        if (lastN < 0 || N - lastN > N / 100 + 1) {  // rebuild grid only when it changed enough
+    // Rebuild + upload the device grid when N grew enough. Uploads are
+    // enqueued on the compute stream, so they land between the in-flight
+    // kernel and the next one -- the in-flight kernel never sees a partial
+    // grid, and the next kernel sees the whole update.
+    auto maybe_rebuild = [&]() {
+        if (!(lastN < 0 || N - lastN > N / 100 + 1))
+            return;
+        // The previous upload may still be in flight from these same staging
+        // vectors; do not rewrite them under it.
+        CK(cudaEventSynchronize(uploadEv));
+        {
             size_t npts = (size_t)N * T;
-            std::fill(cellLen.begin(), cellLen.end(), 0);
-            for (int i = 0; i < T; i++)
-                for (size_t j = 0; j < px[i].size(); j++) {
-                    long gc = (long)i * gw3 + gix(px[i][j]) * gw2 + gix(py[i][j]) * gw +
-                              gix(pw[i][j]);
-                    cellLen[gc]++;
-                }
-            long acc = 0;
-            for (size_t c = 0; c < ncell; c++) {
-                cellStart[c] = (int)acc;
-                acc += cellLen[c];
-            }
             if (npts > ptsCap) {
                 ptsCap = npts * 2;
-                CK(cudaFree(dPtsX));
-                CK(cudaFree(dPtsY));
-                CK(cudaFree(dPtsW));
-                CK(cudaMalloc(&dPtsX, ptsCap * 8));
-                CK(cudaMalloc(&dPtsY, ptsCap * 8));
-                CK(cudaMalloc(&dPtsW, ptsCap * 8));
+                // The in-flight kernel reads the old buffers; drain it first.
+                CK(cudaStreamSynchronize(st));
+                free_pts();
+                alloc_pts();
             }
-            ptsXh.assign(npts, 0);
-            ptsYh.assign(npts, 0);
-            ptsWh.assign(npts, 0);
-            std::vector<int> cur(cellStart);
-            for (int i = 0; i < T; i++)
-                for (size_t j = 0; j < px[i].size(); j++) {
-                    long gc = (long)i * gw3 + gix(px[i][j]) * gw2 + gix(py[i][j]) * gw +
-                              gix(pw[i][j]);
-                    long s = cur[gc]++;
-                    ptsXh[s] = px[i][j];
-                    ptsYh[s] = py[i][j];
-                    ptsWh[s] = pw[i][j];
+            if (sparse) {
+                // Incremental sparse rebuild: only the points admitted since
+                // the last rebuild get sorted (a ~1% sliver); they are then
+                // linear-merged into the persistent per-timestep sorted order
+                // and the staging arrays + CSR are re-emitted. Timesteps are
+                // independent, so the whole pass fans out across cores.
+                ptsXfH.resize(npts);
+                ptsYfH.resize(npts);
+                ptsWfH.resize(npts);
+                std::vector<size_t> baseOf(T + 1, 0);
+                for (int i = 0; i < T; i++)
+                    baseOf[i + 1] = baseOf[i] + px[i].size();
+                parallel_for((size_t)T, [&](size_t lo, size_t hi) {
+                    std::vector<std::pair<int, int>> fresh;  // (cell key, point index)
+                    std::vector<int> mcell, midx;
+                    for (size_t i = lo; i < hi; i++) {
+                        auto& sc = sortedCell[i];
+                        auto& si = sortedIdx[i];
+                        const size_t n = px[i].size();
+                        const size_t oldn = sc.size();
+                        fresh.clear();
+                        fresh.reserve(n - oldn);
+                        for (size_t j = oldn; j < n; j++)
+                            fresh.push_back({(int)(gix(px[i][j]) * gw2 + gix(py[i][j]) * gw +
+                                                   gix(pw[i][j])),
+                                             (int)j});
+                        std::sort(fresh.begin(), fresh.end());
+                        // Merge the fresh sliver into the persistent order.
+                        // Old-first on equal cells keeps the exact order a
+                        // full (cell, index) sort would produce.
+                        mcell.resize(n);
+                        midx.resize(n);
+                        size_t a = 0, b = 0;
+                        for (size_t k = 0; k < n; k++) {
+                            const bool takeOld =
+                                a < oldn && (b >= fresh.size() || sc[a] <= fresh[b].first);
+                            if (takeOld) {
+                                mcell[k] = sc[a];
+                                midx[k] = si[a];
+                                a++;
+                            } else {
+                                mcell[k] = fresh[b].first;
+                                midx[k] = fresh[b].second;
+                                b++;
+                            }
+                        }
+                        sc.swap(mcell);
+                        si.swap(midx);
+                        // Emit this timestep's staging points + keys/offsets.
+                        auto& tk = tkeys[i];
+                        auto& to = toffs[i];
+                        tk.clear();
+                        to.clear();
+                        int prev = -1;
+                        const size_t base = baseOf[i];
+                        for (size_t k = 0; k < n; k++) {
+                            if (sc[k] != prev) {
+                                tk.push_back(sc[k]);
+                                to.push_back((int)(base + k));
+                                prev = sc[k];
+                            }
+                            const int j = si[k];
+                            ptsXfH[base + k] = (float)px[i][j];
+                            ptsYfH[base + k] = (float)py[i][j];
+                            ptsWfH[base + k] = (float)pw[i][j];
+                        }
+                    }
+                });
+                keysH.clear();
+                cellOffH.clear();
+                for (int i = 0; i < T; i++) {
+                    keyStartH[i] = (int)keysH.size();
+                    keysH.insert(keysH.end(), tkeys[i].begin(), tkeys[i].end());
+                    cellOffH.insert(cellOffH.end(), toffs[i].begin(), toffs[i].end());
                 }
-            CK(cudaMemcpy(dCellStart, cellStart.data(), ncell * 4, cudaMemcpyHostToDevice));
-            CK(cudaMemcpy(dCellLen, cellLen.data(), ncell * 4, cudaMemcpyHostToDevice));
-            if (npts) {
-                CK(cudaMemcpy(dPtsX, ptsXh.data(), npts * 8, cudaMemcpyHostToDevice));
-                CK(cudaMemcpy(dPtsY, ptsYh.data(), npts * 8, cudaMemcpyHostToDevice));
-                CK(cudaMemcpy(dPtsW, ptsWh.data(), npts * 8, cudaMemcpyHostToDevice));
+                keyStartH[T] = (int)keysH.size();
+                cellOffH.push_back((int)npts);  // CSR sentinel
+                CK(cudaMemcpyAsync(dKeyStart, keyStartH.data(), (T + 1) * 4,
+                                   cudaMemcpyHostToDevice, st));
+                if (!keysH.empty())
+                    CK(cudaMemcpyAsync(dKeys, keysH.data(), keysH.size() * 4,
+                                       cudaMemcpyHostToDevice, st));
+                CK(cudaMemcpyAsync(dCellOff, cellOffH.data(), cellOffH.size() * 4,
+                                   cudaMemcpyHostToDevice, st));
+                if (npts) {
+                    CK(cudaMemcpyAsync(dPtsXf, ptsXfH.data(), npts * 4, cudaMemcpyHostToDevice,
+                                       st));
+                    CK(cudaMemcpyAsync(dPtsYf, ptsYfH.data(), npts * 4, cudaMemcpyHostToDevice,
+                                       st));
+                    CK(cudaMemcpyAsync(dPtsWf, ptsWfH.data(), npts * 4, cudaMemcpyHostToDevice,
+                                       st));
+                }
+            } else {
+                std::fill(cellLen.begin(), cellLen.end(), 0);
+                for (int i = 0; i < T; i++)
+                    for (size_t j = 0; j < px[i].size(); j++) {
+                        long gc = (long)i * gw3 + gix(px[i][j]) * gw2 + gix(py[i][j]) * gw +
+                                  gix(pw[i][j]);
+                        cellLen[gc]++;
+                    }
+                long acc = 0;
+                for (size_t c = 0; c < ncell; c++) {
+                    cellStart[c] = (int)acc;
+                    acc += cellLen[c];
+                }
+                cellStart[ncell] = (int)acc;  // CSR sentinel: one past the last point
+                ptsXh.assign(npts, 0);
+                ptsYh.assign(npts, 0);
+                ptsWh.assign(npts, 0);
+                std::vector<int> cur(cellStart.begin(), cellStart.end() - 1);
+                for (int i = 0; i < T; i++)
+                    for (size_t j = 0; j < px[i].size(); j++) {
+                        long gc = (long)i * gw3 + gix(px[i][j]) * gw2 + gix(py[i][j]) * gw +
+                                  gix(pw[i][j]);
+                        long s = cur[gc]++;
+                        ptsXh[s] = px[i][j];
+                        ptsYh[s] = py[i][j];
+                        ptsWh[s] = pw[i][j];
+                    }
+                CK(cudaMemcpyAsync(dCellStart, cellStart.data(), (ncell + 1) * 4,
+                                   cudaMemcpyHostToDevice, st));
+                if (npts) {
+                    CK(cudaMemcpyAsync(dPtsX, ptsXh.data(), npts * 8, cudaMemcpyHostToDevice,
+                                       st));
+                    CK(cudaMemcpyAsync(dPtsY, ptsYh.data(), npts * 8, cudaMemcpyHostToDevice,
+                                       st));
+                    CK(cudaMemcpyAsync(dPtsW, ptsWh.data(), npts * 8, cudaMemcpyHostToDevice,
+                                       st));
+                }
             }
             lastN = N;
         }
+        CK(cudaEventRecord(uploadEv, st));
+    };
 
-        CK(cudaMemset(dSurvCount, 0, 4));
+    // Enqueue one prefilter round into buffer b: zero the count, launch the
+    // kernel, and start the count + fixed-prefix survivor copies back to
+    // pinned memory. Everything is on the compute stream; ev[b] fires when
+    // the round's results are readable on the host.
+    long roundBatch[2] = {0, 0};
+    long long attemptsEnqueued = 0;
+    auto enqueue_round = [&](int b) {
+        CK(cudaMemsetAsync(dSurvCount[b], 0, 4, st));
         int threads = 256, blocks = (int)((batch + threads - 1) / threads);
-        test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, smart, angle, euclid,
-                                         torus, phase, T, dz, dsinz, dinvz, cell, gw, off, gw2,
-                                         gw3, dCellStart, dCellLen, dPtsX, dPtsY, dPtsW, dorder,
-                                         dSurv, dSurvCount, survCap);
-        CK(cudaDeviceSynchronize());
-        int sc;
-        CK(cudaMemcpy(&sc, dSurvCount, 4, cudaMemcpyDeviceToHost));
-        int got = sc < survCap ? sc : survCap;
-        if (got)
-            CK(cudaMemcpy(hSurv.data(), dSurv, got * sizeof(Path), cudaMemcpyDeviceToHost));
-        attempts += batch;
+        if (sparse)
+            test_kernel_sparse<<<blocks, threads, 0, st>>>(
+                seed, round, (int)batch, modmax, smart, angle, euclid, torus, phase, T, dSinbT,
+                dCosbm1T, dSinzF, dInvzF, (float)cell, (float)cellTight, (float)edgeLoose, gw,
+                off, gw2, dKeys, dKeyStart, dCellOff, dPtsXf, dPtsYf, dPtsWf, dorder, dSurv[b],
+                dSurvCount[b], survCap);
+        else
+            test_kernel<<<blocks, threads, 0, st>>>(
+                seed, round, (int)batch, modmax, smart, angle, euclid, torus, phase, T, dz,
+                dsinz, dinvz, cell, gw, off, gw2, gw3, dCellStart, dPtsX, dPtsY, dPtsW, dorder,
+                dSurv[b], dSurvCount[b], survCap);
+        CK(cudaMemcpyAsync(hCount[b], dSurvCount[b], 4, cudaMemcpyDeviceToHost, st));
+        CK(cudaMemcpyAsync(hSurvPin[b], dSurv[b], copyCap * sizeof(Path),
+                           cudaMemcpyDeviceToHost, st));
+        CK(cudaEventRecord(ev[b], st));
+        roundBatch[b] = batch;
+        attemptsEnqueued += batch;
         round++;
+    };
 
+    maybe_rebuild();  // initial (empty) grid upload
+    bool stopEnqueue = false;
+    int cur = 0;
+    enqueue_round(cur);
+    while (true) {
+        // Keep the GPU fed: enqueue the next round (against the device grid,
+        // which lags admissions by a round) before draining this one.
+        bool enqueuedNext = false;
+        if (attemptsEnqueued < (long long)budget && !stopEnqueue) {
+            enqueue_round(cur ^ 1);
+            enqueuedNext = true;
+        }
+        // Drain round `cur`: wait for its survivors while its successor runs.
+        CK(cudaEventSynchronize(ev[cur]));
+        int sc = *hCount[cur];
+        int got = sc < survCap ? sc : survCap;
+        const Path* surv = hSurvPin[cur];
+        if (got > copyCap) {
+            // Rare (early rounds): fetch everything past the pinned prefix on
+            // the copy stream, so it does not serialize behind the in-flight
+            // kernel on the compute stream.
+            memcpy(hSurvOver.data(), hSurvPin[cur], copyCap * sizeof(Path));
+            CK(cudaMemcpyAsync(hSurvOver.data() + copyCap, dSurv[cur] + copyCap,
+                               (size_t)(got - copyCap) * sizeof(Path), cudaMemcpyDeviceToHost,
+                               stCopy));
+            CK(cudaStreamSynchronize(stCopy));
+            surv = hSurvOver.data();
+        }
+        attempts += roundBatch[cur];
+
+        // Admission runs in chunks with two phases. Phase 1 (parallel): each
+        // survivor's trajectory + collision check against the packing as
+        // committed so far -- hgrid/px are read-only there, so it fans out
+        // across cores. Phase 2 (serial, slot order): the only collisions
+        // phase 1 cannot see are against this same chunk's admissions, so
+        // each admittee is compared pairwise against the chunk's admitted
+        // trajectories. Chunks are small to keep that quadratic tail short.
+        // The admitted set is identical to the old fully-serial loop.
         long long admitted = 0;
-        for (int s = 0; s < got; s++) {
-            Path& p = hSurv[s];
-            const double offx = p.ax * sin(p.fx);
-            const double offy = p.ay * sin(p.fy);
-            const double offw = p.aw * sin(p.fw);
-            // Same rule as collides_dev: phase-free paths take the verbatim
-            // pre-phase expression (per-candidate math identical to pre-phase).
-            const bool phased = (p.fx != 0.0) || (p.fy != 0.0) || (p.fw != 0.0);
-            for (int i = 0; i < T; i++) {
-                if (phased) {
-                    Xb[i] = (p.ax * sin(p.bx * z[i] + p.fx) + p.ax2 * sinz[i] - offx) * invz[i];
-                    Yb[i] = (p.ay * sin(p.by * z[i] + p.fy) + p.ay2 * sinz[i] - offy) * invz[i];
-                    Wb[i] = (p.aw * sin(p.bw * z[i] + p.fw) + p.aw2 * sinz[i] - offw) * invz[i];
-                } else {
-                    Xb[i] = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
-                    Yb[i] = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
-                    Wb[i] = (p.aw * sin(p.bw * z[i]) + p.aw2 * sinz[i]) * invz[i];
+        for (int s0 = 0; s0 < got; s0 += admitChunk) {
+            const int c = std::min(admitChunk, got - s0);
+            auto precheck = [&](size_t lo, size_t hi) {
+                for (size_t q = lo; q < hi; q++) {
+                    double *X = &Xc[q * T], *Y = &Yc[q * T], *W = &Wc[q * T];
+                    eval_path(surv[s0 + q], X, Y, W);
+                    preHit[q] = host_collides(X, Y, W) ? 1 : 0;
                 }
-                if (torus) {
-                    Xb[i] = torus_wrap(Xb[i]);
-                    Yb[i] = torus_wrap(Yb[i]);
-                    Wb[i] = torus_wrap(Wb[i]);
+            };
+            if (c >= 24)
+                parallel_for((size_t)c, precheck);
+            else
+                precheck(0, (size_t)c);
+            chunkAdm.clear();
+            for (int q = 0; q < c; q++) {
+                if (preHit[q])
+                    continue;
+                const double *X = &Xc[(size_t)q * T], *Y = &Yc[(size_t)q * T],
+                             *W = &Wc[(size_t)q * T];
+                bool hit = false;
+                for (int a : chunkAdm) {
+                    const double *Xa = &Xc[(size_t)a * T], *Ya = &Yc[(size_t)a * T],
+                                 *Wa = &Wc[(size_t)a * T];
+                    for (int oi = 0; oi < T; oi++) {
+                        const int i = order[oi];
+                        double dX = X[i] - Xa[i];
+                        double dY = Y[i] - Ya[i];
+                        double dW = W[i] - Wa[i];
+                        if (torus) {
+                            dX = torus_delta(dX);
+                            dY = torus_delta(dY);
+                            dW = torus_delta(dW);
+                        }
+                        const bool h =
+                            euclid ? dX * dX + dY * dY + dW * dW <= cell * cell
+                                   : fabs(dX) <= cell && fabs(dY) <= cell && fabs(dW) <= cell;
+                        if (h) {
+                            hit = true;
+                            break;
+                        }
+                    }
+                    if (hit)
+                        break;
                 }
+                if (hit)
+                    continue;
+                for (int i = 0; i < T; i++) {
+                    px[i].push_back(X[i]);
+                    py[i].push_back(Y[i]);
+                    pw[i].push_back(W[i]);
+                    hgrid[i][key3(hix(X[i]), hix(Y[i]), hix(W[i]))].push_back(
+                        {X[i], Y[i], W[i]});
+                }
+                if (paramPath)
+                    acceptedPaths.push_back(surv[s0 + q]);
+                chunkAdm.push_back(q);
+                N++;
+                admitted++;
             }
-            if (host_collides(Xb.data(), Yb.data(), Wb.data()))
-                continue;
-            for (int i = 0; i < T; i++) {
-                px[i].push_back(Xb[i]);
-                py[i].push_back(Yb[i]);
-                pw[i].push_back(Wb[i]);
-                hgrid[i][key3(hix(Xb[i]), hix(Yb[i]), hix(Wb[i]))].push_back(
-                    {Xb[i], Yb[i], Wb[i]});
-            }
-            if (paramPath)
-                acceptedPaths.push_back(p);
-            N++;
-            admitted++;
         }
         if (got > 512 && batch > 4096)
             batch /= 2;
@@ -642,8 +1226,8 @@ int main(int argc, char** argv) {
             nextMs = (long long)(nextMs * 1.15) + 1;
         }
         if (winTarget) {
-            window.push_back({batch, admitted});
-            winAtt += batch;
+            window.push_back({roundBatch[cur], admitted});
+            winAtt += roundBatch[cur];
             winAdm += admitted;
             while (window.size() > 1 && winAtt - window.front().first >= winTarget) {
                 winAtt -= window.front().first;
@@ -652,9 +1236,14 @@ int main(int argc, char** argv) {
             }
             if (winAtt >= winTarget && attempts > 1000000 &&
                 (double)winAdm / (double)winAtt < acceptThresh)
-                break;
+                stopEnqueue = true;  // drain the in-flight round, then stop
         }
+        maybe_rebuild();
+        if (!enqueuedNext)
+            break;
+        cur ^= 1;
     }
+    CK(cudaStreamSynchronize(st));
     curve.push_back({attempts, N});
     fprintf(stderr, "done: N=%lld in %lld attempts\n", N, attempts);
     if (curvePath) {
@@ -717,26 +1306,7 @@ int main(int argc, char** argv) {
         std::vector<double> X(T), Y(T), W(T);
         for (long long t = 0; t < probeN; t++) {
             Path p = propose(pr, modmax, smart, angle, torus, phase);
-            const double offx = p.ax * sin(p.fx);
-            const double offy = p.ay * sin(p.fy);
-            const double offw = p.aw * sin(p.fw);
-            const bool phased = (p.fx != 0.0) || (p.fy != 0.0) || (p.fw != 0.0);
-            for (int i = 0; i < T; i++) {
-                if (phased) {
-                    X[i] = (p.ax * sin(p.bx * z[i] + p.fx) + p.ax2 * sinz[i] - offx) * invz[i];
-                    Y[i] = (p.ay * sin(p.by * z[i] + p.fy) + p.ay2 * sinz[i] - offy) * invz[i];
-                    W[i] = (p.aw * sin(p.bw * z[i] + p.fw) + p.aw2 * sinz[i] - offw) * invz[i];
-                } else {
-                    X[i] = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
-                    Y[i] = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
-                    W[i] = (p.aw * sin(p.bw * z[i]) + p.aw2 * sinz[i]) * invz[i];
-                }
-                if (torus) {
-                    X[i] = torus_wrap(X[i]);
-                    Y[i] = torus_wrap(Y[i]);
-                    W[i] = torus_wrap(W[i]);
-                }
-            }
+            eval_path(p, X.data(), Y.data(), W.data());
             int b = bin_of(p.ax2);  // bin by the X-centre of the proposal
             prop[b]++;
             if (!host_collides(X.data(), Y.data(), W.data()))

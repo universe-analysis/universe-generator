@@ -167,7 +167,8 @@ class Fleet:
                 "for NVCC in $(command -v nvcc) "
                 "$(ls /usr/local/cuda*/bin/nvcc 2>/dev/null | sort -rV); do "
                 'for CC in "" "-ccbin g++-11"; do '
-                f"if $NVCC -O3 -arch={arch} $CC -o {b} {b}.cu 2>{b}_build.err; "
+                f"if $NVCC -O3 -arch={arch} -Xcompiler -pthread $CC -o {b} {b}.cu "
+                f"2>{b}_build.err; "
                 "then break 2; fi; "
                 f"done; done; test -x {b}",
                 timeout=400,

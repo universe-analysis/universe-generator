@@ -91,8 +91,11 @@ Key gotchas (full list in `braidlab/ORCHESTRATOR.md`):
 - **Variant collisions** — a variant run (e.g. euclid, a different cutoff) must
   carry a distinct job-name tag or it re-collects the baseline's leftovers from
   the shared remote workspace.
-- **GPU memory ~ T⁴** in 3+1 (dense per-timestep collision grid): T=200 ≈ 13.6 GB,
-  capping a 24 GB card near T≈215; 10 GB cards cap ~160. 2+1 is ~T³ (cheap).
+- **GPU memory ~ T⁴** in 3+1 (dense per-timestep collision grid): T=200 ≈ 6.8 GB
+  (sentinel CSR), capping a 24 GB card near T≈255; 10 GB cards cap ~190. 2+1 is
+  ~T³ (cheap). For larger T use the sparse grid (`Campaign(sparse=True)` /
+  engine `--sparse`, VRAM ~ N·T — T=240 ran in 3.0 GB on a 3080); validate
+  engine A/Bs with `analysis/compare_jamming.py` against a stored run.db.
 
 ## Analysis workflow
 
