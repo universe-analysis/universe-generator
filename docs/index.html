@@ -65,13 +65,18 @@
     <header>
       <h1>The Braided Universe</h1>
       <p class="lead">
-        A packing model of the cosmos: parametric sinusoidal worldlines threaded
-        into a closed conformal-time loop, jammed to saturation, and studied for
-        the fractal dimension and emergent physics that fall out of the geometry.
+        A packing model of the cosmos: unit-rapidity sinusoidal worldlines on a
+        comoving torus, threaded into a closed conformal-time loop, jammed to
+        saturation by random sequential adsorption, and studied for the scaling
+        laws and emergent physics that fall out of the geometry.
       </p>
       <p class="lead">
-        Measured packing dimension <strong>D &approx; 2.79</strong> in 3+1 and
-        <strong>&approx; 1.82</strong> in 2+1 (jamming-free, mildly multifractal).
+        The jam count grows as a clean power law <strong>N &sim; T<sup>2.33</sup></strong>
+        in 3+1 and <strong>T<sup>1.38</sup></strong> in 2+1 &mdash; a packing-number
+        exponent carried by no static set: matter slices are <em>exactly</em>
+        uniform (wrapped D<sub>2</sub> = 3.01 / 2.03). Mover speeds follow a
+        phase-selected arcsine law, and the turnaround equation of state is
+        matter-like, <strong>w = 0.070</strong>.
       </p>
     </header>
 
@@ -135,26 +140,44 @@
 
     <h2>Key results</h2>
     <div class="grid">
-      <figure class="figure"><img src="figures/corrdim3d_seeded.png" alt="3+1 correlation dimension" />
-        <figcaption>3+1 packing dimension: correlation dimension converges to D &approx; 2.79 (seed-averaged).</figcaption></figure>
-      <figure class="figure"><img src="figures/spectral_dims.png" alt="Dq spectrum" />
-        <figcaption>Generalized dimensions D<sub>q</sub>: a gently sloping, mildly multifractal spectrum.</figcaption></figure>
-      <figure class="figure"><img src="figures/eos_history.png" alt="equation of state history" />
-        <figcaption>Equation-of-state history w(z): stiff near the bang/crunch, matter-like at the turnaround.</figcaption></figure>
-      <figure class="figure"><img src="figures/knots.png" alt="knot selection" />
-        <figcaption>The packing selects for knottier (high-frequency, coprime) worldlines as resolution rises.</figcaption></figure>
-      <figure class="figure"><img src="figures/corrdim2d_seeded.png" alt="2+1 dimension" />
-        <figcaption>2+1 dimension: D &approx; 1.82, converging much more slowly than 3+1.</figcaption></figure>
-      <figure class="figure"><img src="figures/nvt.png" alt="packing count vs resolution" />
-        <figcaption>Packing count vs resolution, N ~ T<sup>D</sup>, bracketed between the T&sup2; and T&sup3; guides.</figcaption></figure>
+      <figure class="figure"><img src="figures/jam_scaling.png" alt="jam-count scaling" />
+        <figcaption>The headline: jam count vs resolution is a clean power law, N &sim; T<sup>2.33</sup>
+          (3+1) and T<sup>1.38</sup> (2+1), with flat local slopes &mdash; well below the T<sup>3</sup>/T<sup>2</sup>
+          ceilings of pure spatial packing.</figcaption></figure>
+      <figure class="figure"><img src="figures/wrapped_d2_3d.png" alt="wrapped correlation dimension" />
+        <figcaption>Exact homogeneity: the wrapped (minimum-image) correlation dimension of the
+          turnaround slice converges onto the space-filling D = 3 for both probe shapes; the
+          open-boundary estimator (dotted, ~2.89) shows the artifact it corrects.</figcaption></figure>
+      <figure class="figure"><img src="figures/uniformity.png" alt="uniformity over conformal time" />
+        <figcaption>One universe over its whole history: rms comoving spread sits on the exact
+          uniform-torus value &radic;&frac13; through bang, turnaround, and crunch.</figcaption></figure>
+      <figure class="figure"><img src="figures/spacetime_boxdim.png" alt="worldline bundle box dimension" />
+        <figcaption>No geometric carrier: the worldline bundle's local dimension sweeps from ~1.3
+          (smooth curves) to ~2.9 (space-filling), crossing the count exponent 2.33 only in
+          passing &mdash; D is a packing-number exponent, not a fractal dimension.</figcaption></figure>
+      <figure class="figure"><img src="figures/parity_vs_t.png" alt="frequency parity composition" />
+        <figcaption>What survives: 48% of packed worldlines are entirely odd-frequency and 82.7% of
+          accepted frequencies are odd, flat in resolution &mdash; a cold majority at rest at maximum
+          expansion plus single-axis movers.</figcaption></figure>
+      <figure class="figure"><img src="figures/phase_kinematics.png" alt="arcsine speed law and equation of state" />
+        <figcaption>Mover speeds follow the parameter-free arcsine law P(v) = 2/&pi;&radic;(1&minus;v&sup2;),
+          tilted toward slow movers (&#10216;v&sup2;&#10217; = 0.40 vs 0.50): jamming selects on phase. The
+          turnaround equation of state is flat at w = 0.070 across the ladder.</figcaption></figure>
     </div>
 
     <h2>Publications</h2>
     <div class="grid">
+      <a class="card" href="papers/worldline-rsa-packing.pdf">
+        <h3>The paper (PDF) &rarr;</h3>
+        <p>A packing model of a closed universe: random sequential adsorption of
+           unit-rapidity worldlines on a comoving torus. Bentley &amp; Bentley,
+           draft of July 6, 2026 (source in <code>paper/</code>).</p>
+      </a>
       <a class="card" href="papers/pre-draft-paper.pdf">
-        <h3>Preliminary draft paper (PDF) &rarr;</h3>
+        <h3>External review (PDF) &rarr;</h3>
         <p>Comprehensive review and phenomenological analysis: random sequential
-           adsorption of worldlines in toroidal cosmology. Early draft.</p>
+           adsorption of worldlines in toroidal cosmology. A reviewer's analysis
+           of the manuscript.</p>
       </a>
     </div>
 
