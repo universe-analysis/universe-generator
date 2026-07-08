@@ -117,7 +117,8 @@
             </div>
             <div class="row"><span>Loop R</span><input type="range" id="rRange" min="4" max="24" step="0.5" value="6"></div>
             <div class="row"><span>Spread</span><input type="range" id="sRange" min="1" max="12" step="0.5" value="5"></div>
-            <div class="row"><span>Glow</span><input type="range" id="sizeRange" min="0.05" max="4" step="0.01" value="0.7"></div>
+            <div class="row"><span>Sweep glow</span><input type="range" id="sizeRange" min="0.05" max="4" step="0.01" value="0.7"></div>
+            <div class="row"><span>Cloud glow</span><input type="range" id="cloudSizeRange" min="0.05" max="4" step="0.01" value="0.7"></div>
             <div class="group-name">Torus offset — slide the map around the loops</div>
             <div class="row"><span>X offset</span><input type="range" id="offXRange" min="-1" max="1" step="0.01" value="0"><span class="val" id="offXVal" style="width:34px">0.00</span></div>
             <div class="row"><span>Y offset</span><input type="range" id="offYRange" min="-1" max="1" step="0.01" value="0"><span class="val" id="offYVal" style="width:34px">0.00</span></div>
@@ -228,7 +229,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v15';
+    const VIEWER_VERSION = 'v16';
 
     let functions = [];
     let Z_cache = [];
@@ -755,7 +756,7 @@
         uConeRate:{value:0.6}, uConeBase:{value:0.0}, uConeRings:{value:3}, uRedNorm:{value:1.2}, uConeColor:{value:1}, uConeSpeed:{value:1.0},
         uConeFadeW:{value:0.3}, uConeFold:{value:0}, uConeSquare:{value:0},
         uConeOn:{value:1}, uConeMax:{value:1},
-        uSize:{value:parseFloat(sizeRange().value)}, uConeSize:{value:0.7}, uOpacity:{value:0.6}, uTex:{value:glowTex},
+        uSize:{value:parseFloat(sizeRange().value)}, uCloudSize:{value:0.7}, uConeSize:{value:0.7}, uOpacity:{value:0.6}, uTex:{value:glowTex},
         // ortho cameras have no perspective attenuation: point size must come from
         // camera.zoom, never from view depth (-mv.z), which goes through 0 at the
         // camera plane (size blow-up in front, 1px collapse behind). 0 = perspective.
@@ -805,7 +806,7 @@
         attribute float aGroup;      // unique-group ID (subpaths share their group's)
         attribute float aIsSub;      // 0 = seed (unique), 1 = subpath
         attribute float aIndex;      // instance index 0..N-1 (term texture row + emitter highlight)
-        uniform float uZ0, uStep, uT, uR, uS, uFreqMin, uFreqMax, uSize, uGMin, uGMax, uTime, uAngK, uConeMax, uOrthoScale, uOffX, uOffY;
+        uniform float uZ0, uStep, uT, uR, uS, uFreqMin, uFreqMax, uSize, uCloudSize, uGMin, uGMax, uTime, uAngK, uConeMax, uOrthoScale, uOffX, uOffY;
         uniform int uGeoLocal, uMode, uLog, uPecGlobal, uSliceMode, uConeOn, uSeedHl;
         varying vec3 vColor;
         ${comovGLSL(nw)}
@@ -841,7 +842,9 @@
             float hl = (uConeOn==1 && aIndex < uConeMax) ? 1.0 : 0.0;   // emitting particle?
             vec4 mv = modelViewMatrix * vec4(P,1.0);
             gl_Position = projectionMatrix * mv;
-            float sz = uSize * (uSliceMode==1 ? 1.7 : 1.0) * (1.0 + 1.6*hl);
+            // sweep (present slice) and cloud have independent glow sliders
+            float glow = (uSliceMode==1) ? uSize * 1.7 : uCloudSize;
+            float sz = glow * (1.0 + 1.6*hl);
             if (uSeedHl==1 && aIsSub < 0.5) sz *= 1.6;   // seed highlight: bigger seeds
             float depth = (uOrthoScale > 0.0) ? uOrthoScale : max(-mv.z, 0.1);
             gl_PointSize = clamp(sz * 300.0 / depth, 1.0, 90.0);
@@ -1256,6 +1259,7 @@
     document.getElementById('rRange').addEventListener('input', e=>{ R=parseFloat(e.target.value); U.uR.value=R; rebuildGrid(); });
     document.getElementById('sRange').addEventListener('input', e=>{ S=parseFloat(e.target.value); U.uS.value=S; rebuildGrid(); });
     sizeRange().addEventListener('input', e=>{ U.uSize.value = parseFloat(e.target.value); });
+    document.getElementById('cloudSizeRange').addEventListener('input', e=>{ U.uCloudSize.value = parseFloat(e.target.value); });
     function applyOffset(rangeId, valId, uniform, v){
         v = wrapComov(v);                       // period-2 domain: passing 1 re-enters at -1
         uniform.value = v;
