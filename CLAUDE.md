@@ -9,12 +9,16 @@ Guidance for Claude Code (and humans) working in this repo.
 ## What this project is
 
 A packing model of the cosmos. Parametric sinusoidal worldlines
-(`x(z) = a·sin(b·z) + a2·sin(z)` per spatial axis, integer frequency `b`, a
-slope-1 "speed of light" constraint `|a·b| + |a2| = 1`) are threaded into a
-closed conformal-time loop `z ∈ (0, π)` and packed to jamming by random
-sequential addition (RSA). We measure the fractal/packing dimension of the
-result and the physics that emerges. Headline: **D ≈ 2.79 (3+1)**, **≈ 1.82
-(2+1)**, mildly multifractal. Full story in `PHYSICS_FINDINGS.md`.
+(`x(z) = a·[sin(b·z + f) − sin f] + a1·sin(z)` per spatial axis, integer
+frequency `b`, unit-rapidity budget `|a·b| = 1`, free comoving coordinate
+`a1`, free phase `f` on even frequencies) are threaded into a closed
+conformal-time loop `z ∈ (0, π)` on a comoving torus and packed by random
+sequential adsorption (RSA). Headline: the jam count scales as **N ~ T^2.33
+(3+1)** / **T^1.38 (2+1)** — a packing-number exponent with no geometric
+carrier; matter slices are *exactly* uniform (wrapped D2 = 3.01/2.03); mover
+speeds follow a phase-selected arcsine law; turnaround equation of state
+**w = 0.070**, dictionary-robust. Full story in `PHYSICS_FINDINGS.md` and
+`paper/main.tex`.
 
 ## Layout
 
