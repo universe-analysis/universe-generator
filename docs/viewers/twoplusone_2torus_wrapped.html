@@ -69,6 +69,7 @@
         </select></label>
         <span class="sep"></span>
         <label>Time-steps <input type="number" id="timeInput" value="180" min="2"></label>
+        <label title="Sinusoid terms per axis, incl. the sin1 term (2 = legacy model)">Freq terms <input type="number" id="termsInput" value="3" min="2"></label>
         <label>Gen time <input type="range" id="genTimeRange" min="1" max="120" step="1" value="10"><span id="genTimeVal" style="width:32px;display:inline-block;color:#9fb0d0">10s</span></label>
         <button id="generateBtn">Generate</button>
         <button id="abortBtn">Abort</button>
@@ -167,13 +168,18 @@
     <script>
     /* ================================================================
        PART 1 — PATH GENERATION  (collision-checked "unique groups")
-       WRAPPED / TOROIDAL VARIANT:
-         x(z) = ax·sin(bx·z) + ax2·sin(z)
-         y(z) = ay·sin(by·z) + ay2·sin(z)        z∈(0,π) is time
-       Amplitudes are no longer a split of a unit slope budget. Instead
-         ax2 ∈ U[-1,1]   (the sin(1·z) coherence term, drawn freely)
-         ax  = ±1/bx     (so |ax·bx| = 1 exactly)
-       so total slope can reach 2 and comoving |X| can reach 2. The
+       WRAPPED / TOROIDAL VARIANT, generalized to NW wiggle terms per axis:
+         x(z) = Σ_j [ax_j·sin(bx_j·z + fx_j) − ax_j·sin(fx_j)] + ax2·sin(z)
+         y(z) = likewise                          z∈(0,π) is time
+       The sin1 amplitude is drawn freely (ax2 ∈ U[-1,1], a free comoving
+       offset on the torus). The NW = freqTerms−1 wiggle terms per axis get
+       unique integer frequencies; the unit slope budget is split uniformly
+       at random across them (sorted-cut simplex split) and each term's
+       amplitude is its share / its frequency, so Σ_j |ax_j·bx_j| = 1
+       exactly — freqTerms = 2 reduces to the old single ±1/bx draw. Each
+       term carries its own phase (even frequencies only, else the loop
+       won't close) and is re-pinned to zero by its own a·sin(f) offset.
+       Total slope can reach 2 and comoving |X| can reach 2. The
        comoving domain is periodic: coordinates wrap past ±1 by ∓2
        (real extent -2..2, identified to [-1,1)). Collisions use the
        minimum-image convention so paths at e.g. +0.999 and -0.999
@@ -187,16 +193,17 @@
        Only the comoving surface map is exactly seamless.
     ================================================================ */
     const timeInput    = document.getElementById('timeInput');
+    const termsInput   = document.getElementById('termsInput');
     const genTimeRange = document.getElementById('genTimeRange');
     const statusEl     = document.getElementById('status');
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v12';
+    const VIEWER_VERSION = 'v13';
 
     let functions = [];
     let Z_cache = [];
-    let time_steps, modulation_Max, freqMax = 4, groupIDcount = 0, abort_gen = false;
+    let time_steps, modulation_Max, freqTerms = 3, groupIDcount = 0, abort_gen = false;
     let genBudgetMs = 10000, genStart = 0, consecFails = 0, lastLiveUpload = 0;
     // Generation epoch: every Generate (or Import) bumps this, and any
     // make_groups round or finalize callback from an older epoch bails out.
@@ -227,7 +234,20 @@
         CELL = 2 / time_steps; NCELL = time_steps;
         gridByT = Array.from({ length: Z_cache.length }, () => new Map());
     }
-    function comovingTraj(ax, ay, bx, by, ax2, ay2, fx, fy) {
+    // Worldline evaluation, shared by packing, HUD and colouring: the sin1
+    // term plus every wiggle term, each re-pinned to zero at the endpoints by
+    // its own a·sin(f) offset. Returns UNWRAPPED comoving coords.
+    function comovXY(f, z) {
+        const s = Math.sin(z);
+        let x = f.ax2 * s, y = f.ay2 * s;
+        for (let j = 0; j < f.terms.length; j++) {
+            const t = f.terms[j];
+            x += t.ax * (Math.sin(t.bx * z + t.fx) - Math.sin(t.fx));
+            y += t.ay * (Math.sin(t.by * z + t.fy) - Math.sin(t.fy));
+        }
+        return [x / s, y / s];
+    }
+    function comovingTraj(f) {
         const n = Z_cache.length, X = new Float32Array(n), Y = new Float32Array(n);
         // The comoving speed range is measured in this same pass, on UNWRAPPED
         // coords — peculiar speed must never difference across a wrap (that
@@ -235,19 +255,8 @@
         // buildBuffers never has to rescan trajectories.
         let pecMin = Infinity, pecMax = -Infinity, pcx = 0, pcy = 0;
         for (let i = 0; i < n; i++) {
-            const z = Z_cache[i], inv = 1 / Math.sin(z);
-            let temp_x = ax * Math.sin((bx * z) + fx) + ax2 * Math.sin(z);
-            let temp_y = ay * Math.sin((by * z) + fy) + ay2 * Math.sin(z);
-
-            //	Phase shift components offset to zero
-            if (fx != 0){
-                temp_x -= ax * Math.sin(fx);
-            }
-            if (fy != 0){
-                temp_y -= ay * Math.sin(fy);
-            }
-
-            const cx = temp_x * inv, cy = temp_y * inv;
+            const z = Z_cache[i];
+            const [cx, cy] = comovXY(f, z);
             if (i > 0){
                 const v = Math.hypot(cx - pcx, cy - pcy) / (z - Z_cache[i-1]);
                 if (v < pecMin) pecMin = v;
@@ -287,49 +296,91 @@
         }
     }
 
-    // ---- frequency selection (Smart = coprime + high-frequency bias → ~40% denser packing) ----
+    // ---- frequency selection (Smart = high-frequency bias → ~40% denser packing;
+    //      the legacy two-term model additionally keeps bx,by coprime) ----
     let smartFreq = false;
     function gcd(a, b){ while (b){ const t = a % b; a = b; b = t; } return a; }
-    function drawFreqs(){
-        if (!smartFreq)
-            return [ Math.floor(Math.random()*modulation_Max)+2,
-                     Math.floor(Math.random()*modulation_Max)+2 ];
+    function drawOneFreq(){
+        if (!smartFreq) return Math.floor(Math.random()*modulation_Max) + 2;
         // high-frequency bias: max of two uniform draws favours finer, nearly
-        // stationary paths that pack more orderly; coprime(bx,by) avoids
-        // degenerate orbits.
-        const hi = () => Math.max(Math.floor(Math.random()*modulation_Max),
-                                  Math.floor(Math.random()*modulation_Max)) + 2;
-        let bx, by, guard = 0;
-        do { bx = hi(); by = hi(); } while (gcd(bx, by) !== 1 && ++guard < 24);
-        return [bx, by];
+        // stationary paths that pack more orderly
+        return Math.max(Math.floor(Math.random()*modulation_Max),
+                        Math.floor(Math.random()*modulation_Max)) + 2;
+    }
+    function drawUniqueFreqs(count){
+        // each wiggle term needs its own integer frequency; duplicates re-draw
+        // (bounded), then the smallest unused frequencies fill any leftovers
+        const out = [];
+        let guard = 0;
+        while (out.length < count && guard < 400){
+            const b = drawOneFreq();
+            if (out.includes(b)) { guard++; continue; }
+            out.push(b);
+        }
+        for (let b = 2; out.length < count; b++)
+            if (!out.includes(b)) out.push(b);
+        return out;
+    }
+    function splitUnit(count){
+        // split 1 into `count` parts, uniform on the simplex: sorted cuts of
+        // [0,1], the parts are the gaps between consecutive cuts
+        if (count === 1) return [1];
+        const cuts = Array.from({ length: count - 1 }, Math.random).sort((a, b) => a - b);
+        const w = [cuts[0]];
+        for (let j = 1; j < count - 1; j++) w.push(cuts[j] - cuts[j-1]);
+        w.push(1 - cuts[count - 2]);
+        return w;
+    }
+    function makeAxisTerms(freqs){
+        // amplitude = (unit-budget share) / frequency, so Σ|a·b| = 1 exactly;
+        // phases only on even frequencies (odd ones must stay phase-free for
+        // the loop to close at z = π)
+        const w = splitUnit(freqs.length);
+        return freqs.map((b, j) => ({
+            a: (Math.random() > 0.5 ? 1 : -1) * w[j] / b,
+            b,
+            f: (b % 2 === 0) ? Math.random()*Math.PI : 0
+        }));
     }
 
     function generateFunction() {
+        const NW = freqTerms - 1;                             // wiggle terms per axis
         for (let attempt = 0; attempt < maxAttemptsPerFunction; attempt++) {
-            const [bx, by] = drawFreqs();
-            const ax2 = Math.random()*2 - 1;                  // sin(1·z) amp: free draw in [-1,1]
-            const ay2 = Math.random()*2 - 1;
-            const ax  = (Math.random() > 0.5 ? 1 : -1) / bx;  // |ax·bx| = 1 exactly
-            const ay  = (Math.random() > 0.5 ? 1 : -1) / by;
-			
-			//	Phase-Shift Components, only generated for even frequencies
-			var fx=0;
-			var fy=0;
-			if (!(bx%2)){
-				fx=Math.random()*Math.PI;
-			}
-			if (!(by%2)){
-				fy=Math.random()*Math.PI;
-			}
-
-            const traj = comovingTraj(ax, ay, bx, by, ax2, ay2, fx, fy);
+            let fqx, fqy;
+            if (NW === 1 && smartFreq){                       // legacy coprime pair rule
+                let guard = 0;
+                do { fqx = drawUniqueFreqs(1); fqy = drawUniqueFreqs(1); }
+                while (gcd(fqx[0], fqy[0]) !== 1 && ++guard < 24);
+            } else {
+                fqx = drawUniqueFreqs(NW); fqy = drawUniqueFreqs(NW);
+            }
+            const tx = makeAxisTerms(fqx), ty = makeAxisTerms(fqy);
+            const terms = tx.map((t, j) => ({ ax: t.a, bx: t.b, fx: t.f,
+                                              ay: ty[j].a, by: ty[j].b, fy: ty[j].f }));
+            const f = { ax2: Math.random()*2 - 1,             // sin(1·z) amp: free draw in [-1,1]
+                        ay2: Math.random()*2 - 1,
+                        terms, fsum: freqSum(terms) };
+            const traj = comovingTraj(f);
             if (!collides(traj)) {
                 insertTraj(traj);
-                return { ax, ay, bx, by, ax2, ay2, fx, fy,
-                         pecMin: traj.pecMin, pecMax: traj.pecMax, groupID: groupIDcount };
+                f.pecMin = traj.pecMin; f.pecMax = traj.pecMax; f.groupID = groupIDcount;
+                return f;
             }
         }
         return null;
+    }
+
+    // Frequency-paint scalar: per axis the amplitude-weighted mean wiggle
+    // frequency (weights |a·b| — each term's share of the unit slope budget,
+    // so they sum to 1 by construction), summed over both axes. For the
+    // two-term model this is exactly the old bx+by.
+    function freqSum(terms){
+        let sx = 0, sy = 0, wx = 0, wy = 0;
+        for (const t of terms){
+            sx += Math.abs(t.ax * t.bx) * t.bx;  wx += Math.abs(t.ax * t.bx);
+            sy += Math.abs(t.ay * t.by) * t.by;  wy += Math.abs(t.ay * t.by);
+        }
+        return sx / (wx || 1) + sy / (wy || 1);
     }
 
     // Generation runs against a wall-clock budget (the "Gen time" slider) rather
@@ -374,11 +425,13 @@
     /* ---- CSV import: load a CUDA engine --dump-params file ----
        The packing engines dump accepted worldline PARAMETERS (one CSV row per
        path), which is everything the renderer needs — positions are analytic.
-       Header is ax,ay,bx,by,ax2,ay2[,fx,fy]; older dumps lack the phase
-       columns (they read as 0). The time-step count is not in the file: it is
-       parsed from the braidlab _T###_ filename token, falling back to the
-       Time-steps input box. pecMin/pecMax are recomputed here with the same
-       comovingTraj pass the generator uses at acceptance. */
+       Two layouts: legacy single-wiggle ax,ay,bx,by,ax2,ay2[,fx,fy] (older
+       dumps lack the phase columns; they read as 0), and the multi-term
+       --terms dump ax2,ay2,ax_1,bx_1,fx_1,ay_1,by_1,fy_1,ax_2,… The
+       time-step count is not in the file: it is parsed from the braidlab
+       _T###_ filename token, falling back to the Time-steps input box.
+       pecMin/pecMax are recomputed here with the same comovingTraj pass the
+       generator uses at acceptance. */
     function tFromFilename(name) {
         const m = name.match(/_T(\d+)_/);
         return m ? parseInt(m[1]) : null;
@@ -388,53 +441,75 @@
         if (lines.length < 2) throw new Error('no data rows');
         const cols = lines[0].split(',').map(s => s.trim());
         if (cols.includes('aw')) throw new Error('3+1 dump — not supported in this viewer');
-        const required = ['ax', 'ay', 'bx', 'by', 'ax2', 'ay2'];
-        for (const c of required) {
-            if (!cols.includes(c)) throw new Error(`missing column "${c}" — not an engine dump?`);
-        }
         const idx = {};
         cols.forEach((c, i) => { idx[c] = i; });
+        const multi = 'ax_1' in idx;
+        let nw = 1;
+        if (multi) {
+            nw = 0;
+            while (('ax_' + (nw+1)) in idx) nw++;
+            for (let j = 1; j <= nw; j++)
+                for (const c of ['ax_','bx_','fx_','ay_','by_','fy_'])
+                    if (!((c + j) in idx))
+                        throw new Error(`missing column "${c}${j}" — truncated multi-term dump?`);
+            if (!('ax2' in idx) || !('ay2' in idx))
+                throw new Error('missing sin1 columns ax2/ay2');
+        } else {
+            const required = ['ax', 'ay', 'bx', 'by', 'ax2', 'ay2'];
+            for (const c of required) {
+                if (!cols.includes(c)) throw new Error(`missing column "${c}" — not an engine dump?`);
+            }
+        }
         const hasPhase = 'fx' in idx && 'fy' in idx;
         const rows = [];
         let skipped = 0;
         for (let li = 1; li < lines.length; li++) {
             const parts = lines[li].split(',');
-            const row = {
-                ax:  parseFloat(parts[idx.ax]),  ay:  parseFloat(parts[idx.ay]),
-                bx:  parseFloat(parts[idx.bx]),  by:  parseFloat(parts[idx.by]),
-                ax2: parseFloat(parts[idx.ax2]), ay2: parseFloat(parts[idx.ay2]),
-                fx:  hasPhase ? parseFloat(parts[idx.fx]) : 0,
-                fy:  hasPhase ? parseFloat(parts[idx.fy]) : 0
-            };
-            const bad = Object.values(row).some(v => Number.isNaN(v));
+            const row = { ax2: parseFloat(parts[idx.ax2]), ay2: parseFloat(parts[idx.ay2]),
+                          terms: [] };
+            if (multi) {
+                for (let j = 1; j <= nw; j++)
+                    row.terms.push({
+                        ax: parseFloat(parts[idx['ax_'+j]]), bx: parseFloat(parts[idx['bx_'+j]]),
+                        fx: parseFloat(parts[idx['fx_'+j]]), ay: parseFloat(parts[idx['ay_'+j]]),
+                        by: parseFloat(parts[idx['by_'+j]]), fy: parseFloat(parts[idx['fy_'+j]])
+                    });
+            } else {
+                row.terms.push({
+                    ax: parseFloat(parts[idx.ax]), bx: parseFloat(parts[idx.bx]),
+                    fx: hasPhase ? parseFloat(parts[idx.fx]) : 0,
+                    ay: parseFloat(parts[idx.ay]), by: parseFloat(parts[idx.by]),
+                    fy: hasPhase ? parseFloat(parts[idx.fy]) : 0
+                });
+            }
+            const bad = Number.isNaN(row.ax2) || Number.isNaN(row.ay2) ||
+                        row.terms.some(t => Object.values(t).some(v => Number.isNaN(v)));
             if (bad) { skipped++; continue; }
             rows.push(row);
         }
         if (!rows.length) throw new Error('no valid rows');
-        return { rows, skipped };
+        return { rows, skipped, nw };
     }
-    function applyImportedDump(rows, skipped, name) {
+    function applyImportedDump(rows, skipped, nw, name) {
         genEpoch++; abort_gen = true;                 // kill any in-flight generation
         saturated = false; consecFails = 0; framePos = 0; groupIDcount = 0;
         const tFile = tFromFilename(name);
         time_steps = tFile || parseInt(timeInput.value);
         if (tFile) timeInput.value = tFile;           // keep the UI honest
+        freqTerms = nw + 1;
+        termsInput.value = freqTerms;                 // keep the UI honest here too
         bakeZValues();                                // no resetGrid(): the collision
         gridByT = [];                                 // hash is packing-only
         functions = [];
-        freqMax = 4;
         for (const r of rows) {
-            const traj = comovingTraj(r.ax, r.ay, r.bx, r.by, r.ax2, r.ay2, r.fx, r.fy);
-            functions.push({ ax: r.ax, ay: r.ay, bx: r.bx, by: r.by,
-                             ax2: r.ax2, ay2: r.ay2, fx: r.fx, fy: r.fy,
-                             pecMin: traj.pecMin, pecMax: traj.pecMax,
-                             groupID: groupIDcount++ });
-            if (r.bx + r.by > freqMax) freqMax = r.bx + r.by;
+            const f = { ax2: r.ax2, ay2: r.ay2, terms: r.terms, fsum: freqSum(r.terms) };
+            const traj = comovingTraj(f);
+            f.pecMin = traj.pecMin; f.pecMax = traj.pecMax; f.groupID = groupIDcount++;
+            functions.push(f);
         }
-        // frequency paint spans the data actually loaded, not the generator's
-        // drawing range; modulation_Max only matters if Generate runs later
+        // frequency paint spans the data actually loaded (buildBuffers scans
+        // fsum); modulation_Max only matters if Generate runs later
         modulation_Max = Math.max(2, Math.floor(time_steps / 2));
-        U.uFreqMax.value = freqMax;
         buildBuffers(); rebuildGPU(); hudDirty = true;
         const cloudPts = functions.length * cloudSamples(Z_cache.length).count;
         const tSrc = tFile ? 'T from filename' : 'T from Time-steps box';
@@ -446,7 +521,7 @@
         statusEl.textContent = `Importing ${file.name}…`;
         file.text().then(text => {
             const parsed = parseDumpCSV(text);        // parse fully BEFORE touching
-            applyImportedDump(parsed.rows, parsed.skipped, file.name);  // any global state
+            applyImportedDump(parsed.rows, parsed.skipped, parsed.nw, file.name);  // any global state
         }).catch(err => {
             statusEl.textContent = `Import failed: ${err.message}`;
         });
@@ -454,11 +529,14 @@
 
     /* ================================================================
        PART 2 — GPU RENDERING
-       Each path = 6 params uploaded once as INSTANCED attributes. A
-       vertex shader expands instance×time-step into points analytically
-       and embeds them on the 2-torus surface. Time, geometry mode,
-       colour mode, R/S, glow — all uniforms, so nothing rebuilds except
-       on Generate.
+       Per-path scalars (sin1 amps, freq-paint sum, speed range, index)
+       ride as INSTANCED attributes; the variable-length wiggle-term
+       table lives in a float DataTexture (2 texels per term), sampled
+       in the vertex shader with the term count baked in as a constant
+       (materials rebuild when it changes). The shader expands
+       instance×time-step into points analytically and embeds them on
+       the 2-torus surface. Time, geometry mode, colour mode, R/S, glow
+       — all uniforms, so nothing rebuilds except on Generate.
          u = π·x,  v = π·y,  P = ((R+S·cos v)·cos u, (R+S·cos v)·sin u, S·sin v)
     ================================================================ */
     let R = 6, S = 5, geoLocal = true;        // R≈S → loops near-equal circumference
@@ -514,7 +592,8 @@
         uZ0:{value:0}, uStep:{value:1}, uT:{value:1},
         uR:{value:R}, uS:{value:S}, uGeoLocal:{value:1},
         uMode:{value:2}, uLog:{value:1}, uPecGlobal:{value:0}, uAngK:{value:Math.PI},
-        uGMin:{value:0}, uGMax:{value:1}, uFreqMax:{value:4},
+        uGMin:{value:0}, uGMax:{value:1}, uFreqMin:{value:4}, uFreqMax:{value:8},
+        uTerms:{value:null}, uTexH:{value:1},
         uOffX:{value:0}, uOffY:{value:0},
         uConeRate:{value:0.6}, uConeBase:{value:0.0}, uConeRings:{value:3}, uRedNorm:{value:1.2}, uConeColor:{value:1}, uConeSpeed:{value:1.0},
         uConeFadeW:{value:0.3}, uConeFold:{value:0}, uConeSquare:{value:0},
@@ -527,23 +606,50 @@
     };
     function sizeRange(){ return document.getElementById('sizeRange'); }
 
-    const VERT = `
+    /* ---- wiggle-term texture + the shared worldline evaluator (GLSL) ----
+       The term count NW is a compile-time shader constant (WebGL1 loops need
+       constant bounds), so vertSrc/ringSrc are source GENERATORS and the
+       materials are rebuilt whenever the term count changes. Per-term data
+       lives in a float texture, two texels per term, flat-indexed:
+         texel 2j   = (ax_j, ay_j, bx_j, by_j)
+         texel 2j+1 = (fx_j, fy_j, 0, 0)                                  */
+    const TERMTEX_W = 2048;      // fixed texture width; rows grow with N·NW
+    function comovGLSL(nw){
+        return `
+        uniform sampler2D uTerms;
+        uniform float uTexH;
+        vec4 termTexel(float k){
+            float fi = aIndex * float(${2*nw}) + k;
+            float u = (mod(fi, ${TERMTEX_W}.0) + 0.5) / ${TERMTEX_W}.0;
+            float v = (floor(fi / ${TERMTEX_W}.0) + 0.5) / uTexH;
+            return texture2D(uTerms, vec2(u, v));
+        }
+        vec2 comovRaw(float z){
+            float s = sin(z);
+            vec2 xy = aSin1 * s;
+            for (int j = 0; j < ${nw}; j++){
+                vec4 t0 = termTexel(float(2*j));
+                vec4 t1 = termTexel(float(2*j+1));
+                xy.x += t0.x * (sin(t0.z*z + t1.x) - sin(t1.x));
+                xy.y += t0.y * (sin(t0.w*z + t1.y) - sin(t1.y));
+            }
+            return xy / s;
+        }`;
+    }
+
+    function vertSrc(nw){
+        return `
         precision highp float;
         uniform mat4 modelViewMatrix, projectionMatrix;
         attribute vec3 position;     // position.x = time-step index i
-        attribute vec4 aAmp;         // ax, ay, ax2, ay2
-        attribute vec2 aFreq;        // bx, by
+        attribute vec2 aSin1;        // ax2, ay2 — the sin(1·z) amplitudes
+        attribute float aFsum;       // amplitude-weighted mean wiggle freq, x+y
         attribute vec2 aPec;         // per-particle comoving speed min, max
-		attribute vec2 aPhase;        // fx,fy PHASE UPDATE
-        attribute float aIndex;      // instance index 0..N-1 (for emitter highlight)
-        uniform float uZ0, uStep, uT, uR, uS, uFreqMax, uSize, uGMin, uGMax, uTime, uAngK, uConeMax, uOrthoScale, uOffX, uOffY;
+        attribute float aIndex;      // instance index 0..N-1 (term texture row + emitter highlight)
+        uniform float uZ0, uStep, uT, uR, uS, uFreqMin, uFreqMax, uSize, uGMin, uGMax, uTime, uAngK, uConeMax, uOrthoScale, uOffX, uOffY;
         uniform int uGeoLocal, uMode, uLog, uPecGlobal, uSliceMode, uConeOn;
         varying vec3 vColor;
-        vec2 comovRaw(float z){
-            float s = sin(z);
-            return vec2((aAmp.x*sin((aFreq.x*z)+aPhase.x) + aAmp.z*sin(z)-aAmp.x* sin(aPhase.x)),
-                        (aAmp.y*sin((aFreq.y*z)+aPhase.y) + aAmp.w*sin(z))-aAmp.y* sin(aPhase.y)) / s;
-        }
+        ${comovGLSL(nw)}
         // period-2 wrap to [-1,1); positions wrap, velocities never do.
         // Float noise near the seam can flip a point between -1 and ~+1, but with
         // uAngK = pi both embed to the same torus point, so it is invisible there.
@@ -577,12 +683,13 @@
             gl_PointSize = clamp(sz * 300.0 / depth, 1.0, 90.0);
             if(uMode==0){ vColor = vec3(0.78,0.85,1.0); }
             else if(uMode==1){
-                // frequency sum bx+by over its attainable range [4, uFreqMax]:
-                // hot (red) = slow low-frequency paths, cold (blue) = high.
-                // Log colour scale on = log-compressed ramp: only the lowest
-                // few sums stay red, the upper half is nearly one blue.
-                float fsum = aFreq.x + aFreq.y - 4.0;
-                float span = max(1.0, uFreqMax - 4.0);
+                // weighted frequency sum over the range the data spans
+                // [uFreqMin, uFreqMax]: hot (red) = slow low-frequency paths,
+                // cold (blue) = high. Log colour scale on = log-compressed
+                // ramp: only the lowest few sums stay red, the upper half is
+                // nearly one blue.
+                float fsum = aFsum - uFreqMin;
+                float span = max(1.0, uFreqMax - uFreqMin);
                 float t = (uLog==1) ? log(1.0 + fsum) / log(1.0 + span)
                                     : fsum / span;
                 t = clamp(t, 0.0, 1.0);
@@ -602,6 +709,7 @@
             if(uSliceMode==1) vColor = min(vColor*1.25, vec3(1.0));
             vColor = mix(vColor, min(vColor*2.4 + vec3(0.30), vec3(1.0)), hl);   // emitters glow
         }`;
+    }
     const FRAG = `
         precision highp float;
         uniform sampler2D uTex; uniform float uOpacity;
@@ -612,15 +720,15 @@
             gl_FragColor = vec4(vColor, a*uOpacity);
         }`;
 
-    function makeMat(sliceMode, time){
+    function makeMat(nw, sliceMode, time){
         return new THREE.RawShaderMaterial({
             uniforms: Object.assign({}, U, { uSliceMode:{value:sliceMode}, uTime:{value:time} }),
-            vertexShader: VERT, fragmentShader: FRAG,
+            vertexShader: vertSrc(nw), fragmentShader: FRAG,
             transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
         });
     }
-    const cloudMat = makeMat(0, 0);
-    const sweepMat = makeMat(1, 0);
+    // materials are (re)built by buildMaterials() once the term count is known
+    let cloudMat = null, sweepMat = null, coneMat = null, matNW = 0;
 
     /* ---- LIGHT CONES: comoving causal wavefronts (rings) on the surface ----
        χ travels at dχ/dz = 1/sin z, accumulating to conformal time η=ln(tan z/2).
@@ -632,21 +740,17 @@
        emitted when the scale factor was a_emit=sin(z_emit); 1+Z = a_obs/a_emit. Light
        from when the universe was smaller arrives redshifted (red); during the collapse
        phase, light from the larger past arrives blueshifted (blue). */
-    const VERT_RING = `
+    function ringSrc(nw){
+        return `
         precision highp float;
         uniform mat4 modelViewMatrix, projectionMatrix;
         attribute vec3 position;     // x = ring angle (rad), y = ring index m
-        attribute vec4 aAmp;         // ax, ay, ax2, ay2
-        attribute vec2 aFreq;        // bx, by
-		attribute vec2 aPhase;        // fx,fy PHASE UPDATE
+        attribute vec2 aSin1;        // ax2, ay2 — the sin(1·z) amplitudes
+        attribute float aIndex;      // instance index 0..N-1 (term texture row)
         uniform float uTime, uR, uS, uSize, uConeSize, uAngK, uConeRate, uConeBase, uConeRings, uRedNorm, uConeSpeed, uConeFadeW, uOrthoScale, uOffX, uOffY;
         uniform int uGeoLocal, uConeColor, uConeFold, uConeSquare;
         varying vec3 vColor; varying float vFade;
-        vec2 comovRaw(float z){
-            float s = sin(z);
-            return vec2((aAmp.x*sin((aFreq.x*z)+aPhase.x) + aAmp.z*sin(z)-aAmp.x* sin(aPhase.x)),
-                        (aAmp.y*sin((aFreq.y*z)+aPhase.y) + aAmp.w*sin(z))-aAmp.y* sin(aPhase.y)) / s;
-        }
+        ${comovGLSL(nw)}
         vec2 wrap2(vec2 c){ return fract((c + 1.0)*0.5)*2.0 - 1.0; }  // period-2 wrap to [-1,1)
         vec3 hsv2rgb(float h, float s, float v){
             vec3 p = abs(fract(h + vec3(0.0,2.0/3.0,1.0/3.0))*6.0 - 3.0);
@@ -701,6 +805,7 @@
             }
             vFade = (zEmit <= 0.0) ? 0.0 : (1.0 - 0.35*age);//*coneFade;  // hide pre-Bang; fade out at antipode
         }`;
+    }
     const FRAG_RING = `
         precision highp float;
         uniform sampler2D uTex; uniform float uOpacity;
@@ -710,33 +815,65 @@
             if(a < 0.01) discard;
             gl_FragColor = vec4(vColor, a*uOpacity*vFade);
         }`;
-    const coneMat = new THREE.RawShaderMaterial({
-        uniforms: Object.assign({}, U, { uTime: sweepMat.uniforms.uTime }),
-        vertexShader: VERT_RING, fragmentShader: FRAG_RING,
-        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
-    });
+    // (Re)build all three materials for a given wiggle-term count. The cone
+    // material shares the sweep's uTime uniform object, so playback keeps
+    // driving both; the current time survives the rebuild.
+    function buildMaterials(nw){
+        const t = sweepMat ? sweepMat.uniforms.uTime.value : 0;
+        if (cloudMat) cloudMat.dispose();
+        if (sweepMat) sweepMat.dispose();
+        if (coneMat)  coneMat.dispose();
+        cloudMat = makeMat(nw, 0, 0);
+        sweepMat = makeMat(nw, 1, t);
+        coneMat = new THREE.RawShaderMaterial({
+            uniforms: Object.assign({}, U, { uTime: sweepMat.uniforms.uTime }),
+            vertexShader: ringSrc(nw), fragmentShader: FRAG_RING,
+            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+        });
+        matNW = nw;
+    }
+    buildMaterials(Math.max(1, freqTerms - 1));
 
-    /* ---- instance param buffers (built once per Generate) ---- */
-    let instAmp=null, instFreq=null, instPhase=null, instPec=null;
+    /* ---- instance param buffers + term texture (built once per Generate) ---- */
+    let instSin1=null, instFsum=null, instPec=null, termTex=null;
     const maxRaw=1, maxComov=1;        // wrapped domain is exactly [-1,1] — extent is fixed
     // domain = exactly one period: a comoving wrap of 2 is 2π of tube angle,
     // the identical torus point, so the seam is exactly seamless on the surface
     function setAngK(){ U.uAngK.value = Math.PI; }
     function buildBuffers(){
         const N = functions.length, n = Z_cache.length;
-        instAmp = new Float32Array(N*4); instFreq = new Float32Array(N*2);instPhase = new Float32Array(N*2);  instPec = new Float32Array(N*2);
-        let gmn = Infinity, gmx = -Infinity;
+        const nw = N ? functions[0].terms.length : Math.max(1, freqTerms - 1);
+        if (nw !== matNW) buildMaterials(nw);          // term count is a shader constant
+        instSin1 = new Float32Array(N*2); instFsum = new Float32Array(N); instPec = new Float32Array(N*2);
+        const tpi = 2*nw;                              // texels per instance
+        const texH = Math.max(1, Math.ceil(N*tpi / TERMTEX_W));
+        const tdata = new Float32Array(TERMTEX_W*texH*4);
+        let gmn = Infinity, gmx = -Infinity, fmn = Infinity, fmx = -Infinity;
         for (let p=0;p<N;p++){
             const f = functions[p];
-            instAmp[p*4]=f.ax; instAmp[p*4+1]=f.ay; instAmp[p*4+2]=f.ax2; instAmp[p*4+3]=f.ay2;
-            instFreq[p*2]=f.bx; instFreq[p*2+1]=f.by;
-            instPhase[p*2]=f.fx; instPhase[p*2+1]=f.fy;
+            instSin1[p*2]=f.ax2; instSin1[p*2+1]=f.ay2;
+            instFsum[p]=f.fsum;
+            for (let j=0;j<nw;j++){
+                const t = f.terms[j], base = (p*tpi + 2*j)*4;
+                tdata[base]=t.ax;   tdata[base+1]=t.ay; tdata[base+2]=t.bx; tdata[base+3]=t.by;
+                tdata[base+4]=t.fx; tdata[base+5]=t.fy;
+            }
             // speed range was measured at acceptance (comovingTraj) — just copy,
-            // so this loop is O(N) instead of O(N·T)
+            // so this loop is O(N) instead of O(N·T·terms)
             instPec[p*2]=f.pecMin; instPec[p*2+1]=f.pecMax;
             if(f.pecMin<gmn)gmn=f.pecMin; if(f.pecMax>gmx)gmx=f.pecMax;
+            if(f.fsum<fmn)fmn=f.fsum;    if(f.fsum>fmx)fmx=f.fsum;
         }
-        U.uGMin.value=gmn; U.uGMax.value=gmx;
+        if (termTex) termTex.dispose();
+        termTex = new THREE.DataTexture(tdata, TERMTEX_W, texH, THREE.RGBAFormat, THREE.FloatType);
+        termTex.magFilter = termTex.minFilter = THREE.NearestFilter;
+        termTex.wrapS = termTex.wrapT = THREE.ClampToEdgeWrapping;
+        termTex.needsUpdate = true;
+        U.uTerms.value = termTex; U.uTexH.value = texH;
+        if (N){
+            U.uGMin.value=gmn; U.uGMax.value=gmx;
+            U.uFreqMin.value=fmn; U.uFreqMax.value=Math.max(fmx, fmn+1e-6);
+        }
         setAngK();
         U.uZ0.value=Z_cache[0]; U.uStep.value=(Z_cache[n-1]-Z_cache[0])/(n-1); U.uT.value=n;
     }
@@ -759,9 +896,8 @@
         disposeObj(cloud); disposeObj(sweep); cloud=sweep=null;
         if (!functions.length) { disposeObj(cones); cones=null; return; }
         const N = functions.length, n = Z_cache.length;
-        const ampA  = new THREE.InstancedBufferAttribute(instAmp,4);
-        const freqA = new THREE.InstancedBufferAttribute(instFreq,2);
-		const phaseA = new THREE.InstancedBufferAttribute(instPhase,2);
+        const sin1A = new THREE.InstancedBufferAttribute(instSin1,2);
+        const fsumA = new THREE.InstancedBufferAttribute(instFsum,1);
         const pecA  = new THREE.InstancedBufferAttribute(instPec,2);
         const idx = new Float32Array(N); for (let p=0;p<N;p++) idx[p]=p;
         const idxA = new THREE.InstancedBufferAttribute(idx,1);
@@ -771,14 +907,14 @@
         for (let k=0;k<cs.count;k++) baseC[k*3] = k*cs.stride;
         const gc = new THREE.InstancedBufferGeometry();
         gc.setAttribute('position', new THREE.Float32BufferAttribute(baseC,3));
-        gc.setAttribute('aAmp', ampA); gc.setAttribute('aFreq', freqA);gc.setAttribute('aPhase', phaseA); gc.setAttribute('aPec', pecA);
+        gc.setAttribute('aSin1', sin1A); gc.setAttribute('aFsum', fsumA); gc.setAttribute('aPec', pecA);
         gc.setAttribute('aIndex', idxA);
         gc.instanceCount = N;
         cloud = new THREE.Points(gc, cloudMat); cloud.frustumCulled=false; cloud.visible=showCloud; scene.add(cloud);
 
         const gs = new THREE.InstancedBufferGeometry();  // sweep = one vertex (the present moment)
         gs.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(3),3));
-        gs.setAttribute('aAmp', ampA); gs.setAttribute('aFreq', freqA);gs.setAttribute('aPhase', phaseA); gs.setAttribute('aPec', pecA);
+        gs.setAttribute('aSin1', sin1A); gs.setAttribute('aFsum', fsumA); gs.setAttribute('aPec', pecA);
         gs.setAttribute('aIndex', idxA);
         gs.instanceCount = N;
         sweep = new THREE.Points(gs, sweepMat); sweep.frustumCulled=false; sweep.visible=showSweep; scene.add(sweep);
@@ -800,9 +936,9 @@
         }
         const gc = new THREE.InstancedBufferGeometry();
         gc.setAttribute('position', new THREE.Float32BufferAttribute(base,3));
-        gc.setAttribute('aAmp',  new THREE.InstancedBufferAttribute(instAmp,4));
-        gc.setAttribute('aFreq', new THREE.InstancedBufferAttribute(instFreq,2));
-		gc.setAttribute('aPhase', new THREE.InstancedBufferAttribute(instPhase,2));
+        gc.setAttribute('aSin1', new THREE.InstancedBufferAttribute(instSin1,2));
+        const idx = new Float32Array(N); for (let p=0;p<N;p++) idx[p]=p;
+        gc.setAttribute('aIndex', new THREE.InstancedBufferAttribute(idx,1));
         gc.instanceCount = Math.min(N, coneMax);           // follow one path or many
         cones = new THREE.Points(gc, coneMat); cones.frustumCulled=false; cones.visible=showCones; scene.add(cones);
     }
@@ -845,10 +981,10 @@
         consecFails = 0;
         time_steps = parseInt(timeInput.value);
         modulation_Max = Math.max(2, Math.floor(time_steps/2));
-        // frequencies are drawn from [2, modulation_Max+1], so the largest
-        // attainable bx+by (the blue end of the frequency paint) is:
-        freqMax = 2 * (modulation_Max + 1);
-        U.uFreqMax.value = freqMax;
+        // total sinusoid terms per axis, incl. sin1; the NW = freqTerms-1
+        // wiggle frequencies must be unique integers in [2, modulation_Max+1]
+        freqTerms = Math.min(Math.max(2, parseInt(termsInput.value) || 2), modulation_Max + 1);
+        termsInput.value = freqTerms;
         functions = [];
         genBudgetMs = parseFloat(genTimeRange.value) * 1000;
         genStart = performance.now(); lastLiveUpload = genStart;
@@ -1041,7 +1177,7 @@
         const f=n=>{ let p=Math.abs((((h+n)%1)+1)%1*6-3); p=p<1?0:p>2?1:p-1; return v*(1+(p-1)*s); };
         return [f(0), f(2/3), f(1/3)];
     }
-    // light-cone ring colour, matching VERT_RING (track = hue per emission, else redshift)
+    // light-cone ring colour, matching ringSrc (track = hue per emission, else redshift)
     function coneColorJS(k, sinz, zEmit){
         if (U.uConeColor.value === 1) return hsv2rgb((((k*0.61803399)%1)+1)%1, 0.7, 1.0);
         const f = Math.log(sinz+1e-6) - Math.log(Math.sin(zEmit)+1e-6);
@@ -1053,42 +1189,13 @@
     function sliceColor(f,p,z,zN){                 // matches the GPU paint modes
         if(paintMode==='mono') return [0.78,0.85,1.0];
         if(paintMode==='freq'){
-            const fsum = f.bx+f.by-4, span = Math.max(1, freqMax-4);
+            const fsum = f.fsum - U.uFreqMin.value;
+            const span = Math.max(1, U.uFreqMax.value - U.uFreqMin.value);
             return hotCold(logColor ? Math.log(1+fsum)/Math.log(1+span) : fsum/span);
         }
         if(!instPec) return [0.78,0.85,1.0];       // speed ranges not baked yet (mid-generation)
-        const s=Math.sin(z), sN=Math.sin(zN);
-		
-		
-		//	Cx Phase
-		var temp_x=f.ax*Math.sin((f.bx*z)+f.fx)+f.ax2*Math.sin(z);
-		var temp_y=f.ay*Math.sin((f.by*z)+f.fy)+f.ay2*Math.sin(z);
-			
-		//	Phase shift components offset to zero
-		if (f.fx!=0){
-			temp_x-=f.ax* Math.sin(f.fx);
-		}
-		
-		if (f.fy!=0){
-			temp_y-=f.ay* Math.sin(f.fy);
-		}
-			
-			
-		//	cXN Phase
-		var temp_xN=f.ax*Math.sin((f.bx*zN)+f.fx)+f.ax2*Math.sin(zN);
-		var temp_yN=f.ay*Math.sin((f.by*zN)+f.fy)+f.ay2*Math.sin(zN);
-			
-		//	Phase shift components offset to zero
-		if (f.fx!=0){
-			temp_xN-=f.ax* Math.sin(f.fx);
-		}
-		
-		if (f.fy!=0){
-			temp_yN-=f.ay* Math.sin(f.fy);
-		}
-		
-        const cx=temp_x/s,   cy=temp_y/s;
-        const cxN=temp_xN/sN, cyN=temp_yN/sN;
+        const [cx, cy]   = comovXY(f, z);
+        const [cxN, cyN] = comovXY(f, zN);
         const v=Math.hypot(cxN-cx,cyN-cy)/Math.abs(zN-z);
         const lo=pecGlobal?U.uGMin.value:instPec[p*2], hi=pecGlobal?U.uGMax.value:instPec[p*2+1];
         const t = logColor ? (Math.log(v+1e-6)-Math.log(lo+1e-6))/Math.max(1e-6,Math.log(hi+1e-6)-Math.log(lo+1e-6))
@@ -1107,21 +1214,9 @@
         ctx.globalCompositeOperation='lighter';
         for(let p=0;p<functions.length;p++){
             const f=functions[p];
-			
-			var temp_x=f.ax*Math.sin((f.bx*z)+f.fx)+f.ax2*Math.sin(z);
-			var temp_y=f.ay*Math.sin((f.by*z)+f.fy)+f.ay2*Math.sin(z);
-				
-			//	Phase shift components offset to zero
-			if (f.fx!=0){
-				temp_x-=f.ax* Math.sin(f.fx);
-			}
-			
-			if (f.fy!=0){
-				temp_y-=f.ay* Math.sin(f.fy);
-			}
-			
-            let x=wrapComov((temp_x)/sinz);
-            let y=wrapComov((temp_y)/sinz);
+            const cm=comovXY(f, z);
+            let x=wrapComov(cm[0]);
+            let y=wrapComov(cm[1]);
             if(!geoLocal){ x*=sinz; y*=sinz; }         // raw = wrap(comoving)·sin z
             // torus offset slides the chart too; wrap keeps points in the box
             x=wrapComov(x+U.uOffX.value); y=wrapComov(y+U.uOffY.value);
@@ -1137,21 +1232,9 @@
             ctx.lineWidth=1.3*hudDPR;
             for(let p=0;p<emit;p++){
                 const f=functions[p];
-				
-				var temp_x=f.ax*Math.sin((f.bx*z)+f.fx)+f.ax2*Math.sin(z);
-				var temp_y=f.ay*Math.sin((f.by*z)+f.fy)+f.ay2*Math.sin(z);
-				
-				//	Phase shift components offset to zero
-				if (f.fx!=0){
-					temp_x-=f.ax* Math.sin(f.fx);
-				}
-				
-				if (f.fy!=0){
-					temp_y-=f.ay* Math.sin(f.fy);
-				}
-				
-                let cx=wrapComov((temp_x)/sinz);
-                let cy=wrapComov((temp_y)/sinz);
+                const cm=comovXY(f, z);
+                let cx=wrapComov(cm[0]);
+                let cy=wrapComov(cm[1]);
                 if(!geoLocal){ cx*=sinz; cy*=sinz; }
                 cx=wrapComov(cx+U.uOffX.value); cy=wrapComov(cy+U.uOffY.value);
                 const px=cx0+cx*sc, py=cy0-cy*sc;
