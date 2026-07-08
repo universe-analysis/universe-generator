@@ -19,7 +19,24 @@
 // Every term carries its own even-frequency phase and its own a*sin(f) offset.
 // K=2 (the default) reproduces the legacy single-wiggle model bit-for-bit.
 //
-// Output: the same `attempts,n` curve CSV as the Rust engine.
+// --subpaths adds a second packing phase after the unique phase stops
+// (attempts budget, --until-accept-rate, or --max-n). Every unique path owns a
+// group ID (its admission index). Subpath candidates are generated and
+// collision-tested exactly like uniques, but the acceptance rule flips: a
+// candidate touching one or more existing paths that ALL share one group ID
+// joins that group; touching two groups rejects, and touching nothing rejects
+// (so subpaths never add unique counts). Accepted subpaths enter the grid with
+// their adopted group ID and can seed further subpaths. Phase 2 stops on
+// --sub-attempts (default: the --attempts budget again), --sub-until-accept-rate
+// (windowed acceptance decay), or --sub-until-fill-rate (windowed NEW-VOLUME
+// decay: newly occupied cells per attempt, where a cell is one (timestep, cx,
+// cy) bucket of the collision hash — the "free space filled" measure).
+// --sub-terms K lets the sub phase use a different term count than the seeds.
+//
+// Output: the same `attempts,n` curve CSV as the Rust engine; with --subpaths
+// the curve becomes `attempts,n,nsub,filled` (attempts cumulative across both
+// phases; filled = occupied cells of T*gw*gw total) and the params dump gains
+// a trailing `gid` column.
 //
 // Build:  nvcc -O3 -o braid_cuda braid_cuda.cu
 // Run:    ./braid_cuda -t 120 --attempts 2e9 --seed 1 --curve out.csv
@@ -27,6 +44,7 @@
 #include <cuda_runtime.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -285,8 +303,15 @@ __host__ __device__ inline Path propose(
 }
 
 // ---------- device collision test against the CSR grid ----------
+// Unique mode (sub=false): any contact rejects (early exit), as always.
+// Subpath mode (sub=true): scan EVERY contact; reject on a contact with a
+// second distinct group ID, or on touching nothing at all — survivors touch
+// exactly one group. The host re-check recomputes the adopted group ID
+// against the up-to-date grid, so no gid is returned from here.
 __device__ bool collides_dev(const Path& p,
                              int nw,
+                             bool sub,
+                             const int* ptsGid,
                              int T,
                              const double* z,
                              const double* sinz,
@@ -313,6 +338,7 @@ __device__ bool collides_dev(const Path& p,
     // ulp). Full-run output is still scheduling-dependent: survivor admission
     // order comes from atomicAdd slots.
     const bool phased = (p.fx[0] != 0.0) || (p.fy[0] != 0.0);
+    int gid = -1;  // sub mode: the single group this candidate may join
     for (int oi = 0; oi < T; oi++) {
         int i = order[oi];
         double X, Y;
@@ -361,12 +387,21 @@ __device__ bool collides_dev(const Path& p,
                         dX = torus_delta(dX);
                         dY = torus_delta(dY);
                     }
-                    if (fabs(dX) <= cell && fabs(dY) <= cell)
-                        return true;
+                    if (fabs(dX) <= cell && fabs(dY) <= cell) {
+                        if (!sub)
+                            return true;  // unique mode: any contact rejects
+                        int g = ptsGid[st + k];
+                        if (gid == -1)
+                            gid = g;
+                        else if (g != gid)
+                            return true;  // touches a second group
+                    }
                 }
             }
         }
     }
+    if (sub && gid == -1)
+        return true;  // touched nothing: not a subpath
     return false;
 }
 
@@ -378,6 +413,8 @@ __global__ void test_kernel(uint64_t baseSeed,
                             bool torus,
                             bool phase,
                             int nw,
+                            bool sub,
+                            const int* ptsGid,
                             int T,
                             const double* z,
                             const double* sinz,
@@ -400,13 +437,19 @@ __global__ void test_kernel(uint64_t baseSeed,
     rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
     Path p = propose(r, modmax, smart, torus, phase, nw);
-    if (!collides_dev(p, nw, T, z, sinz, invz, cell, gw, off, cellStart, cellLen, ptsX, ptsY,
-                      order, torus)) {
+    if (!collides_dev(p, nw, sub, ptsGid, T, z, sinz, invz, cell, gw, off, cellStart, cellLen,
+                      ptsX, ptsY, order, torus)) {
         int slot = atomicAdd(survCount, 1);
         if (slot < survCap)
             survOut[slot] = p;
     }
 }
+
+// One accepted point in the host hash grid (position + owning group).
+struct HPt {
+    double x, y;
+    int gid;
+};
 
 // ---------- host ----------
 int main(int argc, char** argv) {
@@ -415,11 +458,17 @@ int main(int argc, char** argv) {
     uint64_t seed = 12345;
     bool smart = true;
     const char* curvePath = nullptr;
-    int maxfreq = 0;          // 0 = default modulation cap T/2
-    double acceptThresh = 0;  // 0 = run to --attempts; >0 = stop when accept-rate < thresh
-    bool torus = false;       // new-dogma model: |a*b|=1, free sin1 offset, periodic domain
-    bool phase = false;       // phase schema: even-frequency phases + symmetric z grid
-    int terms = 2;            // total sinusoid terms per axis, incl. sin1 (2 = legacy)
+    int maxfreq = 0;             // 0 = default modulation cap T/2
+    double acceptThresh = 0;     // 0 = run to --attempts; >0 = stop when accept-rate < thresh
+    bool torus = false;          // new-dogma model: |a*b|=1, free sin1 offset, periodic domain
+    bool phase = false;          // phase schema: even-frequency phases + symmetric z grid
+    int terms = 2;               // total sinusoid terms per axis, incl. sin1 (2 = legacy)
+    bool subpaths = false;       // phase 2: pack subpaths into the jammed uniques
+    double subBudget = 0;        // --sub-attempts (0 = reuse the --attempts budget)
+    double subAcceptThresh = 0;  // --sub-until-accept-rate (windowed acceptance decay)
+    double subFillThresh = 0;    // --sub-until-fill-rate (windowed new-cells/attempt decay)
+    int subTerms = 0;            // --sub-terms (0 = same as --terms)
+    long long maxN = 0;          // --max-n: stop the unique phase at this many paths
     const char* paramPath = nullptr;  // if set, dump accepted worldline parameters
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-t") || !strcmp(argv[i], "--timesteps"))
@@ -444,6 +493,18 @@ int main(int argc, char** argv) {
             phase = true;
         else if (!strcmp(argv[i], "--terms"))
             terms = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--subpaths"))
+            subpaths = true;
+        else if (!strcmp(argv[i], "--sub-attempts"))
+            subBudget = atof(argv[++i]);
+        else if (!strcmp(argv[i], "--sub-until-accept-rate"))
+            subAcceptThresh = atof(argv[++i]);
+        else if (!strcmp(argv[i], "--sub-until-fill-rate"))
+            subFillThresh = atof(argv[++i]);
+        else if (!strcmp(argv[i], "--sub-terms"))
+            subTerms = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--max-n"))
+            maxN = atoll(argv[++i]);
         else if (!strcmp(argv[i], "--dump-params"))
             paramPath = argv[++i];
     }
@@ -474,11 +535,24 @@ int main(int argc, char** argv) {
         terms = (int)modmax + 1;
     }
     int nw = terms - 1;
+    // Sub-phase term count (--sub-terms), clamped like --terms.
+    int nwSub = nw;
+    if (subTerms > 0) {
+        if (subTerms < 2)
+            subTerms = 2;
+        if (subTerms - 1 > kMaxWiggle)
+            subTerms = kMaxWiggle + 1;
+        if ((uint32_t)(subTerms - 1) > modmax)
+            subTerms = (int)modmax + 1;
+        nwSub = subTerms - 1;
+    }
     // Torus grid: exactly T cells of width CELL span [-1, 1), so the modular
     // neighbour scan wraps cleanly at the seam. Hard-wall grid keeps its margin.
     int gw = torus ? T : T + 4, off = torus ? 0 : (T + 4) / 2;
     fprintf(stderr, "2+1%s%s: T=%d  modmax=%u (maxfreq=%u)  terms=%d\n",
             torus ? " (torus)" : "", phase ? " (phase)" : "", T, modmax, modmax + 1, terms);
+    if (subpaths)
+        fprintf(stderr, "subpaths: terms=%d  max-n=%lld\n", nwSub + 1, maxN);
     // z tables + endpoint-first order. The phase schema replaces the hardcoded
     // 0.01 endpoint clamp with a symmetric grid: T interior points of (0, pi),
     // one step in from each end (matches the viewer's z indexing).
@@ -522,7 +596,10 @@ int main(int argc, char** argv) {
     // host accepted points per timestep, host grid for admit re-check
     std::vector<std::vector<double>> px(T), py(T);
     std::vector<Path> acceptedPaths;  // populated only when --dump-params is set
-    std::vector<std::unordered_map<long, std::vector<std::pair<double, double>>>> hgrid(T);
+    std::vector<int> acceptedGids;    // parallel to acceptedPaths (dump gid column)
+    std::vector<int> pathGid;         // group ID per accepted path, admission order
+    std::vector<std::unordered_map<long, std::vector<HPt>>> hgrid(T);
+    long long filledCells = 0;  // occupied (t, cx, cy) buckets of hgrid
 
     double edge = 1.0 - 0.5 * cell;  // path radius CELL/2 hits the hard wall at |X|=1
     // Host hash-grid cell index. Torus: wrapped positions live in [-1,1), so the
@@ -545,8 +622,8 @@ int main(int argc, char** argv) {
                     if (it == hgrid[i].end())
                         continue;
                     for (auto& pt : it->second) {
-                        double dX = X[i] - pt.first;
-                        double dY = Y[i] - pt.second;
+                        double dX = X[i] - pt.x;
+                        double dY = Y[i] - pt.y;
                         if (torus) {
                             dX = torus_delta(dX);
                             dY = torus_delta(dY);
@@ -557,6 +634,40 @@ int main(int argc, char** argv) {
                 }
         }
         return false;
+    };
+    // Subpath re-check: mirrors collides_dev's sub mode against the up-to-date
+    // host grid. Returns the adopted group ID, or -1 on any rejection (edge,
+    // two-group contact, or no contact at all).
+    auto host_sub_gid = [&](const double* X, const double* Y) -> int {
+        int gid = -1;
+        for (int oi = 0; oi < T; oi++) {
+            int i = order[oi];
+            if (!torus && (fabs(X[i]) > edge || fabs(Y[i]) > edge))
+                return -1;  // edge collision
+            int cx = hix(X[i]), cy = hix(Y[i]);
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dy = -1; dy <= 1; dy++) {
+                    long key = (long)hnb(cx, dx) * 100000L + hnb(cy, dy);
+                    auto it = hgrid[i].find(key);
+                    if (it == hgrid[i].end())
+                        continue;
+                    for (auto& pt : it->second) {
+                        double dX = X[i] - pt.x;
+                        double dY = Y[i] - pt.y;
+                        if (torus) {
+                            dX = torus_delta(dX);
+                            dY = torus_delta(dY);
+                        }
+                        if (fabs(dX) <= cell && fabs(dY) <= cell) {
+                            if (gid == -1)
+                                gid = pt.gid;
+                            else if (pt.gid != gid)
+                                return -1;  // touches a second group
+                        }
+                    }
+                }
+        }
+        return gid;  // -1 when it touched nothing
     };
     // Device-grid cell index for the CSR rebuild (must mirror collides_dev).
     auto gix = [&](double v) -> int {
@@ -575,20 +686,24 @@ int main(int argc, char** argv) {
     // device pts buffers (grow as needed)
     size_t ptsCap = 1 << 16;
     double *dPtsX, *dPtsY;
+    int* dPtsGid;
     CK(cudaMalloc(&dPtsX, ptsCap * 8));
     CK(cudaMalloc(&dPtsY, ptsCap * 8));
+    CK(cudaMalloc(&dPtsGid, ptsCap * 4));
     std::vector<double> ptsXh, ptsYh;
+    std::vector<int> ptsGidH;
 
-    long long attempts = 0, N = 0;
+    long long attempts = 0, N = 0, Nsub = 0;
     long long nextMs = 1000;
     long batch = 1 << 16;
     uint64_t round = 0;
-    std::vector<std::pair<long long, long long>> curve;
+    std::vector<std::array<long long, 4>> curve;  // attempts, N, Nsub, filledCells
     std::vector<double> Xb(T), Yb(T);
 
-    while (attempts < (long long)budget) {
-        // --- build CSR from accepted points ---
-        size_t npts = (size_t)N * T;
+    // Rebuild the device CSR grid (positions + per-point group IDs) from the
+    // accepted points. Shared by both packing phases.
+    auto uploadGrid = [&]() {
+        size_t npts = px[0].size() * (size_t)T;
         std::fill(cellLen.begin(), cellLen.end(), 0);
         for (int i = 0; i < T; i++)
             for (size_t j = 0; j < px[i].size(); j++) {
@@ -604,11 +719,14 @@ int main(int argc, char** argv) {
             ptsCap = npts * 2;
             CK(cudaFree(dPtsX));
             CK(cudaFree(dPtsY));
+            CK(cudaFree(dPtsGid));
             CK(cudaMalloc(&dPtsX, ptsCap * 8));
             CK(cudaMalloc(&dPtsY, ptsCap * 8));
+            CK(cudaMalloc(&dPtsGid, ptsCap * 4));
         }
         ptsXh.assign(npts, 0);
         ptsYh.assign(npts, 0);
+        ptsGidH.assign(npts, 0);
         std::vector<int> cur(cellStart);
         for (int i = 0; i < T; i++)
             for (size_t j = 0; j < px[i].size(); j++) {
@@ -617,20 +735,80 @@ int main(int argc, char** argv) {
                 int s = cur[gc]++;
                 ptsXh[s] = px[i][j];
                 ptsYh[s] = py[i][j];
+                ptsGidH[s] = pathGid[j];
             }
         CK(cudaMemcpy(dCellStart, cellStart.data(), ncell * 4, cudaMemcpyHostToDevice));
         CK(cudaMemcpy(dCellLen, cellLen.data(), ncell * 4, cudaMemcpyHostToDevice));
         if (npts) {
             CK(cudaMemcpy(dPtsX, ptsXh.data(), npts * 8, cudaMemcpyHostToDevice));
             CK(cudaMemcpy(dPtsY, ptsYh.data(), npts * 8, cudaMemcpyHostToDevice));
+            CK(cudaMemcpy(dPtsGid, ptsGidH.data(), npts * 4, cudaMemcpyHostToDevice));
         }
+    };
+    // Evaluate a survivor's trajectory into Xb/Yb (same expressions and the
+    // same legacy fast paths as collides_dev).
+    auto evalPath = [&](const Path& p, int nwc) {
+        double offx[kMaxWiggle], offy[kMaxWiggle];
+        for (int j = 0; j < nwc; j++) {
+            offx[j] = p.ax[j] * sin(p.fx[j]);
+            offy[j] = p.ay[j] * sin(p.fy[j]);
+        }
+        // Same rule as collides_dev: phase-free single-wiggle paths take the
+        // verbatim pre-phase expression (per-candidate math identical to
+        // pre-phase).
+        const bool phased = (p.fx[0] != 0.0) || (p.fy[0] != 0.0);
+        for (int i = 0; i < T; i++) {
+            if (nwc > 1) {
+                double xx = p.ax2 * sinz[i], yy = p.ay2 * sinz[i];
+                for (int j = 0; j < nwc; j++) {
+                    xx += p.ax[j] * sin(p.bx[j] * z[i] + p.fx[j]) - offx[j];
+                    yy += p.ay[j] * sin(p.by[j] * z[i] + p.fy[j]) - offy[j];
+                }
+                Xb[i] = xx * invz[i];
+                Yb[i] = yy * invz[i];
+            } else if (phased) {
+                Xb[i] = (p.ax[0] * sin(p.bx[0] * z[i] + p.fx[0]) + p.ax2 * sinz[i] - offx[0]) *
+                        invz[i];
+                Yb[i] = (p.ay[0] * sin(p.by[0] * z[i] + p.fy[0]) + p.ay2 * sinz[i] - offy[0]) *
+                        invz[i];
+            } else {
+                Xb[i] = (p.ax[0] * sin(p.bx[0] * z[i]) + p.ax2 * sinz[i]) * invz[i];
+                Yb[i] = (p.ay[0] * sin(p.by[0] * z[i]) + p.ay2 * sinz[i]) * invz[i];
+            }
+            if (torus) {
+                Xb[i] = torus_wrap(Xb[i]);
+                Yb[i] = torus_wrap(Yb[i]);
+            }
+        }
+    };
+    // Admit Xb/Yb into the host structures under the given group ID; returns
+    // how many previously-empty hash cells it occupied (its NEW volume).
+    auto insertPath = [&](int gid) -> long long {
+        long long newCells = 0;
+        for (int i = 0; i < T; i++) {
+            px[i].push_back(Xb[i]);
+            py[i].push_back(Yb[i]);
+            long key = (long)hix(Xb[i]) * 100000L + hix(Yb[i]);
+            auto& v = hgrid[i][key];
+            if (v.empty())
+                newCells++;
+            v.push_back({Xb[i], Yb[i], gid});
+        }
+        pathGid.push_back(gid);
+        filledCells += newCells;
+        return newCells;
+    };
+
+    while (attempts < (long long)budget && !(maxN && N >= maxN)) {
+        uploadGrid();
 
         // --- launch batch test ---
         CK(cudaMemset(dSurvCount, 0, 4));
         int threads = 256, blocks = (int)((batch + threads - 1) / threads);
-        test_kernel<<<blocks, threads>>>(
-            seed, round, (int)batch, modmax, smart, torus, phase, nw, T, dz, dsinz, dinvz, cell,
-            gw, off, dCellStart, dCellLen, dPtsX, dPtsY, dorder, dSurv, dSurvCount, survCap);
+        test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, smart, torus, phase,
+                                         nw, false, dPtsGid, T, dz, dsinz, dinvz, cell, gw, off,
+                                         dCellStart, dCellLen, dPtsX, dPtsY, dorder, dSurv,
+                                         dSurvCount, survCap);
         CK(cudaDeviceSynchronize());
         int sc;
         CK(cudaMemcpy(&sc, dSurvCount, 4, cudaMemcpyDeviceToHost));
@@ -644,52 +822,18 @@ int main(int argc, char** argv) {
         long long admitted = 0;
         for (int s = 0; s < got; s++) {
             Path& p = hSurv[s];
-            double offx[kMaxWiggle], offy[kMaxWiggle];
-            for (int j = 0; j < nw; j++) {
-                offx[j] = p.ax[j] * sin(p.fx[j]);
-                offy[j] = p.ay[j] * sin(p.fy[j]);
-            }
-            // Same rule as collides_dev: phase-free single-wiggle paths take
-            // the verbatim pre-phase expression (per-candidate math identical
-            // to pre-phase).
-            const bool phased = (p.fx[0] != 0.0) || (p.fy[0] != 0.0);
-            for (int i = 0; i < T; i++) {
-                if (nw > 1) {
-                    double xx = p.ax2 * sinz[i], yy = p.ay2 * sinz[i];
-                    for (int j = 0; j < nw; j++) {
-                        xx += p.ax[j] * sin(p.bx[j] * z[i] + p.fx[j]) - offx[j];
-                        yy += p.ay[j] * sin(p.by[j] * z[i] + p.fy[j]) - offy[j];
-                    }
-                    Xb[i] = xx * invz[i];
-                    Yb[i] = yy * invz[i];
-                } else if (phased) {
-                    Xb[i] =
-                        (p.ax[0] * sin(p.bx[0] * z[i] + p.fx[0]) + p.ax2 * sinz[i] - offx[0]) *
-                        invz[i];
-                    Yb[i] =
-                        (p.ay[0] * sin(p.by[0] * z[i] + p.fy[0]) + p.ay2 * sinz[i] - offy[0]) *
-                        invz[i];
-                } else {
-                    Xb[i] = (p.ax[0] * sin(p.bx[0] * z[i]) + p.ax2 * sinz[i]) * invz[i];
-                    Yb[i] = (p.ay[0] * sin(p.by[0] * z[i]) + p.ay2 * sinz[i]) * invz[i];
-                }
-                if (torus) {
-                    Xb[i] = torus_wrap(Xb[i]);
-                    Yb[i] = torus_wrap(Yb[i]);
-                }
-            }
+            evalPath(p, nw);
             if (host_collides(Xb.data(), Yb.data()))
                 continue;
-            for (int i = 0; i < T; i++) {
-                px[i].push_back(Xb[i]);
-                py[i].push_back(Yb[i]);
-                long key = (long)hix(Xb[i]) * 100000L + hix(Yb[i]);
-                hgrid[i][key].push_back({Xb[i], Yb[i]});
-            }
-            if (paramPath)
+            insertPath((int)N);  // a unique path's group ID is its admission index
+            if (paramPath) {
                 acceptedPaths.push_back(p);
+                acceptedGids.push_back((int)N);
+            }
             N++;
             admitted++;
+            if (maxN && N >= maxN)
+                break;  // unique-count cap reached mid-round
         }
         // --- adapt batch toward ~256 survivors/round ---
         if (got > 512 && batch > 4096)
@@ -698,7 +842,7 @@ int main(int argc, char** argv) {
             batch *= 2;
         // --- milestones ---
         while (attempts >= nextMs) {
-            curve.push_back({attempts, N});
+            curve.push_back({attempts, N, Nsub, filledCells});
             nextMs = (long long)(nextMs * 1.15) + 1;
         }
         // --- fixed-acceptance-rate stop ---
@@ -716,13 +860,120 @@ int main(int argc, char** argv) {
                 break;
         }
     }
-    curve.push_back({attempts, N});
-    fprintf(stderr, "done: N=%lld in %lld attempts\n", N, attempts);
+    fprintf(stderr, "done: N=%lld in %lld attempts, filled %lld/%zu cells (%.3f%%)\n", N,
+            attempts, filledCells, ncell, 100.0 * (double)filledCells / (double)ncell);
+
+    // ---------- phase 2: subpath packing ----------
+    if (subpaths) {
+        double subBudgetEff = subBudget > 0 ? subBudget : budget;
+        long long attemptsSub = 0;
+        batch = 1 << 16;  // fresh adaptation: sub acceptance starts high again
+        // Two independent windowed stops, same 30-events heuristic as phase 1:
+        // acceptance decay (admitted/attempt) and new-volume decay (newly
+        // occupied cells/attempt).
+        std::deque<std::pair<long long, long long>> awin, fwin;
+        long long aAtt = 0, aAdm = 0, fAtt = 0, fNew = 0;
+        long long aTarget =
+            subAcceptThresh > 0
+                ? (long long)std::min(5e9, std::max(2e7, 30.0 / subAcceptThresh))
+                : 0;
+        long long fTarget = subFillThresh > 0
+                                ? (long long)std::min(5e9, std::max(2e7, 30.0 / subFillThresh))
+                                : 0;
+        const char* stopReason = "attempt budget";
+        while (attemptsSub < (long long)subBudgetEff) {
+            uploadGrid();
+            CK(cudaMemset(dSurvCount, 0, 4));
+            int threads = 256, blocks = (int)((batch + threads - 1) / threads);
+            test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, smart, torus,
+                                             phase, nwSub, true, dPtsGid, T, dz, dsinz, dinvz,
+                                             cell, gw, off, dCellStart, dCellLen, dPtsX, dPtsY,
+                                             dorder, dSurv, dSurvCount, survCap);
+            CK(cudaDeviceSynchronize());
+            int sc;
+            CK(cudaMemcpy(&sc, dSurvCount, 4, cudaMemcpyDeviceToHost));
+            int got = sc < survCap ? sc : survCap;
+            if (got)
+                CK(cudaMemcpy(hSurv.data(), dSurv, got * sizeof(Path), cudaMemcpyDeviceToHost));
+            attempts += batch;
+            attemptsSub += batch;
+            round++;
+            long long admitted = 0, roundNewCells = 0;
+            for (int s = 0; s < got; s++) {
+                Path& p = hSurv[s];
+                evalPath(p, nwSub);
+                // Host re-check is authoritative: it recomputes the adopted
+                // group against the grid INCLUDING this round's admissions.
+                int gid = host_sub_gid(Xb.data(), Yb.data());
+                if (gid < 0)
+                    continue;
+                roundNewCells += insertPath(gid);
+                if (paramPath) {
+                    acceptedPaths.push_back(p);
+                    acceptedGids.push_back(gid);
+                }
+                Nsub++;
+                admitted++;
+            }
+            if (got > 512 && batch > 4096)
+                batch /= 2;
+            else if (got < 64 && batch < (1 << 26))
+                batch *= 2;
+            while (attempts >= nextMs) {
+                curve.push_back({attempts, N, Nsub, filledCells});
+                nextMs = (long long)(nextMs * 1.15) + 1;
+            }
+            if (aTarget) {
+                awin.push_back({batch, admitted});
+                aAtt += batch;
+                aAdm += admitted;
+                while (awin.size() > 1 && aAtt - awin.front().first >= aTarget) {
+                    aAtt -= awin.front().first;
+                    aAdm -= awin.front().second;
+                    awin.pop_front();
+                }
+                if (aAtt >= aTarget && attemptsSub > 1000000 &&
+                    (double)aAdm / (double)aAtt < subAcceptThresh) {
+                    stopReason = "accept-rate";
+                    break;
+                }
+            }
+            if (fTarget) {
+                fwin.push_back({batch, roundNewCells});
+                fAtt += batch;
+                fNew += roundNewCells;
+                while (fwin.size() > 1 && fAtt - fwin.front().first >= fTarget) {
+                    fAtt -= fwin.front().first;
+                    fNew -= fwin.front().second;
+                    fwin.pop_front();
+                }
+                if (fAtt >= fTarget && attemptsSub > 1000000 &&
+                    (double)fNew / (double)fAtt < subFillThresh) {
+                    stopReason = "fill-rate";
+                    break;
+                }
+            }
+        }
+        fprintf(stderr,
+                "sub done (%s): Nsub=%lld in %lld attempts, filled %lld/%zu cells (%.3f%%)\n",
+                stopReason, Nsub, attemptsSub, filledCells, ncell,
+                100.0 * (double)filledCells / (double)ncell);
+    }
+
+    curve.push_back({attempts, N, Nsub, filledCells});
     if (curvePath) {
+        // Legacy 2-column curve unless --subpaths is on (keeps existing
+        // braidlab/analysis readers untouched).
         FILE* f = fopen(curvePath, "w");
-        fprintf(f, "attempts,n\n");
-        for (auto& c : curve)
-            fprintf(f, "%lld,%lld\n", c.first, c.second);
+        if (subpaths) {
+            fprintf(f, "attempts,n,nsub,filled\n");
+            for (auto& c : curve)
+                fprintf(f, "%lld,%lld,%lld,%lld\n", c[0], c[1], c[2], c[3]);
+        } else {
+            fprintf(f, "attempts,n\n");
+            for (auto& c : curve)
+                fprintf(f, "%lld,%lld\n", c[0], c[1]);
+        }
         fclose(f);
     }
 
@@ -732,23 +983,36 @@ int main(int argc, char** argv) {
         // --terms 2 keeps the legacy column layout so existing dump readers
         // (analysis, viewer import) are untouched; the multi-term layout leads
         // with the sin1 amplitudes and then one ax_j,bx_j,fx_j,ay_j,by_j,fy_j
-        // group per wiggle term.
+        // group per wiggle term. With --subpaths a trailing gid column records
+        // each path's group (rows are in admission order: uniques then subs,
+        // with a unique's gid equal to its own row index); paths generated
+        // with fewer terms than the widest layout carry zero-amplitude
+        // padding terms.
         FILE* f = fopen(paramPath, "w");
-        if (nw == 1) {
-            fprintf(f, "ax,ay,bx,by,ax2,ay2,fx,fy\n");
-            for (auto& p : acceptedPaths)
-                fprintf(f, "%.10g,%.10g,%.0f,%.0f,%.10g,%.10g,%.10g,%.10g\n", p.ax[0], p.ay[0],
+        int dumpNw = subpaths ? std::max(nw, nwSub) : nw;
+        if (dumpNw == 1) {
+            fprintf(f, "ax,ay,bx,by,ax2,ay2,fx,fy%s\n", subpaths ? ",gid" : "");
+            for (size_t r = 0; r < acceptedPaths.size(); r++) {
+                Path& p = acceptedPaths[r];
+                fprintf(f, "%.10g,%.10g,%.0f,%.0f,%.10g,%.10g,%.10g,%.10g", p.ax[0], p.ay[0],
                         p.bx[0], p.by[0], p.ax2, p.ay2, p.fx[0], p.fy[0]);
+                if (subpaths)
+                    fprintf(f, ",%d", acceptedGids[r]);
+                fprintf(f, "\n");
+            }
         } else {
             fprintf(f, "ax2,ay2");
-            for (int j = 1; j <= nw; j++)
+            for (int j = 1; j <= dumpNw; j++)
                 fprintf(f, ",ax_%d,bx_%d,fx_%d,ay_%d,by_%d,fy_%d", j, j, j, j, j, j);
-            fprintf(f, "\n");
-            for (auto& p : acceptedPaths) {
+            fprintf(f, "%s\n", subpaths ? ",gid" : "");
+            for (size_t r = 0; r < acceptedPaths.size(); r++) {
+                Path& p = acceptedPaths[r];
                 fprintf(f, "%.10g,%.10g", p.ax2, p.ay2);
-                for (int j = 0; j < nw; j++)
+                for (int j = 0; j < dumpNw; j++)
                     fprintf(f, ",%.10g,%.0f,%.10g,%.10g,%.0f,%.10g", p.ax[j], p.bx[j], p.fx[j],
                             p.ay[j], p.by[j], p.fy[j]);
+                if (subpaths)
+                    fprintf(f, ",%d", acceptedGids[r]);
                 fprintf(f, "\n");
             }
         }
