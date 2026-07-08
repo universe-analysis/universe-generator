@@ -119,6 +119,10 @@
             <div class="row"><span>Spread</span><input type="range" id="sRange" min="1" max="12" step="0.5" value="5"></div>
             <div class="row"><span>Sweep glow</span><input type="range" id="sizeRange" min="0.05" max="4" step="0.01" value="0.7"></div>
             <div class="row"><span>Cloud glow</span><input type="range" id="cloudSizeRange" min="0.05" max="4" step="0.01" value="0.7"></div>
+            <div class="row" title="Max cloud samples per path (time-steps are strided down to this; higher = denser cloud, more draw cost)">
+                <span>Cloud res</span><input type="number" id="cloudResInput" value="100" min="2">
+                <button id="cloudResBtn">Regenerate</button>
+            </div>
             <div class="group-name">Torus offset — slide the map around the loops</div>
             <div class="row"><span>X offset</span><input type="range" id="offXRange" min="-1" max="1" step="0.01" value="0"><span class="val" id="offXVal" style="width:34px">0.00</span></div>
             <div class="row"><span>Y offset</span><input type="range" id="offYRange" min="-1" max="1" step="0.01" value="0"><span class="val" id="offYVal" style="width:34px">0.00</span></div>
@@ -229,7 +233,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v16';
+    const VIEWER_VERSION = 'v17';
 
     let functions = [];
     let Z_cache = [];
@@ -1065,14 +1069,15 @@
         U.uZ0.value=Z_cache[0]; U.uStep.value=(Z_cache[n-1]-Z_cache[0])/(n-1); U.uT.value=n;
     }
 
-    // Cloud resolution cap: the all-times cloud draws at most CLOUD_RES samples
+    // Cloud resolution cap: the all-times cloud draws at most cloudRes samples
     // per path, strided evenly across the loop (T=200 → every 2nd step,
     // T=1000 → every 10th). Positions are analytic in the shader, so this
     // bounds per-frame draw cost only — no stored data changes. The sweep
     // slice and the packing itself always use the full time-step grid.
-    const CLOUD_RES = 100;
+    // Adjustable via the View panel's "Cloud res" + Regenerate button.
+    let cloudRes = 100;
     function cloudSamples(n){
-        const stride = Math.max(1, Math.ceil(n / CLOUD_RES));
+        const stride = Math.max(1, Math.ceil(n / cloudRes));
         return { stride, count: Math.ceil(n / stride) };
     }
 
@@ -1260,6 +1265,17 @@
     document.getElementById('sRange').addEventListener('input', e=>{ S=parseFloat(e.target.value); U.uS.value=S; rebuildGrid(); });
     sizeRange().addEventListener('input', e=>{ U.uSize.value = parseFloat(e.target.value); });
     document.getElementById('cloudSizeRange').addEventListener('input', e=>{ U.uCloudSize.value = parseFloat(e.target.value); });
+    // Cloud res applies on Regenerate: rebuilds the point geometries from the
+    // already-baked instance buffers (no re-packing, no re-generation)
+    document.getElementById('cloudResBtn').addEventListener('click', () => {
+        const el = document.getElementById('cloudResInput');
+        cloudRes = Math.max(2, parseInt(el.value) || 100);
+        el.value = cloudRes;
+        if (!functions.length) return;
+        rebuildGPU(); hudDirty = true;
+        const cloudPts = functions.length * cloudSamples(Z_cache.length).count;
+        statusEl.textContent = `${functions.length} paths · cloud res ${cloudRes} · ${cloudPts.toLocaleString()} cloud points`;
+    });
     function applyOffset(rangeId, valId, uniform, v){
         v = wrapComov(v);                       // period-2 domain: passing 1 re-enters at -1
         uniform.value = v;
