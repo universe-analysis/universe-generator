@@ -1285,32 +1285,47 @@ int main(int argc, char** argv) {
                                        st));
                 }
             } else {
-                std::fill(cellLen.begin(), cellLen.end(), 0);
+                // Dense rebuild, parallel over timesteps: timestep i owns the
+                // cell slice [i*gw3, (i+1)*gw3) and the point list px[i], so
+                // the fill/count/prefix/scatter passes are independent per
+                // timestep -- this used to be a single-threaded O(T^4) pass
+                // that left the GPU idle through a run's whole growth phase.
+                // Each slice's prefix starts at that timestep's cumulative
+                // point base, so the CSR layout is identical to the old
+                // global pass. After the prefix, the cellLen slice doubles as
+                // the scatter cursor (no ncell-sized `cur` copy).
+                std::vector<size_t> baseOf(T + 1, 0);
                 for (int i = 0; i < T; i++)
-                    for (size_t j = 0; j < px[i].size(); j++) {
-                        long gc = (long)i * gw3 + gix(px[i][j]) * gw2 + gix(py[i][j]) * gw +
-                                  gix(pw[i][j]);
-                        cellLen[gc]++;
+                    baseOf[i + 1] = baseOf[i] + px[i].size();
+                ptsXh.resize(npts);
+                ptsYh.resize(npts);
+                ptsWh.resize(npts);
+                parallel_for((size_t)T, [&](size_t lo, size_t hi) {
+                    for (size_t i = lo; i < hi; i++) {
+                        int* len = &cellLen[i * gw3];
+                        std::fill(len, len + gw3, 0);
+                        const size_t n = px[i].size();
+                        for (size_t j = 0; j < n; j++) {
+                            long c = gix(px[i][j]) * gw2 + gix(py[i][j]) * gw + gix(pw[i][j]);
+                            len[c]++;
+                        }
+                        long acc = (long)baseOf[i];
+                        int* start = &cellStart[i * gw3];
+                        for (long c = 0; c < gw3; c++) {
+                            start[c] = (int)acc;
+                            acc += len[c];
+                            len[c] = start[c];  // becomes this cell's scatter cursor
+                        }
+                        for (size_t j = 0; j < n; j++) {
+                            long c = gix(px[i][j]) * gw2 + gix(py[i][j]) * gw + gix(pw[i][j]);
+                            long s = len[c]++;
+                            ptsXh[s] = px[i][j];
+                            ptsYh[s] = py[i][j];
+                            ptsWh[s] = pw[i][j];
+                        }
                     }
-                long acc = 0;
-                for (size_t c = 0; c < ncell; c++) {
-                    cellStart[c] = (int)acc;
-                    acc += cellLen[c];
-                }
-                cellStart[ncell] = (int)acc;  // CSR sentinel: one past the last point
-                ptsXh.assign(npts, 0);
-                ptsYh.assign(npts, 0);
-                ptsWh.assign(npts, 0);
-                std::vector<int> cur(cellStart.begin(), cellStart.end() - 1);
-                for (int i = 0; i < T; i++)
-                    for (size_t j = 0; j < px[i].size(); j++) {
-                        long gc = (long)i * gw3 + gix(px[i][j]) * gw2 + gix(py[i][j]) * gw +
-                                  gix(pw[i][j]);
-                        long s = cur[gc]++;
-                        ptsXh[s] = px[i][j];
-                        ptsYh[s] = py[i][j];
-                        ptsWh[s] = pw[i][j];
-                    }
+                });
+                cellStart[ncell] = (int)npts;  // CSR sentinel: one past the last point
                 CK(cudaMemcpyAsync(dCellStart, cellStart.data(), (ncell + 1) * 4,
                                    cudaMemcpyHostToDevice, st));
                 if (npts) {
