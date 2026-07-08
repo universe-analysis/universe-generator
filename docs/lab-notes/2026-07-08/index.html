@@ -82,6 +82,55 @@
       </p>
     </article>
 
+    <article class="entry" id="freq2d-terms-exponent">
+      <h2>FREQ campaign, 2+1: same trend, smaller amplitude &mdash; the exponent knob is dictionary-robust</h2>
+      <p class="meta">
+        <code>freq2d_e6</code> campaign (torus+phase, nyq band, 1e-6 cutoff;
+        T = 40&ndash;400 step 40 &times; terms &isin; {2,3,4,6,10} &times; 5
+        seeds = 250 jobs) &middot; engine + campaign code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/69be0d9"><code>69be0d9</code></a>
+        &middot; chart
+        <a href="https://github.com/universe-analysis/universe-generator/commit/4a6c3ef"><code>4a6c3ef</code></a>
+      </p>
+      <p>
+        The 2+1 companion to the morning's 3+1 sweep, same one-knob design
+        (term count only; the 2+1 engine has had <code>--terms</code> since
+        the subpath work). Question: is the exponent-vs-terms trend a 3+1
+        artifact or a property of the packing problem?
+      </p>
+      <figure class="plot">
+        <img src="freq2d_terms_exponent.png"
+             alt="Left: log-log N vs T for the 2+1 terms sweep, five near-parallel power laws. Right: fitted exponent vs term count rising from 1.405 at terms=2 to 1.437 at terms=10, with a wobble at terms=6." />
+        <figcaption>
+          2+1: the exponent rises 1.405 &rarr; 1.437 across the terms sweep
+          &mdash; same direction as 3+1, a third of the amplitude, with a
+          &sim;1.5&sigma; wobble at terms = 6.
+        </figcaption>
+      </figure>
+      <ul>
+        <li>D = 1.405(3), 1.410(3), 1.428(3), 1.420(4), 1.437(4) for
+            terms = 2, 3, 4, 6, 10. The end-to-end rise is ~8&sigma;; the
+            terms = 6 dip is within ~1.5&sigma; of flat, so 2+1 reads as
+            &ldquo;rising, roughly monotone&rdquo; rather than the 3+1
+            staircase.</li>
+        <li>Amplitude is dimension-dependent: &Delta;D = 0.032 in 2+1 vs
+            0.100 in 3+1 across the same terms range. In D/d units:
+            0.703 &rarr; 0.718 (2+1) vs 0.765 &rarr; 0.798 (3+1) &mdash;
+            richer function spaces buy relatively more packing headroom in
+            higher dimension.</li>
+        <li>The terms = 2 exponent 1.405 sits close to the historical 1.38
+            (different cutoff depth and T window; the pre-07-06 stop bias
+            does not move exponents).</li>
+      </ul>
+      <p>
+        Takeaway: the function-space knob on the packing exponent is
+        dictionary-robust &mdash; both dimensions respond in the same
+        direction, scaled by dimension. Decay-rate companions
+        (cutoffs 1e-6/1e-7/1e-8 at two T values, terms &isin; {2,10}) are
+        running now for the approach power law.
+      </p>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
