@@ -63,3 +63,30 @@ def test_plan_assignment_raises_when_no_host_fits() -> None:
     jobs = [Job(dim=3, band="nyq", t=200, seed=1, accept_rate=1e-7, max_attempts=3e12)]
     with pytest.raises(ValueError):
         plan_assignment(jobs, ["small"], host_max_t={"small": 160})
+
+
+def test_host_parts_plain_and_gpu_tokens() -> None:
+    from braidlab.orchestrator import host_parts
+
+    assert host_parts("mother") == ("mother", None)
+    assert host_parts("vast:1") == ("vast", 1)
+    assert host_parts("vast:0") == ("vast", 0)
+
+
+def test_render_runner_gpu_pin() -> None:
+    """A GPU token's runner pins the whole queue to its device."""
+    script = render_runner(_jobs(1), "~/braidlab_run_g1", gpu=1)
+    assert "export CUDA_VISIBLE_DEVICES=1" in script
+    assert "cd ~/braidlab_run_g1" in script
+    # a plain host's runner must not pin anything
+    assert "CUDA_VISIBLE_DEVICES" not in render_runner(_jobs(1), "~/braidlab_run")
+
+
+def test_fleet_gpu_token_workspace_and_alias() -> None:
+    from braidlab.orchestrator import Fleet
+
+    fleet = Fleet("/tmp/src")
+    assert fleet._alias("vast:1") == "vast"
+    assert fleet._dir("vast:1") == "~/braidlab_run_g1"
+    assert fleet._alias("mother") == "mother"
+    assert fleet._dir("mother") == "~/braidlab_run"

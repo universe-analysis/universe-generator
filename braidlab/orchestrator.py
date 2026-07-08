@@ -64,14 +64,32 @@ def plan_assignment(
 DUMP_SUBSAMPLE = 60000
 
 
-def render_runner(jobs: list[Job], remote_dir: str, dump: bool = False) -> str:
+def host_parts(host: str) -> tuple[str, int | None]:
+    """Split a host token into (ssh alias, GPU index).
+
+    A plain token (``mother``) is a whole-host worker on the default GPU. A
+    ``alias:N`` token (``vast:1``) is one worker pinned to GPU N of a
+    multi-GPU host — each such worker gets its own remote workspace and
+    ``CUDA_VISIBLE_DEVICES``, so a box's GPUs can be listed as separate
+    fleet entries.
+    """
+    if ":" in host:
+        alias, gpu = host.rsplit(":", 1)
+        return alias, int(gpu)
+    return host, None
+
+
+def render_runner(
+    jobs: list[Job], remote_dir: str, dump: bool = False, gpu: int | None = None
+) -> str:
     """Render the bash runner that executes a host's job queue idempotently.
 
     When ``dump`` is set, each run also writes a `--dump-params` file, which is
     immediately subsampled to ``DUMP_SUBSAMPLE`` random worldlines (header
     preserved) so the collected `.sub.csv` stays small; the full dump is then
     removed. The correlation dimension is statistical, so the subsample costs
-    nothing in accuracy.
+    nothing in accuracy. ``gpu`` pins the whole queue to one device of a
+    multi-GPU host.
     """
     engine_line = '  "$@" --curve curves/$name.csv'
     if dump:
@@ -81,6 +99,10 @@ def render_runner(jobs: list[Job], remote_dir: str, dump: bool = False) -> str:
     lines = [
         "#!/bin/bash",
         f"cd {remote_dir} || exit 1",
+    ]
+    if gpu is not None:
+        lines.append(f"export CUDA_VISIBLE_DEVICES={gpu}")
+    lines += [
         "mkdir -p curves",
     ]
     if dump:
@@ -119,15 +141,38 @@ def render_runner(jobs: list[Job], remote_dir: str, dump: bool = False) -> str:
 
 
 class Fleet:
-    """Side-effecting SSH/SCP operations against GPU hosts."""
+    """Side-effecting SSH/SCP operations against GPU hosts.
+
+    Host tokens are either plain SSH aliases (``mother``) or ``alias:N`` for
+    one GPU of a multi-GPU host (``vast:0``, ``vast:1``). Each GPU token gets
+    its own remote workspace (``~/braidlab_run_g<N>``) and a runner pinned via
+    ``CUDA_VISIBLE_DEVICES``, so the GPUs behave as independent fleet workers.
+    Do not mix a plain token and GPU tokens for the same box in one campaign:
+    the plain token's liveness check matches any runner on the box.
+    """
 
     def __init__(self, source_dir: str | Path, remote_dir: str = REMOTE_DIR) -> None:
         self.source = Path(source_dir)
         self.remote = remote_dir
 
+    def _alias(self, host: str) -> str:
+        return host_parts(host)[0]
+
+    def _dir(self, host: str) -> str:
+        gpu = host_parts(host)[1]
+        return self.remote if gpu is None else f"{self.remote}_g{gpu}"
+
     def _ssh(self, host: str, cmd: str, timeout: int = 120) -> str:
         out = subprocess.run(
-            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host, cmd],
+            [
+                "ssh",
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "ConnectTimeout=10",
+                self._alias(host),
+                cmd,
+            ],
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -136,18 +181,21 @@ class Fleet:
 
     def _scp_to(self, host: str, local: Path, remote: str) -> None:
         subprocess.run(
-            ["scp", "-q", str(local), f"{host}:{remote}"],
+            ["scp", "-q", str(local), f"{self._alias(host)}:{remote}"],
             check=True,
             timeout=120,
         )
 
     def _scp_from(self, host: str, remote: str, local: Path) -> bool:
-        res = subprocess.run(["scp", "-q", f"{host}:{remote}", str(local)], timeout=120)
+        res = subprocess.run(
+            ["scp", "-q", f"{self._alias(host)}:{remote}", str(local)], timeout=120
+        )
         return res.returncode == 0
 
     def deploy(self, host: str, dims: set[int]) -> None:
         """Push engine sources and build the needed binaries on `host`."""
-        self._ssh(host, f"mkdir -p {self.remote}")
+        rdir = self._dir(host)
+        self._ssh(host, f"mkdir -p {rdir}")
         cap = self._ssh(
             host,
             "nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1",
@@ -156,14 +204,14 @@ class Fleet:
         for dim in dims:
             b = binary_name(dim)
             src = self.source / "cuda" / f"{b}.cu"
-            self._scp_to(host, src, f"{self.remote}/{b}.cu")
+            self._scp_to(host, src, f"{rdir}/{b}.cu")
             # Heterogeneous fleet: nvcc may not be on PATH and the right CUDA /
             # host-compiler pairing differs per host (the 3090 needs an older
             # CUDA than its newest). Try every candidate nvcc x {default,
             # g++-11} until one links, newest CUDA first.
             self._ssh(
                 host,
-                f"cd {self.remote} && rm -f {b} && "
+                f"cd {rdir} && rm -f {b} && "
                 "for NVCC in $(command -v nvcc) "
                 "$(ls /usr/local/cuda*/bin/nvcc 2>/dev/null | sort -rV); do "
                 'for CC in "" "-ccbin g++-11"; do '
@@ -176,19 +224,23 @@ class Fleet:
 
     def launch(self, host: str, jobs: list[Job], dump: bool = False) -> None:
         """Write and nohup the host's runner queue."""
-        script = render_runner(jobs, self.remote, dump=dump)
-        tmp = self.source / f".runner_{host}.sh"
+        rdir = self._dir(host)
+        gpu = host_parts(host)[1]
+        script = render_runner(jobs, rdir, dump=dump, gpu=gpu)
+        tmp = self.source / f".runner_{host.replace(':', '_')}.sh"
         tmp.write_text(script)
-        self._scp_to(host, tmp, f"{self.remote}/run_braidlab.sh")
+        self._scp_to(host, tmp, f"{rdir}/run_braidlab.sh")
         tmp.unlink()
         # setsid detaches the runner into its own session, so it survives the ssh
         # disconnect. The ssh channel often lingers anyway (the server waits on
         # the session), so use a short timeout and treat the timeout as success
-        # -- the runner is already detached and running.
+        # -- the runner is already detached and running. GPU tokens launch by
+        # path, so each runner's cmdline carries its workspace and the liveness
+        # check can tell same-box runners apart.
         try:
             self._ssh(
                 host,
-                f"cd {self.remote} && setsid bash run_braidlab.sh "
+                f"cd {rdir} && setsid bash {rdir}/run_braidlab.sh "
                 ">/dev/null 2>&1 </dev/null & echo started",
                 timeout=15,
             )
@@ -197,13 +249,20 @@ class Fleet:
 
     def runner_alive(self, host: str) -> bool:
         # Bracket the first char so pgrep does not match the ssh shell running
-        # this very command (whose cmdline contains the pattern).
-        return bool(self._ssh(host, "pgrep -f '[r]un_braidlab.sh'").strip())
+        # this very command (whose cmdline contains the pattern). GPU tokens
+        # match their own workspace path; plain tokens keep the legacy pattern
+        # (which matches any runner on the box).
+        gpu = host_parts(host)[1]
+        if gpu is None:
+            return bool(self._ssh(host, "pgrep -f '[r]un_braidlab.sh'").strip())
+        base = self._dir(host).rsplit("/", 1)[-1]  # e.g. braidlab_run_g1
+        pat = f"[{base[0]}]{base[1:]}/run_braidlab.sh"
+        return bool(self._ssh(host, f"pgrep -f '{pat}'").strip())
 
     def poll(self, host: str, dest_dir: Path) -> list[tuple[str, int, int]]:
         """Fetch results.log, return [(name, n, attempts)] for finished jobs."""
-        local = dest_dir / f".results_{host}.log"
-        if not self._scp_from(host, f"{self.remote}/results.log", local):
+        local = dest_dir / f".results_{host.replace(':', '_')}.log"
+        if not self._scp_from(host, f"{self._dir(host)}/results.log", local):
             return []
         done: list[tuple[str, int, int]] = []
         for line in local.read_text().splitlines():
@@ -213,11 +272,11 @@ class Fleet:
         return done
 
     def fetch_curve(self, host: str, name: str, dest: Path) -> bool:
-        return self._scp_from(host, f"{self.remote}/curves/{name}.csv", dest)
+        return self._scp_from(host, f"{self._dir(host)}/curves/{name}.csv", dest)
 
     def fetch_dump(self, host: str, name: str, dest: Path) -> bool:
         """Pull back the subsampled parameter dump for a finished job."""
-        return self._scp_from(host, f"{self.remote}/dumps/{name}.sub.csv", dest)
+        return self._scp_from(host, f"{self._dir(host)}/dumps/{name}.sub.csv", dest)
 
 
 def run_campaign(

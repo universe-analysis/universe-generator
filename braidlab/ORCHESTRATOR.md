@@ -122,6 +122,14 @@ Notes:
   overwrites the runner script under A. Run campaigns on disjoint host sets,
   or sequence them (this bit the concurrent torus3d_e6/torus2d_e6 launch on
   2026-07-02).
+- **Multi-GPU hosts: `alias:N` tokens.** A host with several GPUs (e.g. a
+  rented 2x4090 box) is listed as one token per GPU: `--hosts
+  mother,kitt,vast:0,vast:1`. Each token gets its own remote workspace
+  (`~/braidlab_run_g<N>`), its own runner pinned via `CUDA_VISIBLE_DEVICES`,
+  and a workspace-specific liveness check, so the GPUs behave as independent
+  workers. Don't mix a plain `vast` token with `vast:N` tokens in one
+  campaign — the plain token's `runner_alive()` pattern matches any runner on
+  the box.
 
 ## GPU memory caps (T ceilings)
 
