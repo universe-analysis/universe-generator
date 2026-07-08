@@ -21,13 +21,14 @@ CREATE TABLE IF NOT EXISTS runs (
     t            INTEGER NOT NULL,
     seed         INTEGER NOT NULL,
     accept_rate  REAL    NOT NULL,
+    terms        INTEGER NOT NULL DEFAULT 2,
     status       TEXT    NOT NULL DEFAULT 'pending',
     n_final      INTEGER,
     attempts     INTEGER,
     curve_path   TEXT,
     host         TEXT,
     updated_at   TEXT,
-    PRIMARY KEY (dim, band, t, seed, accept_rate)
+    PRIMARY KEY (dim, band, t, seed, accept_rate, terms)
 );
 """
 
@@ -41,6 +42,7 @@ class RunResult:
     t: int
     seed: int
     accept_rate: float
+    terms: int
     status: str
     n_final: int | None
     attempts: int | None
@@ -61,6 +63,14 @@ class Store:
         self._conn = sqlite3.connect(str(self.path))
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
+        # Pre---terms databases lack the terms column; add it (default 2 = the
+        # legacy model) so they stay readable. Their primary key cannot be
+        # widened in place, so a multi-terms campaign needs a fresh database.
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(runs)")}
+        if "terms" not in cols:
+            self._conn.execute(
+                "ALTER TABLE runs ADD COLUMN terms INTEGER NOT NULL DEFAULT 2"
+            )
         self._conn.commit()
 
     def close(self) -> None:
@@ -69,8 +79,8 @@ class Store:
     def register(self, job: Job) -> None:
         """Insert a job as pending if it is not already present."""
         self._conn.execute(
-            "INSERT OR IGNORE INTO runs (dim, band, t, seed, accept_rate, "
-            "status, updated_at) VALUES (?, ?, ?, ?, ?, 'pending', "
+            "INSERT OR IGNORE INTO runs (dim, band, t, seed, accept_rate, terms, "
+            "status, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', "
             "datetime('now'))",
             job.key,
         )
@@ -91,7 +101,8 @@ class Store:
             "UPDATE runs SET status=?, n_final=COALESCE(?, n_final), "
             "attempts=COALESCE(?, attempts), curve_path=COALESCE(?, curve_path),"
             " host=COALESCE(?, host), updated_at=datetime('now') "
-            "WHERE dim=? AND band=? AND t=? AND seed=? AND accept_rate=?",
+            "WHERE dim=? AND band=? AND t=? AND seed=? AND accept_rate=? "
+            "AND terms=?",
             (status, n_final, attempts, curve_path, host, *job.key),
         )
         self._conn.commit()
@@ -100,15 +111,16 @@ class Store:
         """Return the stored row for a job, or None."""
         row = self._conn.execute(
             "SELECT * FROM runs WHERE dim=? AND band=? AND t=? AND seed=? "
-            "AND accept_rate=?",
+            "AND accept_rate=? AND terms=?",
             job.key,
         ).fetchone()
         return _row_to_result(row) if row else None
 
-    def completed_keys(self) -> set[tuple[int, str, int, int, float]]:
+    def completed_keys(self) -> set[tuple[int, str, int, int, float, int]]:
         """Keys of all runs with status 'done'."""
         rows = self._conn.execute(
-            "SELECT dim, band, t, seed, accept_rate FROM runs WHERE status='done'"
+            "SELECT dim, band, t, seed, accept_rate, terms FROM runs "
+            "WHERE status='done'"
         ).fetchall()
         return {tuple(r) for r in rows}
 
@@ -134,6 +146,7 @@ def _row_to_result(row: sqlite3.Row) -> RunResult:
         t=row["t"],
         seed=row["seed"],
         accept_rate=row["accept_rate"],
+        terms=row["terms"],
         status=row["status"],
         n_final=row["n_final"],
         attempts=row["attempts"],

@@ -113,7 +113,7 @@ constexpr double kPi = 3.14159265358979323846;
 
 // Compile-time cap on wiggle terms per axis (--terms K uses K-1 of them).
 // Bounds the fixed-size Path struct that rides through the survivor buffers.
-constexpr int kMaxWiggle = 7;
+constexpr int kMaxWiggle = 9;
 
 struct Path {
     double ax[kMaxWiggle], ay[kMaxWiggle];  // wiggle amplitudes

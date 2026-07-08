@@ -15,6 +15,14 @@
 // to close), each component is offset by a*sin(f) so it still starts at zero,
 // and the z grid becomes the symmetric T-interior-points-of-(0, pi) indexing.
 //
+// --terms K generalizes each axis to K sinusoid terms: the sin1 term plus
+// K-1 wiggle terms (K=2 is the legacy model, bit-identical RNG stream). Each
+// axis draws K-1 unique integer frequencies; the unit slope budget is split
+// uniformly at random across the wiggle group (simplex), each amplitude its
+// share divided by its frequency, so the group satisfies sum |a_j*b_j| = 1
+// exactly. Every term carries its own even-frequency phase and its own
+// a*sin(f) offset. Mirrors the 2+1 engine's --terms.
+//
 // --sparse replaces the dense per-timestep grid (T*gw^3 cells, the T^4 VRAM
 // hog) with per-timestep sorted occupied-cell keys + CSR offsets, looked up by
 // binary search, and runs the whole prefilter in fp32: device points stored as
@@ -137,10 +145,75 @@ void parallel_for(size_t n, const Fn& fn) {
         th.join();
 }
 
+// Max wiggle terms per axis (--terms counts sin1, so terms <= kMaxWiggle + 1).
+constexpr int kMaxWiggle = 9;
+
 struct Path {
-    double ax, ay, aw, bx, by, bw, ax2, ay2, aw2;
-    double fx, fy, fw;  // per-axis phase on the wiggle term (0 unless --phase)
+    double ax[kMaxWiggle], ay[kMaxWiggle], aw[kMaxWiggle];  // wiggle amplitudes
+    double bx[kMaxWiggle], by[kMaxWiggle], bw[kMaxWiggle];  // wiggle frequencies (integer)
+    double fx[kMaxWiggle], fy[kMaxWiggle], fw[kMaxWiggle];  // phases (0 unless --phase + even)
+    double ax2, ay2, aw2;                                   // sin1 amplitudes
 };
+
+// One biased-or-uniform frequency draw in [2, modmax+1] (smart = max of two
+// uniforms, favouring finer wiggles).
+__host__ __device__ inline uint32_t draw_freq(Rng& r, uint32_t modmax, bool smart) {
+    if (!smart)
+        return rng_below(r, modmax) + 2;
+    uint32_t a1 = rng_below(r, modmax), a2 = rng_below(r, modmax);
+    return (a1 > a2 ? a1 : a2) + 2;
+}
+
+// nw unique frequencies for one axis. Duplicates re-draw (bounded); if the
+// guard blows, the smallest unused frequency fills the slot deterministically.
+__host__ __device__ inline void draw_unique_freqs(
+    Rng& r, uint32_t modmax, bool smart, int nw, uint32_t* out) {
+    for (int j = 0; j < nw; j++) {
+        uint32_t b = 0;
+        bool dup = true;
+        for (int guard = 0; dup && guard < 64; guard++) {
+            b = draw_freq(r, modmax, smart);
+            dup = false;
+            for (int k = 0; k < j; k++)
+                if (out[k] == b)
+                    dup = true;
+        }
+        if (dup) {
+            for (uint32_t c = 2; c <= modmax + 1; c++) {
+                bool used = false;
+                for (int k = 0; k < j; k++)
+                    if (out[k] == c)
+                        used = true;
+                if (!used) {
+                    b = c;
+                    break;
+                }
+            }
+        }
+        out[j] = b;
+    }
+}
+
+// Split 1 into nw parts, uniform on the simplex: nw-1 sorted cuts of [0,1],
+// the parts are the gaps between consecutive cuts.
+__host__ __device__ inline void split_unit(Rng& r, int nw, double* w) {
+    double cuts[kMaxWiggle + 1];
+    cuts[0] = 0.0;
+    for (int j = 1; j < nw; j++)
+        cuts[j] = rng_f64(r);
+    cuts[nw] = 1.0;
+    for (int j = 2; j < nw; j++) {  // insertion sort of cuts[1..nw-1]
+        double v = cuts[j];
+        int k = j;
+        while (k > 1 && cuts[k - 1] > v) {
+            cuts[k] = cuts[k - 1];
+            k--;
+        }
+        cuts[k] = v;
+    }
+    for (int j = 0; j < nw; j++)
+        w[j] = cuts[j + 1] - cuts[j];
+}
 
 // Edge-weighted draw for a sin1-component magnitude in (0,1]. theta ~ U(-pi,pi)
 // folded through asin gives a density that rises toward 1 (the comoving edge)
@@ -193,7 +266,91 @@ __device__ inline int find_key(const int* keys, int lo, int hi, int key) {
 }
 
 __host__ __device__ inline Path propose(
-    Rng& r, uint32_t modmax, bool smart, bool angle, bool torus, bool phase) {
+    Rng& r, uint32_t modmax, bool smart, bool angle, bool torus, bool phase, int nw) {
+    Path p = {};
+    if (nw == 1) {
+        // Legacy single-wiggle model: draw order preserved verbatim so the RNG
+        // stream (and thus candidate generation) stays bit-identical to the
+        // pre---terms engine.
+        double xs, ys, ws;
+        if (angle) {
+            xs = angle_magnitude(r);
+            ys = angle_magnitude(r);
+            ws = angle_magnitude(r);
+        } else {
+            xs = rng_f64(r);
+            ys = rng_f64(r);
+            ws = rng_f64(r);
+        }
+        uint32_t bx, by, bw;
+        if (!smart) {
+            bx = rng_below(r, modmax) + 2;
+            by = rng_below(r, modmax) + 2;
+            bw = rng_below(r, modmax) + 2;
+        } else {
+            int guard = 0;
+            while (true) {
+                uint32_t a1 = rng_below(r, modmax), a2 = rng_below(r, modmax);
+                bx = (a1 > a2 ? a1 : a2) + 2;
+                uint32_t b1 = rng_below(r, modmax), b2 = rng_below(r, modmax);
+                by = (b1 > b2 ? b1 : b2) + 2;
+                uint32_t c1 = rng_below(r, modmax), c2 = rng_below(r, modmax);
+                bw = (c1 > c2 ? c1 : c2) + 2;
+                if ((igcd(bx, by) == 1 && igcd(bx, bw) == 1 && igcd(by, bw) == 1) ||
+                    guard >= 24)
+                    break;
+                guard++;
+            }
+        }
+        p.ax2 = xs;
+        p.ay2 = ys;
+        p.aw2 = ws;
+        if (torus) {
+            // New-dogma budget: the slope-1 constraint binds the wiggle term
+            // alone (|a*b| = 1); the sin1 term is a free comoving offset -- in
+            // comoving coordinates it is a CONSTANT, so a uniform draw makes
+            // the packing homogeneous on the torus by construction.
+            p.ax[0] = 1.0 / bx;
+            p.ay[0] = 1.0 / by;
+            p.aw[0] = 1.0 / bw;
+        } else {
+            p.ax[0] = (1.0 - xs) / bx;
+            p.ay[0] = (1.0 - ys) / by;
+            p.aw[0] = (1.0 - ws) / bw;
+        }
+        p.bx[0] = bx;
+        p.by[0] = by;
+        p.bw[0] = bw;
+        if (rng_flip(r))
+            p.ax[0] = -p.ax[0];
+        if (rng_flip(r))
+            p.ay[0] = -p.ay[0];
+        if (rng_flip(r))
+            p.aw[0] = -p.aw[0];
+        if (rng_flip(r))
+            p.ax2 = -p.ax2;
+        if (rng_flip(r))
+            p.ay2 = -p.ay2;
+        if (rng_flip(r))
+            p.aw2 = -p.aw2;
+        // Phase update: a free phase on the wiggle term, drawn only for EVEN
+        // frequencies -- the loop closes at z=pi only where sin(b*pi + f)
+        // equals sin(f), so odd frequencies stay phase-free. The a*sin(f)
+        // offset applied at evaluation time re-pins the component to zero at
+        // the endpoints. Drawn last so the baseline (phase off) RNG stream is
+        // untouched.
+        if (phase) {
+            if (bx % 2 == 0)
+                p.fx[0] = rng_f64(r) * kPi;
+            if (by % 2 == 0)
+                p.fy[0] = rng_f64(r) * kPi;
+            if (bw % 2 == 0)
+                p.fw[0] = rng_f64(r) * kPi;
+        }
+        return p;
+    }
+    // Generalized multi-term model. Smart keeps the high-frequency bias per
+    // draw but drops the cross-axis coprime rule (no single pair to test).
     double xs, ys, ws;
     if (angle) {
         xs = angle_magnitude(r);
@@ -204,72 +361,57 @@ __host__ __device__ inline Path propose(
         ys = rng_f64(r);
         ws = rng_f64(r);
     }
-    uint32_t bx, by, bw;
-    if (!smart) {
-        bx = rng_below(r, modmax) + 2;
-        by = rng_below(r, modmax) + 2;
-        bw = rng_below(r, modmax) + 2;
-    } else {
-        int guard = 0;
-        while (true) {
-            uint32_t a1 = rng_below(r, modmax), a2 = rng_below(r, modmax);
-            bx = (a1 > a2 ? a1 : a2) + 2;
-            uint32_t b1 = rng_below(r, modmax), b2 = rng_below(r, modmax);
-            by = (b1 > b2 ? b1 : b2) + 2;
-            uint32_t c1 = rng_below(r, modmax), c2 = rng_below(r, modmax);
-            bw = (c1 > c2 ? c1 : c2) + 2;
-            if ((igcd(bx, by) == 1 && igcd(bx, bw) == 1 && igcd(by, bw) == 1) || guard >= 24)
-                break;
-            guard++;
-        }
-    }
-    Path p;
     p.ax2 = xs;
     p.ay2 = ys;
     p.aw2 = ws;
-    if (torus) {
-        // New-dogma budget: the slope-1 constraint binds the wiggle term alone
-        // (|a*b| = 1); the sin1 term is a free comoving offset -- in comoving
-        // coordinates it is a CONSTANT, so a uniform draw makes the packing
-        // homogeneous on the torus by construction.
-        p.ax = 1.0 / bx;
-        p.ay = 1.0 / by;
-        p.aw = 1.0 / bw;
-    } else {
-        p.ax = (1.0 - xs) / bx;
-        p.ay = (1.0 - ys) / by;
-        p.aw = (1.0 - ws) / bw;
+    uint32_t bxa[kMaxWiggle], bya[kMaxWiggle], bwa[kMaxWiggle];
+    draw_unique_freqs(r, modmax, smart, nw, bxa);
+    draw_unique_freqs(r, modmax, smart, nw, bya);
+    draw_unique_freqs(r, modmax, smart, nw, bwa);
+    double wx[kMaxWiggle], wy[kMaxWiggle], ww[kMaxWiggle];
+    split_unit(r, nw, wx);
+    split_unit(r, nw, wy);
+    split_unit(r, nw, ww);
+    // Torus: the whole unit budget goes to the wiggle group (sum |a*b| = 1).
+    // Hard wall: the group shares the slope budget with sin1, as before.
+    double budx = torus ? 1.0 : (1.0 - xs);
+    double budy = torus ? 1.0 : (1.0 - ys);
+    double budw = torus ? 1.0 : (1.0 - ws);
+    for (int j = 0; j < nw; j++) {
+        p.ax[j] = budx * wx[j] / bxa[j];
+        p.bx[j] = bxa[j];
+        p.ay[j] = budy * wy[j] / bya[j];
+        p.by[j] = bya[j];
+        p.aw[j] = budw * ww[j] / bwa[j];
+        p.bw[j] = bwa[j];
     }
-    p.bx = bx;
-    p.by = by;
-    p.bw = bw;
-    if (rng_flip(r))
-        p.ax = -p.ax;
-    if (rng_flip(r))
-        p.ay = -p.ay;
-    if (rng_flip(r))
-        p.aw = -p.aw;
+    for (int j = 0; j < nw; j++)
+        if (rng_flip(r))
+            p.ax[j] = -p.ax[j];
+    for (int j = 0; j < nw; j++)
+        if (rng_flip(r))
+            p.ay[j] = -p.ay[j];
+    for (int j = 0; j < nw; j++)
+        if (rng_flip(r))
+            p.aw[j] = -p.aw[j];
     if (rng_flip(r))
         p.ax2 = -p.ax2;
     if (rng_flip(r))
         p.ay2 = -p.ay2;
     if (rng_flip(r))
         p.aw2 = -p.aw2;
-    // Phase update: a free phase on the wiggle term, drawn only for EVEN
-    // frequencies -- the loop closes at z=pi only where sin(b*pi + f) equals
-    // sin(f), so odd frequencies stay phase-free. The a*sin(f) offset applied
-    // at evaluation time re-pins the component to zero at the endpoints.
-    // Drawn last so the baseline (phase off) RNG stream is untouched.
-    p.fx = 0.0;
-    p.fy = 0.0;
-    p.fw = 0.0;
+    // Per-term phases, same rule as the single-wiggle model: even frequencies
+    // only, and each term is re-pinned to zero by its own a*sin(f) offset.
     if (phase) {
-        if (bx % 2 == 0)
-            p.fx = rng_f64(r) * kPi;
-        if (by % 2 == 0)
-            p.fy = rng_f64(r) * kPi;
-        if (bw % 2 == 0)
-            p.fw = rng_f64(r) * kPi;
+        for (int j = 0; j < nw; j++)
+            if (bxa[j] % 2 == 0)
+                p.fx[j] = rng_f64(r) * kPi;
+        for (int j = 0; j < nw; j++)
+            if (bya[j] % 2 == 0)
+                p.fy[j] = rng_f64(r) * kPi;
+        for (int j = 0; j < nw; j++)
+            if (bwa[j] % 2 == 0)
+                p.fw[j] = rng_f64(r) * kPi;
     }
     return p;
 }
@@ -278,6 +420,7 @@ __host__ __device__ inline Path propose(
 // L2 exclusion. This is the reference prefilter -- bit-compatible with the
 // historical engine.
 __device__ bool collides_dev(const Path& p,
+                             int nw,
                              int T,
                              const double* z,
                              const double* sinz,
@@ -296,29 +439,42 @@ __device__ bool collides_dev(const Path& p,
                              bool torus) {
     const double edge = 1.0 - 0.5 * cell;  // path radius CELL/2 hits the wall at |X|=1
     // Phase offsets re-pin each component to zero at the endpoints.
-    const double offx = p.ax * sin(p.fx);
-    const double offy = p.ay * sin(p.fy);
-    const double offw = p.aw * sin(p.fw);
-    // Phase-free paths take the verbatim pre-phase expression, so their
-    // per-candidate math is bit-identical to the pre-phase engine (folding a
-    // zero phase into the expression shifts FP contraction by an ulp). Full-run
-    // output is still scheduling-dependent: survivor admission order comes from
-    // atomicAdd slots.
-    const bool phased = (p.fx != 0.0) || (p.fy != 0.0) || (p.fw != 0.0);
+    double offx[kMaxWiggle], offy[kMaxWiggle], offw[kMaxWiggle];
+    for (int j = 0; j < nw; j++) {
+        offx[j] = p.ax[j] * sin(p.fx[j]);
+        offy[j] = p.ay[j] * sin(p.fy[j]);
+        offw[j] = p.aw[j] * sin(p.fw[j]);
+    }
+    // Phase-free single-wiggle paths take the verbatim pre-phase expression, so
+    // their per-candidate math is bit-identical to the pre-phase engine
+    // (folding a zero phase into the expression shifts FP contraction by an
+    // ulp). Full-run output is still scheduling-dependent: survivor admission
+    // order comes from atomicAdd slots.
+    const bool phased = (p.fx[0] != 0.0) || (p.fy[0] != 0.0) || (p.fw[0] != 0.0);
 
     for (int oi = 0; oi < T; oi++) {
         const int i = order[oi];
 
         // Comoving position of the candidate path at this timestep (X = x / sin z).
         double X, Y, W;
-        if (phased) {
-            X = (p.ax * sin(p.bx * z[i] + p.fx) + p.ax2 * sinz[i] - offx) * invz[i];
-            Y = (p.ay * sin(p.by * z[i] + p.fy) + p.ay2 * sinz[i] - offy) * invz[i];
-            W = (p.aw * sin(p.bw * z[i] + p.fw) + p.aw2 * sinz[i] - offw) * invz[i];
+        if (nw > 1) {
+            double xx = p.ax2 * sinz[i], yy = p.ay2 * sinz[i], wwv = p.aw2 * sinz[i];
+            for (int j = 0; j < nw; j++) {
+                xx += p.ax[j] * sin(p.bx[j] * z[i] + p.fx[j]) - offx[j];
+                yy += p.ay[j] * sin(p.by[j] * z[i] + p.fy[j]) - offy[j];
+                wwv += p.aw[j] * sin(p.bw[j] * z[i] + p.fw[j]) - offw[j];
+            }
+            X = xx * invz[i];
+            Y = yy * invz[i];
+            W = wwv * invz[i];
+        } else if (phased) {
+            X = (p.ax[0] * sin(p.bx[0] * z[i] + p.fx[0]) + p.ax2 * sinz[i] - offx[0]) * invz[i];
+            Y = (p.ay[0] * sin(p.by[0] * z[i] + p.fy[0]) + p.ay2 * sinz[i] - offy[0]) * invz[i];
+            W = (p.aw[0] * sin(p.bw[0] * z[i] + p.fw[0]) + p.aw2 * sinz[i] - offw[0]) * invz[i];
         } else {
-            X = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
-            Y = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
-            W = (p.aw * sin(p.bw * z[i]) + p.aw2 * sinz[i]) * invz[i];
+            X = (p.ax[0] * sin(p.bx[0] * z[i]) + p.ax2 * sinz[i]) * invz[i];
+            Y = (p.ay[0] * sin(p.by[0] * z[i]) + p.ay2 * sinz[i]) * invz[i];
+            W = (p.aw[0] * sin(p.bw[0] * z[i]) + p.aw2 * sinz[i]) * invz[i];
         }
 
         int cx, cy, cw;
@@ -401,6 +557,7 @@ __device__ bool collides_dev(const Path& p,
 // when CERTAIN (> edgeLoose, the wall pushed out by the same margin).
 // Gray-zone candidates survive the prefilter and are settled on the host.
 __device__ bool collides_sparse_dev(const Path& p,
+                                    int nw,
                                     int T,
                                     const float* sinbT,
                                     const float* cosbm1T,
@@ -422,32 +579,70 @@ __device__ bool collides_sparse_dev(const Path& p,
                                     bool euclid,
                                     bool torus,
                                     bool phase) {
-    const float ax = (float)p.ax, ay = (float)p.ay, aw = (float)p.aw;
     const float ax2 = (float)p.ax2, ay2 = (float)p.ay2, aw2 = (float)p.aw2;
-    const float* sbx = sinbT + ((int)p.bx - 2) * T;
-    const float* sby = sinbT + ((int)p.by - 2) * T;
-    const float* sbw = sinbT + ((int)p.bw - 2) * T;
-    const float* cbx = phase ? cosbm1T + ((int)p.bx - 2) * T : nullptr;
-    const float* cby = phase ? cosbm1T + ((int)p.by - 2) * T : nullptr;
-    const float* cbw = phase ? cosbm1T + ((int)p.bw - 2) * T : nullptr;
-    // Per-candidate phase factors (once, not per timestep). With the a*sin(f)
-    // offset folded in, sin(b*z + f) - sin(f) = sinb*cos(f) + (cosb - 1)*sin(f).
-    const float cfx = cosf((float)p.fx), sfx = sinf((float)p.fx);
-    const float cfy = cosf((float)p.fy), sfy = sinf((float)p.fy);
-    const float cfw = cosf((float)p.fw), sfw = sinf((float)p.fw);
+    // Per-term amplitudes, table offsets, and phase factors (once, not per
+    // timestep). With the a*sin(f) offset folded in,
+    // sin(b*z + f) - sin(f) = sinb*cos(f) + (cosb - 1)*sin(f).
+    float axF[kMaxWiggle], ayF[kMaxWiggle], awF[kMaxWiggle];
+    int obx[kMaxWiggle], oby[kMaxWiggle], obw[kMaxWiggle];
+    float cfx[kMaxWiggle], sfx[kMaxWiggle];
+    float cfy[kMaxWiggle], sfy[kMaxWiggle];
+    float cfw[kMaxWiggle], sfw[kMaxWiggle];
+    for (int j = 0; j < nw; j++) {
+        axF[j] = (float)p.ax[j];
+        ayF[j] = (float)p.ay[j];
+        awF[j] = (float)p.aw[j];
+        obx[j] = ((int)p.bx[j] - 2) * T;
+        oby[j] = ((int)p.by[j] - 2) * T;
+        obw[j] = ((int)p.bw[j] - 2) * T;
+        cfx[j] = cosf((float)p.fx[j]);
+        sfx[j] = sinf((float)p.fx[j]);
+        cfy[j] = cosf((float)p.fy[j]);
+        sfy[j] = sinf((float)p.fy[j]);
+        cfw[j] = cosf((float)p.fw[j]);
+        sfw[j] = sinf((float)p.fw[j]);
+    }
 
     for (int oi = 0; oi < T; oi++) {
         const int i = order[oi];
 
         float X, Y, W;
-        if (phase) {
-            X = (ax * (sbx[i] * cfx + cbx[i] * sfx) + ax2 * sinzF[i]) * invzF[i];
-            Y = (ay * (sby[i] * cfy + cby[i] * sfy) + ay2 * sinzF[i]) * invzF[i];
-            W = (aw * (sbw[i] * cfw + cbw[i] * sfw) + aw2 * sinzF[i]) * invzF[i];
+        if (nw == 1) {
+            // Single-wiggle fast path: same expressions as the pre---terms
+            // engine (no per-term loop overhead in the legacy configuration).
+            if (phase) {
+                X = (axF[0] * (sinbT[obx[0] + i] * cfx[0] + cosbm1T[obx[0] + i] * sfx[0]) +
+                     ax2 * sinzF[i]) *
+                    invzF[i];
+                Y = (ayF[0] * (sinbT[oby[0] + i] * cfy[0] + cosbm1T[oby[0] + i] * sfy[0]) +
+                     ay2 * sinzF[i]) *
+                    invzF[i];
+                W = (awF[0] * (sinbT[obw[0] + i] * cfw[0] + cosbm1T[obw[0] + i] * sfw[0]) +
+                     aw2 * sinzF[i]) *
+                    invzF[i];
+            } else {
+                X = (axF[0] * sinbT[obx[0] + i] + ax2 * sinzF[i]) * invzF[i];
+                Y = (ayF[0] * sinbT[oby[0] + i] + ay2 * sinzF[i]) * invzF[i];
+                W = (awF[0] * sinbT[obw[0] + i] + aw2 * sinzF[i]) * invzF[i];
+            }
         } else {
-            X = (ax * sbx[i] + ax2 * sinzF[i]) * invzF[i];
-            Y = (ay * sby[i] + ay2 * sinzF[i]) * invzF[i];
-            W = (aw * sbw[i] + aw2 * sinzF[i]) * invzF[i];
+            float xx = ax2 * sinzF[i], yy = ay2 * sinzF[i], wwv = aw2 * sinzF[i];
+            if (phase) {
+                for (int j = 0; j < nw; j++) {
+                    xx += axF[j] * (sinbT[obx[j] + i] * cfx[j] + cosbm1T[obx[j] + i] * sfx[j]);
+                    yy += ayF[j] * (sinbT[oby[j] + i] * cfy[j] + cosbm1T[oby[j] + i] * sfy[j]);
+                    wwv += awF[j] * (sinbT[obw[j] + i] * cfw[j] + cosbm1T[obw[j] + i] * sfw[j]);
+                }
+            } else {
+                for (int j = 0; j < nw; j++) {
+                    xx += axF[j] * sinbT[obx[j] + i];
+                    yy += ayF[j] * sinbT[oby[j] + i];
+                    wwv += awF[j] * sinbT[obw[j] + i];
+                }
+            }
+            X = xx * invzF[i];
+            Y = yy * invzF[i];
+            W = wwv * invzF[i];
         }
 
         int cx, cy, cw;
@@ -526,6 +721,7 @@ __global__ void test_kernel(uint64_t baseSeed,
                             bool euclid,
                             bool torus,
                             bool phase,
+                            int nw,
                             int T,
                             const double* z,
                             const double* sinz,
@@ -549,9 +745,9 @@ __global__ void test_kernel(uint64_t baseSeed,
     Rng r;
     rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
-    Path p = propose(r, modmax, smart, angle, torus, phase);
-    if (!collides_dev(p, T, z, sinz, invz, cell, gw, off, gw2, gw3, cellStart, ptsX, ptsY, ptsW,
-                      order, euclid, torus)) {
+    Path p = propose(r, modmax, smart, angle, torus, phase, nw);
+    if (!collides_dev(p, nw, T, z, sinz, invz, cell, gw, off, gw2, gw3, cellStart, ptsX, ptsY,
+                      ptsW, order, euclid, torus)) {
         int slot = atomicAdd(survCount, 1);
         if (slot < survCap)
             survOut[slot] = p;
@@ -567,6 +763,7 @@ __global__ void test_kernel_sparse(uint64_t baseSeed,
                                    bool euclid,
                                    bool torus,
                                    bool phase,
+                                   int nw,
                                    int T,
                                    const float* sinbT,
                                    const float* cosbm1T,
@@ -594,10 +791,10 @@ __global__ void test_kernel_sparse(uint64_t baseSeed,
     Rng r;
     rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
-    Path p = propose(r, modmax, smart, angle, torus, phase);
-    if (!collides_sparse_dev(p, T, sinbT, cosbm1T, sinzF, invzF, cellF, cellTightF, edgeLooseF,
-                             gw, off, gw2, keys, keyStart, cellOff, ptsXf, ptsYf, ptsWf, order,
-                             euclid, torus, phase)) {
+    Path p = propose(r, modmax, smart, angle, torus, phase, nw);
+    if (!collides_sparse_dev(p, nw, T, sinbT, cosbm1T, sinzF, invzF, cellF, cellTightF,
+                             edgeLooseF, gw, off, gw2, keys, keyStart, cellOff, ptsXf, ptsYf,
+                             ptsWf, order, euclid, torus, phase)) {
         int slot = atomicAdd(survCount, 1);
         if (slot < survCap)
             survOut[slot] = p;
@@ -617,6 +814,7 @@ int main(int argc, char** argv) {
     bool torus = false;       // new-dogma model: |a*b|=1, free sin1 offset, periodic domain
     bool phase = false;       // phase schema: even-frequency phases + symmetric z grid
     bool sparse = false;      // sparse grid (sorted keys + float32 points): VRAM ~ N*T
+    int terms = 2;            // total sinusoid terms per axis, incl. sin1 (2 = legacy)
     const char* diagPrefix = nullptr;  // if set, write occupancy + probe diagnostics
     long long probeN = 5000000;        // fresh proposals fired at the final state
     const char* paramPath = nullptr;   // if set, dump accepted worldline parameters
@@ -647,6 +845,8 @@ int main(int argc, char** argv) {
             phase = true;
         else if (!strcmp(argv[i], "--sparse"))
             sparse = true;
+        else if (!strcmp(argv[i], "--terms"))
+            terms = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--diag"))
             diagPrefix = argv[++i];
         else if (!strcmp(argv[i], "--probe-n"))
@@ -678,6 +878,21 @@ int main(int argc, char** argv) {
     const double edgeLoose = 1.0 - 0.5 * cell + kF32Margin;
     uint32_t modmax =
         (maxfreq > 2) ? (uint32_t)(maxfreq - 1) : (uint32_t)(T / 2 > 2 ? T / 2 : 2);
+    // Wiggle-term count: --terms counts sin1, so nw = terms-1. Capped by the
+    // Path struct (kMaxWiggle) and by the pool of unique frequencies (modmax).
+    if (terms < 2)
+        terms = 2;
+    if (terms - 1 > kMaxWiggle) {
+        fprintf(stderr, "--terms %d exceeds kMaxWiggle+1 = %d, clamping\n", terms,
+                kMaxWiggle + 1);
+        terms = kMaxWiggle + 1;
+    }
+    if ((uint32_t)(terms - 1) > modmax) {
+        fprintf(stderr, "--terms %d exceeds unique-frequency pool %u, clamping\n", terms,
+                modmax);
+        terms = (int)modmax + 1;
+    }
+    const int nw = terms - 1;
     // Torus grid: exactly T cells of width CELL span [-1, 1), so the modular
     // neighbour scan wraps cleanly at the seam. Hard-wall grid keeps its margin.
     int gw = torus ? T : T + 4, off = torus ? 0 : (T + 4) / 2;
@@ -749,11 +964,14 @@ int main(int argc, char** argv) {
 
     size_t ncell = (size_t)T * gw3;
     if (sparse)
-        fprintf(stderr, "3+1%s%s (sparse): T=%d  modmax=%u (maxfreq=%u)  grid VRAM ~ N*T\n",
-                torus ? " (torus)" : "", phase ? " (phase)" : "", T, modmax, modmax + 1);
+        fprintf(stderr,
+                "3+1%s%s (sparse): T=%d  modmax=%u (maxfreq=%u)  terms=%d  grid VRAM ~ N*T\n",
+                torus ? " (torus)" : "", phase ? " (phase)" : "", T, modmax, modmax + 1, terms);
     else
-        fprintf(stderr, "3+1%s%s: T=%d  modmax=%u (maxfreq=%u)  grid cells=%.2e  (~%.1f GB)\n",
-                torus ? " (torus)" : "", phase ? " (phase)" : "", T, modmax, modmax + 1,
+        fprintf(stderr,
+                "3+1%s%s: T=%d  modmax=%u (maxfreq=%u)  terms=%d  grid cells=%.2e  "
+                "(~%.1f GB)\n",
+                torus ? " (torus)" : "", phase ? " (phase)" : "", T, modmax, modmax + 1, terms,
                 (double)ncell, (ncell + 1) * 4.0 / 1e9);
     // Dense grid: cellStart holds cumulative point offsets (< N*T, well within
     // int32 even at T=300), so a 32-bit grid index halves device memory vs a
@@ -836,21 +1054,37 @@ int main(int argc, char** argv) {
     // Comoving trajectory of a path at every timestep (wrapped on the torus).
     // Same expressions as collides_dev; thread-safe (read-only captures).
     auto eval_path = [&](const Path& p, double* X, double* Y, double* W) {
-        const double offx = p.ax * sin(p.fx);
-        const double offy = p.ay * sin(p.fy);
-        const double offw = p.aw * sin(p.fw);
-        // Same rule as collides_dev: phase-free paths take the verbatim
-        // pre-phase expression (per-candidate math identical to pre-phase).
-        const bool phased = (p.fx != 0.0) || (p.fy != 0.0) || (p.fw != 0.0);
+        double offx[kMaxWiggle], offy[kMaxWiggle], offw[kMaxWiggle];
+        for (int j = 0; j < nw; j++) {
+            offx[j] = p.ax[j] * sin(p.fx[j]);
+            offy[j] = p.ay[j] * sin(p.fy[j]);
+            offw[j] = p.aw[j] * sin(p.fw[j]);
+        }
+        // Same rule as collides_dev: phase-free single-wiggle paths take the
+        // verbatim pre-phase expression (per-candidate math identical).
+        const bool phased = (p.fx[0] != 0.0) || (p.fy[0] != 0.0) || (p.fw[0] != 0.0);
         for (int i = 0; i < T; i++) {
-            if (phased) {
-                X[i] = (p.ax * sin(p.bx * z[i] + p.fx) + p.ax2 * sinz[i] - offx) * invz[i];
-                Y[i] = (p.ay * sin(p.by * z[i] + p.fy) + p.ay2 * sinz[i] - offy) * invz[i];
-                W[i] = (p.aw * sin(p.bw * z[i] + p.fw) + p.aw2 * sinz[i] - offw) * invz[i];
+            if (nw > 1) {
+                double xx = p.ax2 * sinz[i], yy = p.ay2 * sinz[i], wwv = p.aw2 * sinz[i];
+                for (int j = 0; j < nw; j++) {
+                    xx += p.ax[j] * sin(p.bx[j] * z[i] + p.fx[j]) - offx[j];
+                    yy += p.ay[j] * sin(p.by[j] * z[i] + p.fy[j]) - offy[j];
+                    wwv += p.aw[j] * sin(p.bw[j] * z[i] + p.fw[j]) - offw[j];
+                }
+                X[i] = xx * invz[i];
+                Y[i] = yy * invz[i];
+                W[i] = wwv * invz[i];
+            } else if (phased) {
+                X[i] = (p.ax[0] * sin(p.bx[0] * z[i] + p.fx[0]) + p.ax2 * sinz[i] - offx[0]) *
+                       invz[i];
+                Y[i] = (p.ay[0] * sin(p.by[0] * z[i] + p.fy[0]) + p.ay2 * sinz[i] - offy[0]) *
+                       invz[i];
+                W[i] = (p.aw[0] * sin(p.bw[0] * z[i] + p.fw[0]) + p.aw2 * sinz[i] - offw[0]) *
+                       invz[i];
             } else {
-                X[i] = (p.ax * sin(p.bx * z[i]) + p.ax2 * sinz[i]) * invz[i];
-                Y[i] = (p.ay * sin(p.by * z[i]) + p.ay2 * sinz[i]) * invz[i];
-                W[i] = (p.aw * sin(p.bw * z[i]) + p.aw2 * sinz[i]) * invz[i];
+                X[i] = (p.ax[0] * sin(p.bx[0] * z[i]) + p.ax2 * sinz[i]) * invz[i];
+                Y[i] = (p.ay[0] * sin(p.by[0] * z[i]) + p.ay2 * sinz[i]) * invz[i];
+                W[i] = (p.aw[0] * sin(p.bw[0] * z[i]) + p.aw2 * sinz[i]) * invz[i];
             }
             if (torus) {
                 X[i] = torus_wrap(X[i]);
@@ -868,7 +1102,11 @@ int main(int argc, char** argv) {
     // host recheck. Each round copies back a fixed pinned prefix of copyCap
     // survivors without waiting for the count; the (rare, early-run) overflow
     // past copyCap is fetched afterwards on a second stream.
-    const int survCap = 1 << 20;
+    // Path grew to kMaxWiggle arrays (--terms), so the survivor cap is kept at
+    // 2^18 (~176 MB per buffer) rather than the historical 2^20: survivor
+    // counts are bounded by the batch, which only grows once the acceptance
+    // rate is far below cap/batch, so the cap is never reached in practice.
+    const int survCap = 1 << 18;
     const int copyCap = 1 << 13;
     cudaStream_t st, stCopy;
     CK(cudaStreamCreate(&st));
@@ -1100,13 +1338,13 @@ int main(int argc, char** argv) {
         int threads = 256, blocks = (int)((batch + threads - 1) / threads);
         if (sparse)
             test_kernel_sparse<<<blocks, threads, 0, st>>>(
-                seed, round, (int)batch, modmax, smart, angle, euclid, torus, phase, T, dSinbT,
-                dCosbm1T, dSinzF, dInvzF, (float)cell, (float)cellTight, (float)edgeLoose, gw,
-                off, gw2, dKeys, dKeyStart, dCellOff, dPtsXf, dPtsYf, dPtsWf, dorder, dSurv[b],
-                dSurvCount[b], survCap);
+                seed, round, (int)batch, modmax, smart, angle, euclid, torus, phase, nw, T,
+                dSinbT, dCosbm1T, dSinzF, dInvzF, (float)cell, (float)cellTight,
+                (float)edgeLoose, gw, off, gw2, dKeys, dKeyStart, dCellOff, dPtsXf, dPtsYf,
+                dPtsWf, dorder, dSurv[b], dSurvCount[b], survCap);
         else
             test_kernel<<<blocks, threads, 0, st>>>(
-                seed, round, (int)batch, modmax, smart, angle, euclid, torus, phase, T, dz,
+                seed, round, (int)batch, modmax, smart, angle, euclid, torus, phase, nw, T, dz,
                 dsinz, dinvz, cell, gw, off, gw2, gw3, dCellStart, dPtsX, dPtsY, dPtsW, dorder,
                 dSurv[b], dSurvCount[b], survCap);
         CK(cudaMemcpyAsync(hCount[b], dSurvCount[b], 4, cudaMemcpyDeviceToHost, st));
@@ -1258,11 +1496,34 @@ int main(int argc, char** argv) {
         // Per-worldline parameters of the final packing, so the full phase space
         // can be reconstructed analytically at any z (e.g. the turnaround z=pi/2).
         // Phase columns are always present (zero when --phase is off).
+        // --terms 2 keeps the legacy column layout so existing dump readers are
+        // untouched; the multi-term layout leads with the sin1 amplitudes and
+        // then one ax_j,bx_j,fx_j,ay_j,by_j,fy_j,aw_j,bw_j,fw_j group per
+        // wiggle term (the 2+1 layout extended with the w axis).
         FILE* f = fopen(paramPath, "w");
-        fprintf(f, "ax,ay,aw,bx,by,bw,ax2,ay2,aw2,fx,fy,fw\n");
-        for (auto& p : acceptedPaths)
-            fprintf(f, "%.10g,%.10g,%.10g,%.0f,%.0f,%.0f,%.10g,%.10g,%.10g,%.10g,%.10g,%.10g\n",
-                    p.ax, p.ay, p.aw, p.bx, p.by, p.bw, p.ax2, p.ay2, p.aw2, p.fx, p.fy, p.fw);
+        if (nw == 1) {
+            fprintf(f, "ax,ay,aw,bx,by,bw,ax2,ay2,aw2,fx,fy,fw\n");
+            for (auto& p : acceptedPaths)
+                fprintf(f,
+                        "%.10g,%.10g,%.10g,%.0f,%.0f,%.0f,%.10g,%.10g,%.10g,%.10g,%.10g,"
+                        "%.10g\n",
+                        p.ax[0], p.ay[0], p.aw[0], p.bx[0], p.by[0], p.bw[0], p.ax2, p.ay2,
+                        p.aw2, p.fx[0], p.fy[0], p.fw[0]);
+        } else {
+            fprintf(f, "ax2,ay2,aw2");
+            for (int j = 1; j <= nw; j++)
+                fprintf(f, ",ax_%d,bx_%d,fx_%d,ay_%d,by_%d,fy_%d,aw_%d,bw_%d,fw_%d", j, j, j, j,
+                        j, j, j, j, j);
+            fprintf(f, "\n");
+            for (auto& p : acceptedPaths) {
+                fprintf(f, "%.10g,%.10g,%.10g", p.ax2, p.ay2, p.aw2);
+                for (int j = 0; j < nw; j++)
+                    fprintf(f, ",%.10g,%.0f,%.10g,%.10g,%.0f,%.10g,%.10g,%.0f,%.10g", p.ax[j],
+                            p.bx[j], p.fx[j], p.ay[j], p.by[j], p.fy[j], p.aw[j], p.bw[j],
+                            p.fw[j]);
+                fprintf(f, "\n");
+            }
+        }
         fclose(f);
         fprintf(stderr, "dump-params: wrote %zu worldlines to %s\n", acceptedPaths.size(),
                 paramPath);
@@ -1305,7 +1566,7 @@ int main(int argc, char** argv) {
         rng_seed(pr, seed ^ 0xABCDEF1234567890ULL);
         std::vector<double> X(T), Y(T), W(T);
         for (long long t = 0; t < probeN; t++) {
-            Path p = propose(pr, modmax, smart, angle, torus, phase);
+            Path p = propose(pr, modmax, smart, angle, torus, phase, nw);
             eval_path(p, X.data(), Y.data(), W.data());
             int b = bin_of(p.ax2);  // bin by the X-centre of the proposal
             prop[b]++;

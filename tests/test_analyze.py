@@ -13,6 +13,7 @@ def _result(t: int, seed: int, n: int) -> RunResult:
         t=t,
         seed=seed,
         accept_rate=1e-7,
+        terms=2,
         status="done",
         n_final=n,
         attempts=1_000_000,

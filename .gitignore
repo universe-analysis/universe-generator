@@ -24,3 +24,4 @@ __pycache__/
 # Private / local infrastructure notes (never publish)
 CLAUDE.local.md
 *.local.md
+/archive/

@@ -76,7 +76,10 @@ Predefined campaigns (`braidlab/campaigns.py`): `corrdim3d` / `corrdim2d`
 (the dimension studies), `corrdim3d_e6` (cutoff check), `corrdim3d_euclid`
 (sphere-collision variant), `torus3d` / `torus2d` (+ `_e6` cutoff variants) for
 the torus model, `torus3d_phase_e6` / `torus2d_phase_e6` (torus + the phase
-schema, engine flag `--phase`), plus the older `3plus1` / `2plus1`.
+schema, engine flag `--phase`), `freq3d_e6` / `freq2d_e6` (the FREQ campaign:
+term-count sweep, engine flag `--terms`, terms ∈ {2,3,4,6,10} on torus+phase)
+with `freqdecay{3,2}d_e{6,7,8}` companions (2 T × terms {2,10} per cutoff, for
+the approach power law), plus the older `3plus1` / `2plus1`.
 
 ### Discord notifications
 

@@ -52,6 +52,57 @@ def test_load_turnaround_cloud_shape(tmp_path: Path) -> None:
     assert cloud.shape == (200, 3)
 
 
+def test_load_turnaround_cloud_multiterm(tmp_path: Path) -> None:
+    """Multi-term (--terms) dumps reconstruct the same cloud as legacy ones.
+
+    A two-term dump whose second term has zero amplitude carries exactly the
+    same worldlines as the equivalent single-wiggle dump, so the clouds must
+    match element-for-element.
+    """
+    rng = np.random.default_rng(3)
+    legacy = tmp_path / "legacy.csv"
+    multi = tmp_path / "multi.csv"
+    n = 100
+    a2 = rng.uniform(-1, 1, (n, 3))
+    a1 = rng.uniform(-0.05, 0.05, (n, 3))
+    f1 = rng.uniform(0, np.pi, (n, 3))
+    with open(legacy, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(
+            ["ax", "ay", "aw", "bx", "by", "bw", "ax2", "ay2", "aw2", "fx", "fy", "fw"]
+        )
+        for i in range(n):
+            w.writerow([*a1[i], 4, 6, 8, *a2[i], *f1[i]])
+    with open(multi, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(
+            ["ax2", "ay2", "aw2"]
+            + ["ax_1", "bx_1", "fx_1", "ay_1", "by_1", "fy_1", "aw_1", "bw_1", "fw_1"]
+            + ["ax_2", "bx_2", "fx_2", "ay_2", "by_2", "fy_2", "aw_2", "bw_2", "fw_2"]
+        )
+        for i in range(n):
+            w.writerow(
+                [*a2[i]]
+                + [a1[i][0], 4, f1[i][0], a1[i][1], 6, f1[i][1], a1[i][2], 8, f1[i][2]]
+                + [0.0, 5, 0.0, 0.0, 7, 0.0, 0.0, 9, 0.0]
+            )
+    cloud_legacy = corrdim.load_turnaround_cloud(legacy)
+    cloud_multi = corrdim.load_turnaround_cloud(multi)
+    assert cloud_multi.shape == (n, 3)
+    np.testing.assert_allclose(cloud_multi, cloud_legacy, rtol=1e-12)
+
+
+def test_load_turnaround_cloud_multiterm_infers_2d(tmp_path: Path) -> None:
+    p = tmp_path / "m2.csv"
+    with open(p, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["ax2", "ay2", "ax_1", "bx_1", "fx_1", "ay_1", "by_1", "fy_1"])
+        for i in range(50):
+            w.writerow([0.1 * (i % 10) - 0.5, 0.05, 0.01, 4, 0.3, 0.01, 5, 0.0])
+    cloud = corrdim.load_turnaround_cloud(p)
+    assert cloud.shape == (50, 2)  # no aw_1 column -> 2+1
+
+
 def test_load_turnaround_cloud_infers_2d(tmp_path: Path) -> None:
     p = tmp_path / "d2.csv"
     _write_dump_2d(p, 150, seed=1)

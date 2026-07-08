@@ -51,10 +51,12 @@ def load_turnaround_cloud(path: str | Path, wrap: bool = False) -> np.ndarray:
 
     Dimension is inferred from the columns: a 3+1 dump carries the third (w)
     axis, a 2+1 dump does not. At the turnaround sin(z)=1, so the comoving
-    position is X = a*sin(b*pi/2 + f) + a2 - a*sin(f) on each axis, where f is
-    the wiggle-term phase (a phase-schema dump; 0 -- and absent from pre-phase
-    dumps -- otherwise). ``wrap`` applies the torus wrap onto [-1, 1) (required
-    for torus-model dumps).
+    position is X = sum_j a_j*(sin(b_j*pi/2 + f_j) - sin(f_j)) + a2 on each
+    axis, where f_j is a wiggle-term phase (a phase-schema dump; 0 -- and
+    absent from pre-phase dumps -- otherwise). Handles both the legacy
+    single-wiggle layout (ax, bx, ax2, fx) and the multi-term ``--terms``
+    layout (ax2 plus ax_1, bx_1, fx_1, ax_2, ...). ``wrap`` applies the torus
+    wrap onto [-1, 1) (required for torus-model dumps).
     """
     rows = list(csv.DictReader(open(path)))
     fields = set(rows[0].keys()) if rows else set()
@@ -68,13 +70,26 @@ def load_turnaround_cloud(path: str | Path, wrap: bool = False) -> np.ndarray:
             return col(k)
         return np.zeros(len(rows))
 
-    quads = [("ax", "bx", "ax2", "fx"), ("ay", "by", "ay2", "fy")]
-    if "aw" in fields:  # 3+1 dump
-        quads.append(("aw", "bw", "aw2", "fw"))
-    axes = []
-    for a, b, a2, f in quads:
+    def wiggle(a: str, b: str, f: str) -> np.ndarray:
         av, fv = col(a), phase_col(f)
-        axes.append(av * np.sin(col(b) * half_pi + fv) + col(a2) - av * np.sin(fv))
+        return av * np.sin(col(b) * half_pi + fv) - av * np.sin(fv)
+
+    axes = []
+    if "ax_1" in fields:  # multi-term (--terms) layout
+        axis_names = ("x", "y", "w") if "aw_1" in fields else ("x", "y")
+        for n in axis_names:
+            total = col(f"a{n}2")
+            j = 1
+            while f"a{n}_{j}" in fields:
+                total = total + wiggle(f"a{n}_{j}", f"b{n}_{j}", f"f{n}_{j}")
+                j += 1
+            axes.append(total)
+    else:  # legacy single-wiggle layout
+        quads = [("ax", "bx", "ax2", "fx"), ("ay", "by", "ay2", "fy")]
+        if "aw" in fields:  # 3+1 dump
+            quads.append(("aw", "bw", "aw2", "fw"))
+        for a, b, a2, f in quads:
+            axes.append(wiggle(a, b, f) + col(a2))
     cloud = np.column_stack(axes)
     return wrap_unit(cloud) if wrap else cloud
 

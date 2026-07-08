@@ -58,15 +58,18 @@ class Job:
     #: Sparse collision grid (--sparse, 3+1 engine): sorted-key lookup +
     #: float32 points; VRAM ~ N*T instead of ~T^4, for T beyond the dense cap.
     sparse: bool = False
+    #: Sinusoid terms per axis incl. sin1 (--terms). 2 = the legacy
+    #: single-wiggle model (flag omitted, RNG stream bit-identical).
+    terms: int = 2
     #: Free-form variant tag (e.g. "e6" for a different cutoff). Not part of the
     #: key; appended to the name so variant runs do not collide in the shared
     #: remote workspace.
     tag: str = ""
 
     @property
-    def key(self) -> tuple[int, str, int, int, float]:
+    def key(self) -> tuple[int, str, int, int, float, int]:
         """Stable identity used as the store's unique key."""
-        return (self.dim, self.band, self.t, self.seed, self.accept_rate)
+        return (self.dim, self.band, self.t, self.seed, self.accept_rate, self.terms)
 
     @property
     def name(self) -> str:
@@ -86,6 +89,8 @@ class Job:
             base += "_ph"
         if self.sparse:
             base += "_sp"
+        if self.terms != 2:
+            base += f"_tm{self.terms}"
         if self.tag:
             base += f"_{self.tag}"
         return base
@@ -119,6 +124,8 @@ class Campaign:
     phase: bool = False
     #: Use the sparse collision grid (3+1): VRAM ~ N*T, for T beyond dense cap.
     sparse: bool = False
+    #: Sinusoid term counts per axis to sweep (--terms; 2 = legacy model).
+    terms_values: tuple[int, ...] = (2,)
     #: Variant tag appended to job names (e.g. "e6" for a different cutoff).
     tag: str = ""
 
@@ -129,9 +136,11 @@ class Campaign:
             raise ValueError(f"band must be one of {BANDS}, got {self.band!r}")
         if self.accept_rate <= 0:
             raise ValueError("accept_rate must be > 0")
+        if any(k < 2 for k in self.terms_values):
+            raise ValueError(f"terms_values must all be >= 2, got {self.terms_values}")
 
     def jobs(self) -> list[Job]:
-        """Expand into the flat list of runs (T x seed)."""
+        """Expand into the flat list of runs (T x seed x terms)."""
         return [
             Job(
                 dim=self.dim,
@@ -145,8 +154,10 @@ class Campaign:
                 torus=self.torus,
                 phase=self.phase,
                 sparse=self.sparse,
+                terms=k,
                 tag=self.tag,
             )
             for t in self.t_values
             for s in self.seeds
+            for k in self.terms_values
         ]

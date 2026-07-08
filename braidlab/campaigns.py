@@ -31,6 +31,47 @@ CORRDIM_T = tuple(range(20, 201, 10))  # 20, 30, ..., 200
 CORRDIM2D_SEEDS = tuple(range(1, 9))  # 8 seeds
 CORRDIM2D_T = tuple(range(40, 401, 20))  # 40, 60, ..., 400
 
+#: FREQ campaign (terms sweep on the torus+phase model). Five term counts
+#: (2 = legacy single wiggle, up to 10), a coarser T grid than the corrdim
+#: ladders (5 term counts multiply the job count), and the 1e-6 cutoff so the
+#: terms=2 arm lines up with torus3d_phase_e6 / torus2d_phase_e6 for a direct
+#: cross-check. Term count is capped by the frequency pool (terms-1 unique
+#: frequencies per axis); the smallest T here has pool T-1 = 19 >> 9, so every
+#: cell is valid. 3+1 stops at T=160: two-3080 fleet, and the multi-term jam
+#: count runs higher than legacy so T=200's dense grid + points is too tight.
+FREQ_TERMS = (2, 3, 4, 6, 10)
+FREQ_SEEDS = tuple(range(1, 6))  # 5 seeds
+FREQ3D_T = tuple(range(20, 161, 20))  # 20, 40, ..., 160
+FREQ2D_T = tuple(range(40, 401, 40))  # 40, 80, ..., 400
+
+#: FREQ decay study: two T values x terms {2, 10} at cutoffs 1e-6/1e-7/1e-8,
+#: for the approach-to-jamming power law with recent data. One campaign per
+#: cutoff (a Campaign carries a single accept_rate); distinct tags keep the
+#: three variants apart in the shared remote workspace.
+FREQDECAY_SEEDS = (1, 2, 3)
+FREQDECAY3D_T = (80, 160)
+FREQDECAY2D_T = (120, 320)
+FREQDECAY_TERMS = (2, 10)
+
+
+def _freq_decay(dim: int, rate: float, tag: str) -> Campaign:
+    """One cutoff arm of the FREQ decay study."""
+    return Campaign(
+        name=f"freqdecay{dim}d_{tag}",
+        dim=dim,
+        band="nyq",
+        t_values=FREQDECAY3D_T if dim == 3 else FREQDECAY2D_T,
+        seeds=FREQDECAY_SEEDS,
+        accept_rate=rate,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        torus=True,
+        phase=True,
+        terms_values=FREQDECAY_TERMS,
+        tag=f"fqd{tag}",
+    )
+
+
 CAMPAIGNS: dict[str, Campaign] = {
     "2plus1": Campaign(
         name="2plus1",
@@ -184,6 +225,42 @@ CAMPAIGNS: dict[str, Campaign] = {
         dump=True,
         torus=True,
     ),
+    # FREQ campaign: term-count sweep on the torus+phase model (see the
+    # FREQ_* constants above for the design rationale).
+    "freq3d_e6": Campaign(
+        name="freq3d_e6",
+        dim=3,
+        band="nyq",
+        t_values=FREQ3D_T,
+        seeds=FREQ_SEEDS,
+        accept_rate=1e-6,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        torus=True,
+        phase=True,
+        terms_values=FREQ_TERMS,
+        tag="fqe6",
+    ),
+    "freq2d_e6": Campaign(
+        name="freq2d_e6",
+        dim=2,
+        band="nyq",
+        t_values=FREQ2D_T,
+        seeds=FREQ_SEEDS,
+        accept_rate=1e-6,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        torus=True,
+        phase=True,
+        terms_values=FREQ_TERMS,
+        tag="fqe6",
+    ),
+    "freqdecay3d_e6": _freq_decay(3, 1e-6, "e6"),
+    "freqdecay3d_e7": _freq_decay(3, 1e-7, "e7"),
+    "freqdecay3d_e8": _freq_decay(3, 1e-8, "e8"),
+    "freqdecay2d_e6": _freq_decay(2, 1e-6, "e6"),
+    "freqdecay2d_e7": _freq_decay(2, 1e-7, "e7"),
+    "freqdecay2d_e8": _freq_decay(2, 1e-8, "e8"),
     # Deep 2+1 box-counting vs correlation-dimension study (no edge sampler).
     "corrdim2d": Campaign(
         name="corrdim2d",
