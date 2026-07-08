@@ -231,17 +231,20 @@ class Fleet:
         tmp.write_text(script)
         self._scp_to(host, tmp, f"{rdir}/run_braidlab.sh")
         tmp.unlink()
-        # setsid detaches the runner into its own session, so it survives the ssh
-        # disconnect. The ssh channel often lingers anyway (the server waits on
-        # the session), so use a short timeout and treat the timeout as success
-        # -- the runner is already detached and running. GPU tokens launch by
-        # path, so each runner's cmdline carries its workspace and the liveness
-        # check can tell same-box runners apart.
+        # Double-fork daemonization: the subshell backgrounds the setsid runner
+        # and exits immediately, reparenting the runner to PID 1 before the ssh
+        # session can be torn down. Plain `setsid ... &` left the runner a child
+        # of the remote shell for an instant, and some sshds (Vast.ai's wrapper)
+        # reap the whole session tree when the client disconnects -- which is
+        # exactly what happens when the short timeout kills our ssh. The sleep
+        # gives the reparent a beat to complete; timeout is still treated as
+        # success. GPU tokens launch by path, so each runner's cmdline carries
+        # its workspace and the liveness check can tell same-box runners apart.
         try:
             self._ssh(
                 host,
-                f"cd {rdir} && setsid bash {rdir}/run_braidlab.sh "
-                ">/dev/null 2>&1 </dev/null & echo started",
+                f"cd {rdir} && (setsid bash {rdir}/run_braidlab.sh "
+                ">/dev/null 2>&1 </dev/null &); sleep 1; echo started",
                 timeout=15,
             )
         except subprocess.TimeoutExpired:
