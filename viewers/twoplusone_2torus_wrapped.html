@@ -71,6 +71,7 @@
         <label>Time-steps <input type="number" id="timeInput" value="180" min="2"></label>
         <label title="Sinusoid terms per axis, incl. the sin1 term (2 = legacy model)">Freq terms <input type="number" id="termsInput" value="3" min="2"></label>
         <label>Gen time <input type="range" id="genTimeRange" min="1" max="120" step="1" value="10"><span id="genTimeVal" style="width:32px;display:inline-block;color:#9fb0d0">10s</span></label>
+        <label title="Second phase: pack subpaths into the jammed unique groups (0 = off)">Sub time <input type="range" id="subTimeRange" min="0" max="120" step="1" value="10"><span id="subTimeVal" style="width:32px;display:inline-block;color:#9fb0d0">10s</span></label>
         <button id="generateBtn">Generate</button>
         <button id="abortBtn">Abort</button>
         <input type="file" id="importInput" accept=".csv,text/csv" hidden>
@@ -87,6 +88,9 @@
             <summary>Generation</summary>
             <div class="choices">
                 <label><input type="checkbox" id="smartFreqChk"> Smart frequencies (coprime, packs denser)</label>
+            </div>
+            <div class="row" title="Stop the unique phase at this many paths (0 = run to time/jam)">
+                <span>Max uniques</span><input type="number" id="maxUniquesInput" value="0" min="0">
             </div>
         </details>
         <details>
@@ -122,6 +126,7 @@
                 <label><input type="radio" name="paintMode" value="mono"> Mono</label>
                 <label><input type="radio" name="paintMode" value="freq"> Frequency (bx+by) — red low, blue high</label>
                 <label><input type="radio" name="paintMode" value="pec" checked> Peculiar speed (local)</label>
+                <label><input type="radio" name="paintMode" value="group"> Group ID — subpath families</label>
                 <span class="group-name">Speed normalisation</span>
                 <label><input type="radio" name="normMode" value="per" checked> Per-particle</label>
                 <label><input type="radio" name="normMode" value="global"> Global</label>
@@ -191,20 +196,37 @@
        shows wrap(comoving)·sin(z), so seam-crossing points visibly
        jump in the raw projection (points, not lines — no streaks).
        Only the comoving surface map is exactly seamless.
+
+       SUBPATHS (second phase, "Sub time" > 0): after the unique phase
+       stops (time budget, jam, or Max uniques), candidates keep being
+       generated the same way but the acceptance rule flips: a candidate
+       that touches one or more existing paths ALL sharing one group ID
+       joins that group (self-intersection within a group is allowed);
+       touching two different groups rejects, and touching nothing
+       rejects — so subpaths never add unique counts. Accepted subpaths
+       enter the collision hash with their adopted group ID and can seed
+       further subpaths. Two jam signals are tracked: acceptance decay
+       (500 consecutive failed candidates, as in phase 1) and NEW-VOLUME
+       decay (occupied (t,cx,cy) cells of the collision hash stop
+       growing — "free space filled" approaches its asymptote).
     ================================================================ */
     const timeInput    = document.getElementById('timeInput');
     const termsInput   = document.getElementById('termsInput');
     const genTimeRange = document.getElementById('genTimeRange');
+    const subTimeRange = document.getElementById('subTimeRange');
     const statusEl     = document.getElementById('status');
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v13';
+    const VIEWER_VERSION = 'v14';
 
     let functions = [];
     let Z_cache = [];
     let time_steps, modulation_Max, freqTerms = 3, groupIDcount = 0, abort_gen = false;
     let genBudgetMs = 10000, genStart = 0, consecFails = 0, lastLiveUpload = 0;
+    // subpath phase state (see the SUBPATHS note above)
+    let genPhase = 'unique', genSubBudgetMs = 10000, subStart = 0, maxUniques = 0;
+    let subCount = 0, subSaturated = false, subReason = '', consecZeroVol = 0;
     // Generation epoch: every Generate (or Import) bumps this, and any
     // make_groups round or finalize callback from an older epoch bails out.
     // Without it, an import mid-generation would still get its status line and
@@ -224,6 +246,10 @@
     // Domain is periodic [-1,1): width 2 with CELL = 2/T gives exactly
     // NCELL = time_steps cells per axis; neighbour lookups wrap mod NCELL.
     let CELL = 1, NCELL = 1, gridByT = [], saturated = false;
+    // occupied-volume tracker: an occupied cell is one (timestep, cx, cy)
+    // bucket of the collision hash holding ≥1 path point — the discrete
+    // "space filled" measure the subpath phase watches for its asymptote
+    let fillCells = 0, totalCells = 1;
     function cellKey(cx, cy){ return cx * NCELL + cy; }   // injective: indices pre-wrapped ≥ 0
     const wrapCell = c => ((c % NCELL) + NCELL) % NCELL;  // double-mod: JS % is signed
     // wrapCell also guards the float edge where (v+1)/CELL rounds up to NCELL at v→1
@@ -233,7 +259,9 @@
     function resetGrid(){
         CELL = 2 / time_steps; NCELL = time_steps;
         gridByT = Array.from({ length: Z_cache.length }, () => new Map());
+        fillCells = 0; totalCells = Z_cache.length * NCELL * NCELL;
     }
+    function fillPct(){ return 100 * fillCells / totalCells; }
     // Worldline evaluation, shared by packing, HUD and colouring: the sin1
     // term plus every wiggle term, each re-pinned to zero at the endpoints by
     // its own a·sin(f) offset. Returns UNWRAPPED comoving coords.
@@ -276,7 +304,7 @@
             for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
                 const arr = m.get(cellKey(wrapCell(cx + dx), wrapCell(cy + dy)));
                 if (!arr) continue;
-                for (let j = 0; j < arr.length; j += 2) {
+                for (let j = 0; j < arr.length; j += 3) {
                     // minimum-image: coords are pre-wrapped, so one ±2 correction is exact
                     let dX = Xi - arr[j];   if (dX > 1) dX -= 2; else if (dX < -1) dX += 2;
                     let dY = Yi - arr[j+1]; if (dY > 1) dY -= 2; else if (dY < -1) dY += 2;
@@ -286,14 +314,45 @@
         }
         return false;
     }
-    function insertTraj(traj) {
+    // Subpath acceptance test: same geometry as collides(), opposite rule.
+    // Scans EVERY contact (no early exit on the first hit): returns the group
+    // ID the candidate joins if all touched paths share one group, or -1 if
+    // it touches two different groups OR touches nothing at all.
+    function subGroupOf(traj) {
         const n = Z_cache.length;
+        let gid = -1;
+        for (let i = 0; i < n; i++) {
+            const Xi = traj.X[i], Yi = traj.Y[i], m = gridByT[i];
+            const cx = cellOf(Xi), cy = cellOf(Yi);
+            for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+                const arr = m.get(cellKey(wrapCell(cx + dx), wrapCell(cy + dy)));
+                if (!arr) continue;
+                for (let j = 0; j < arr.length; j += 3) {
+                    let dX = Xi - arr[j];   if (dX > 1) dX -= 2; else if (dX < -1) dX += 2;
+                    let dY = Yi - arr[j+1]; if (dY > 1) dY -= 2; else if (dY < -1) dY += 2;
+                    if (Math.abs(dX) <= CELL && Math.abs(dY) <= CELL) {
+                        const g = arr[j+2];
+                        if (gid < 0) gid = g;
+                        else if (g !== gid) return -1;   // spans two groups
+                    }
+                }
+            }
+        }
+        return gid;                                      // -1 when it touched nothing
+    }
+    // Insert a trajectory tagged with its group ID; returns how many collision
+    // cells it occupied that were previously empty (its NEW volume).
+    function insertTraj(traj, gid) {
+        const n = Z_cache.length;
+        let newCells = 0;
         for (let i = 0; i < n; i++) {
             const Xi = traj.X[i], Yi = traj.Y[i], m = gridByT[i];
             const k = cellKey(cellOf(Xi), cellOf(Yi));
-            let arr = m.get(k); if (!arr) { arr = []; m.set(k, arr); }
-            arr.push(Xi, Yi);
+            let arr = m.get(k); if (!arr) { arr = []; m.set(k, arr); newCells++; }
+            arr.push(Xi, Yi, gid);
         }
+        fillCells += newCells;
+        return newCells;
     }
 
     // ---- frequency selection (Smart = high-frequency bias → ~40% denser packing;
@@ -343,27 +402,53 @@
         }));
     }
 
-    function generateFunction() {
+    // One candidate path (parameters only — no collision test yet). Uniques
+    // and subpaths draw from exactly the same model.
+    function makeCandidate() {
         const NW = freqTerms - 1;                             // wiggle terms per axis
+        let fqx, fqy;
+        if (NW === 1 && smartFreq){                           // legacy coprime pair rule
+            let guard = 0;
+            do { fqx = drawUniqueFreqs(1); fqy = drawUniqueFreqs(1); }
+            while (gcd(fqx[0], fqy[0]) !== 1 && ++guard < 24);
+        } else {
+            fqx = drawUniqueFreqs(NW); fqy = drawUniqueFreqs(NW);
+        }
+        const tx = makeAxisTerms(fqx), ty = makeAxisTerms(fqy);
+        const terms = tx.map((t, j) => ({ ax: t.a, bx: t.b, fx: t.f,
+                                          ay: ty[j].a, by: ty[j].b, fy: ty[j].f }));
+        return { ax2: Math.random()*2 - 1,                    // sin(1·z) amp: free draw in [-1,1]
+                 ay2: Math.random()*2 - 1,
+                 terms, fsum: freqSum(terms) };
+    }
+
+    function generateFunction() {
         for (let attempt = 0; attempt < maxAttemptsPerFunction; attempt++) {
-            let fqx, fqy;
-            if (NW === 1 && smartFreq){                       // legacy coprime pair rule
-                let guard = 0;
-                do { fqx = drawUniqueFreqs(1); fqy = drawUniqueFreqs(1); }
-                while (gcd(fqx[0], fqy[0]) !== 1 && ++guard < 24);
-            } else {
-                fqx = drawUniqueFreqs(NW); fqy = drawUniqueFreqs(NW);
-            }
-            const tx = makeAxisTerms(fqx), ty = makeAxisTerms(fqy);
-            const terms = tx.map((t, j) => ({ ax: t.a, bx: t.b, fx: t.f,
-                                              ay: ty[j].a, by: ty[j].b, fy: ty[j].f }));
-            const f = { ax2: Math.random()*2 - 1,             // sin(1·z) amp: free draw in [-1,1]
-                        ay2: Math.random()*2 - 1,
-                        terms, fsum: freqSum(terms) };
+            const f = makeCandidate();
             const traj = comovingTraj(f);
             if (!collides(traj)) {
-                insertTraj(traj);
-                f.pecMin = traj.pecMin; f.pecMax = traj.pecMax; f.groupID = groupIDcount;
+                insertTraj(traj, groupIDcount);
+                f.pecMin = traj.pecMin; f.pecMax = traj.pecMax;
+                f.groupID = groupIDcount; f.isSub = false;
+                return f;
+            }
+        }
+        return null;
+    }
+
+    // Subpath variant: accepted only by ADOPTION — it must touch exactly one
+    // existing group (see subGroupOf). newCells records how much previously
+    // free volume it claimed (0 = it hides entirely inside already-filled
+    // space, the signature of the volume jam).
+    function generateSubFunction() {
+        for (let attempt = 0; attempt < maxAttemptsPerFunction; attempt++) {
+            const f = makeCandidate();
+            const traj = comovingTraj(f);
+            const gid = subGroupOf(traj);
+            if (gid >= 0) {
+                f.newCells = insertTraj(traj, gid);
+                f.pecMin = traj.pecMin; f.pecMax = traj.pecMax;
+                f.groupID = gid; f.isSub = true;
                 return f;
             }
         }
@@ -383,31 +468,67 @@
         return sx / (wx || 1) + sy / (wy || 1);
     }
 
-    // Generation runs against a wall-clock budget (the "Gen time" slider) rather
-    // than a target count: paths accumulate until time runs out, the space
-    // saturates (500 consecutive collision failures), or Abort is pressed.
-    // Partial results are uploaded to the GPU every ~0.8 s so the torus fills
-    // in live while packing continues.
+    // Generation runs against wall-clock budgets rather than target counts.
+    // Phase 1 (uniques): paths accumulate until Gen time runs out, the space
+    // saturates (500 consecutive collision failures), Max uniques is reached,
+    // or Abort is pressed. Phase 2 (subpaths, when Sub time > 0): same
+    // candidates, adoption rule (see SUBPATHS above), until Sub time runs out
+    // or a jam signal fires — 500 consecutive failed candidates ("sub jam"),
+    // or 200 consecutive accepted subpaths that claim zero new volume
+    // ("volume jam"). Partial results are uploaded to the GPU every ~0.8 s so
+    // the torus fills in live while packing continues.
+    function uniquePhaseOver() {
+        return saturated || performance.now() - genStart >= genBudgetMs ||
+               (maxUniques > 0 && groupIDcount >= maxUniques);
+    }
     function make_groups(epoch) {
         if (epoch !== genEpoch) return;                      // superseded by a newer Generate/Import
         const t0 = performance.now();
-        while (!abort_gen && !saturated && performance.now() - genStart < genBudgetMs) {
-            const nf = generateFunction();
-            if (nf) { functions.push(nf); groupIDcount++; consecFails = 0; }
-            else if (++consecFails > 500) saturated = true;
-            if (performance.now() - t0 > 12) break;          // yield to keep UI live
+        let finished = false;
+        while (!abort_gen && !finished && performance.now() - t0 <= 12) {   // 12 ms then yield
+            if (genPhase === 'unique') {
+                if (uniquePhaseOver()) {
+                    if (genSubBudgetMs > 0) {                // hand the jammed uniques to phase 2
+                        genPhase = 'sub'; consecFails = 0; subStart = performance.now();
+                    } else finished = true;
+                    continue;
+                }
+                const nf = generateFunction();
+                if (nf) { functions.push(nf); groupIDcount++; consecFails = 0; }
+                else if (++consecFails > 500) saturated = true;
+            } else {
+                if (subSaturated || performance.now() - subStart >= genSubBudgetMs) {
+                    finished = true;
+                    continue;
+                }
+                const nf = generateSubFunction();
+                if (nf) {
+                    functions.push(nf); subCount++; consecFails = 0;
+                    if (nf.newCells === 0) {
+                        if (++consecZeroVol > 200) { subSaturated = true; subReason = 'volume jam'; }
+                    } else consecZeroVol = 0;
+                } else if (++consecFails > 500) { subSaturated = true; subReason = 'sub jam'; }
+            }
         }
-        const done = abort_gen || saturated || performance.now() - genStart >= genBudgetMs;
+        const done = abort_gen || finished;
         if (!done) {
-            const secsLeft = Math.ceil((genBudgetMs - (performance.now() - genStart)) / 1000);
-            statusEl.textContent = `Generating… ${functions.length} paths · ${secsLeft}s left`;
+            if (genPhase === 'unique') {
+                const secsLeft = Math.ceil((genBudgetMs - (performance.now() - genStart)) / 1000);
+                statusEl.textContent = `Generating… ${functions.length} paths · fill ${fillPct().toFixed(1)}% · ${secsLeft}s left`;
+            } else {
+                const secsLeft = Math.ceil((genSubBudgetMs - (performance.now() - subStart)) / 1000);
+                statusEl.textContent = `Subpaths… ${groupIDcount} uniques + ${subCount} subs · fill ${fillPct().toFixed(1)}% · ${secsLeft}s left`;
+            }
             if (performance.now() - lastLiveUpload > 800) {
                 lastLiveUpload = performance.now();
                 buildBuffers(); rebuildGPU(); hudDirty = true;
             }
             setTimeout(() => make_groups(epoch), 0);
         } else {
-            const note = saturated ? ' (space saturated)' : '';
+            const notes = [];
+            if (saturated) notes.push('space saturated');
+            if (subReason) notes.push(subReason);
+            const note = notes.length ? ` (${notes.join(', ')})` : '';
             statusEl.textContent = `Generated ${functions.length} paths${note} — uploading…`;
             setTimeout(() => {
                 if (epoch !== genEpoch) return;              // superseded while uploading
@@ -417,7 +538,8 @@
                 gridByT = [];
                 hudDirty = true;          // refresh the 2D slice even while paused
                 const cloudPts = functions.length * cloudSamples(Z_cache.length).count;
-                statusEl.textContent = `${functions.length} paths${note} · ${time_steps} steps · ${cloudPts.toLocaleString()} cloud points`;
+                const subTxt = subCount ? `${groupIDcount} uniques + ${subCount} subs` : `${functions.length} paths`;
+                statusEl.textContent = `${subTxt} · fill ${fillPct().toFixed(1)}%${note} · ${time_steps} steps · ${cloudPts.toLocaleString()} cloud points`;
             }, 0);
         }
     }
@@ -482,6 +604,8 @@
                     fy: hasPhase ? parseFloat(parts[idx.fy]) : 0
                 });
             }
+            row.gid = ('gid' in idx) ? parseInt(parts[idx.gid]) : null;
+            if (Number.isNaN(row.gid)) row.gid = null;
             const bad = Number.isNaN(row.ax2) || Number.isNaN(row.ay2) ||
                         row.terms.some(t => Object.values(t).some(v => Number.isNaN(v)));
             if (bad) { skipped++; continue; }
@@ -493,6 +617,8 @@
     function applyImportedDump(rows, skipped, nw, name) {
         genEpoch++; abort_gen = true;                 // kill any in-flight generation
         saturated = false; consecFails = 0; framePos = 0; groupIDcount = 0;
+        subCount = 0; subSaturated = false; subReason = ''; consecZeroVol = 0;
+        genPhase = 'unique';
         const tFile = tFromFilename(name);
         time_steps = tFile || parseInt(timeInput.value);
         if (tFile) timeInput.value = tFile;           // keep the UI honest
@@ -501,10 +627,19 @@
         bakeZValues();                                // no resetGrid(): the collision
         gridByT = [];                                 // hash is packing-only
         functions = [];
+        // gid column (subpath dumps): repeated gids are that group's subpaths;
+        // dumps without it are all-unique (gid = row index)
+        const seenGids = new Set();
+        let rowIdx = 0;
         for (const r of rows) {
             const f = { ax2: r.ax2, ay2: r.ay2, terms: r.terms, fsum: freqSum(r.terms) };
             const traj = comovingTraj(f);
-            f.pecMin = traj.pecMin; f.pecMax = traj.pecMax; f.groupID = groupIDcount++;
+            f.pecMin = traj.pecMin; f.pecMax = traj.pecMax;
+            f.groupID = (r.gid != null) ? r.gid : rowIdx;
+            f.isSub = seenGids.has(f.groupID);
+            if (f.isSub) subCount++; else groupIDcount++;
+            seenGids.add(f.groupID);
+            rowIdx++;
             functions.push(f);
         }
         // frequency paint spans the data actually loaded (buildBuffers scans
@@ -514,7 +649,8 @@
         const cloudPts = functions.length * cloudSamples(Z_cache.length).count;
         const tSrc = tFile ? 'T from filename' : 'T from Time-steps box';
         const skipNote = skipped ? ` · ${skipped} rows skipped` : '';
-        statusEl.textContent = `Imported ${functions.length} paths · ${time_steps} steps (${tSrc}) · `
+        const grpNote = subCount ? ` (${groupIDcount} groups + ${subCount} subs)` : '';
+        statusEl.textContent = `Imported ${functions.length} paths${grpNote} · ${time_steps} steps (${tSrc}) · `
                              + `${cloudPts.toLocaleString()} cloud points${skipNote} — ${name}`;
     }
     function importDumpFile(file) {
@@ -645,11 +781,16 @@
         attribute vec2 aSin1;        // ax2, ay2 — the sin(1·z) amplitudes
         attribute float aFsum;       // amplitude-weighted mean wiggle freq, x+y
         attribute vec2 aPec;         // per-particle comoving speed min, max
+        attribute float aGroup;      // unique-group ID (subpaths share their group's)
         attribute float aIndex;      // instance index 0..N-1 (term texture row + emitter highlight)
         uniform float uZ0, uStep, uT, uR, uS, uFreqMin, uFreqMax, uSize, uGMin, uGMax, uTime, uAngK, uConeMax, uOrthoScale, uOffX, uOffY;
         uniform int uGeoLocal, uMode, uLog, uPecGlobal, uSliceMode, uConeOn;
         varying vec3 vColor;
         ${comovGLSL(nw)}
+        vec3 hsv2rgb(float h, float s, float v){
+            vec3 p = abs(fract(h + vec3(0.0,2.0/3.0,1.0/3.0))*6.0 - 3.0);
+            return v * mix(vec3(1.0), clamp(p-1.0, 0.0, 1.0), s);
+        }
         // period-2 wrap to [-1,1); positions wrap, velocities never do.
         // Float noise near the seam can flip a point between -1 and ~+1, but with
         // uAngK = pi both embed to the same torus point, so it is invisible there.
@@ -695,6 +836,11 @@
                 t = clamp(t, 0.0, 1.0);
                 vColor = (t < 0.5) ? mix(vec3(1.0,0.10,0.04), vec3(1.0,0.96,0.90), t*2.0)
                                    : mix(vec3(1.0,0.96,0.90), vec3(0.10,0.35,1.0), t*2.0-1.0);
+            }
+            else if(uMode==3){
+                // one stable hue per unique group (golden-ratio spread), so a
+                // group and all its subpaths share a colour
+                vColor = hsv2rgb(fract(aGroup*0.61803399), 0.7, 1.0);
             }
             else {
                 float zN = (uSliceMode==1) ? z+uStep : (i < uT-1.0 ? z+uStep : z-uStep);
@@ -835,7 +981,7 @@
     buildMaterials(Math.max(1, freqTerms - 1));
 
     /* ---- instance param buffers + term texture (built once per Generate) ---- */
-    let instSin1=null, instFsum=null, instPec=null, termTex=null;
+    let instSin1=null, instFsum=null, instPec=null, instGroup=null, termTex=null;
     const maxRaw=1, maxComov=1;        // wrapped domain is exactly [-1,1] — extent is fixed
     // domain = exactly one period: a comoving wrap of 2 is 2π of tube angle,
     // the identical torus point, so the seam is exactly seamless on the surface
@@ -845,6 +991,7 @@
         const nw = N ? functions[0].terms.length : Math.max(1, freqTerms - 1);
         if (nw !== matNW) buildMaterials(nw);          // term count is a shader constant
         instSin1 = new Float32Array(N*2); instFsum = new Float32Array(N); instPec = new Float32Array(N*2);
+        instGroup = new Float32Array(N);
         const tpi = 2*nw;                              // texels per instance
         const texH = Math.max(1, Math.ceil(N*tpi / TERMTEX_W));
         const tdata = new Float32Array(TERMTEX_W*texH*4);
@@ -853,6 +1000,7 @@
             const f = functions[p];
             instSin1[p*2]=f.ax2; instSin1[p*2+1]=f.ay2;
             instFsum[p]=f.fsum;
+            instGroup[p]=f.groupID;
             for (let j=0;j<nw;j++){
                 const t = f.terms[j], base = (p*tpi + 2*j)*4;
                 tdata[base]=t.ax;   tdata[base+1]=t.ay; tdata[base+2]=t.bx; tdata[base+3]=t.by;
@@ -899,6 +1047,7 @@
         const sin1A = new THREE.InstancedBufferAttribute(instSin1,2);
         const fsumA = new THREE.InstancedBufferAttribute(instFsum,1);
         const pecA  = new THREE.InstancedBufferAttribute(instPec,2);
+        const grpA  = new THREE.InstancedBufferAttribute(instGroup,1);
         const idx = new Float32Array(N); for (let p=0;p<N;p++) idx[p]=p;
         const idxA = new THREE.InstancedBufferAttribute(idx,1);
 
@@ -908,14 +1057,14 @@
         const gc = new THREE.InstancedBufferGeometry();
         gc.setAttribute('position', new THREE.Float32BufferAttribute(baseC,3));
         gc.setAttribute('aSin1', sin1A); gc.setAttribute('aFsum', fsumA); gc.setAttribute('aPec', pecA);
-        gc.setAttribute('aIndex', idxA);
+        gc.setAttribute('aGroup', grpA); gc.setAttribute('aIndex', idxA);
         gc.instanceCount = N;
         cloud = new THREE.Points(gc, cloudMat); cloud.frustumCulled=false; cloud.visible=showCloud; scene.add(cloud);
 
         const gs = new THREE.InstancedBufferGeometry();  // sweep = one vertex (the present moment)
         gs.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(3),3));
         gs.setAttribute('aSin1', sin1A); gs.setAttribute('aFsum', fsumA); gs.setAttribute('aPec', pecA);
-        gs.setAttribute('aIndex', idxA);
+        gs.setAttribute('aGroup', grpA); gs.setAttribute('aIndex', idxA);
         gs.instanceCount = N;
         sweep = new THREE.Points(gs, sweepMat); sweep.frustumCulled=false; sweep.visible=showSweep; scene.add(sweep);
 
@@ -979,6 +1128,10 @@
         genEpoch++;                                   // invalidate older runs/imports
         abort_gen = false; saturated = false; groupIDcount = 0; framePos = 0;
         consecFails = 0;
+        genPhase = 'unique'; subCount = 0; subSaturated = false; subReason = '';
+        consecZeroVol = 0;
+        maxUniques = Math.max(0, parseInt(document.getElementById('maxUniquesInput').value) || 0);
+        genSubBudgetMs = parseFloat(subTimeRange.value) * 1000;
         time_steps = parseInt(timeInput.value);
         modulation_Max = Math.max(2, Math.floor(time_steps/2));
         // total sinusoid terms per axis, incl. sin1; the NW = freqTerms-1
@@ -1000,6 +1153,10 @@
     });
     genTimeRange.addEventListener('input', e=>{
         document.getElementById('genTimeVal').textContent = e.target.value + 's';
+    });
+    subTimeRange.addEventListener('input', e=>{
+        document.getElementById('subTimeVal').textContent =
+            e.target.value === '0' ? 'off' : e.target.value + 's';
     });
 
     /* ---- settings side panel: open/close + checkbox/radio helpers ---- */
@@ -1049,7 +1206,7 @@
     document.getElementById('driftYRange').addEventListener('input', e=>{ driftY = parseFloat(e.target.value); });
 
     /* coloring */
-    const paintOrder = ['mono','freq','pec'];
+    const paintOrder = ['mono','freq','pec','group'];
     let paintMode = 'pec';
     onRadio('paintMode', v=>{ paintMode = v; U.uMode.value = paintOrder.indexOf(v); hudDirty = true; });
     let pecGlobal = false;
@@ -1193,6 +1350,8 @@
             const span = Math.max(1, U.uFreqMax.value - U.uFreqMin.value);
             return hotCold(logColor ? Math.log(1+fsum)/Math.log(1+span) : fsum/span);
         }
+        if(paintMode==='group')
+            return hsv2rgb((((f.groupID*0.61803399)%1)+1)%1, 0.7, 1.0);
         if(!instPec) return [0.78,0.85,1.0];       // speed ranges not baked yet (mid-generation)
         const [cx, cy]   = comovXY(f, z);
         const [cxN, cyN] = comovXY(f, zN);
