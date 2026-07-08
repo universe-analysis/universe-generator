@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-07-08</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-07-08</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="freq3d-terms-exponent">
+      <h2>FREQ campaign, 3+1: the packing exponent rises with worldline term count</h2>
+      <p class="meta">
+        <code>freq3d_e6</code> campaign (torus+phase, nyq band, 1e-6 cutoff;
+        T = 20&ndash;160 step 20 &times; terms &isin; {2,3,4,6,10} &times; 5
+        seeds = 200 jobs) &middot; engine + campaign code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/69be0d9"><code>69be0d9</code></a>,
+        <a href="https://github.com/universe-analysis/universe-generator/commit/e24dab9"><code>e24dab9</code></a>
+        &middot; chart
+        <a href="https://github.com/universe-analysis/universe-generator/commit/4a6c3ef"><code>4a6c3ef</code></a>
+      </p>
+      <p>
+        First campaign of the term-count generalization: the 3+1 engine
+        learned <code>--terms K</code> (K&minus;1 unique integer wiggle
+        frequencies per axis, unit slope budget split uniformly on the
+        simplex so &Sigma;|a&middot;b| = 1 exactly, per-term even-frequency
+        phases &mdash; the viewer's model, ported verbatim; K = 2 is the
+        legacy single-wiggle model, bit-identical RNG stream). Same T grid,
+        seeds, and cutoff for every arm, so the term count is the only knob.
+      </p>
+      <figure class="plot">
+        <img src="freq3d_terms_exponent.png"
+             alt="Left: log-log N vs T for terms = 2,3,4,6,10, five clean parallel power laws fanning out with term count. Right: fitted packing exponent D vs term count rising monotonically from 2.294 at terms=2 to 2.394 at terms=10." />
+        <figcaption>
+          Left: seed-averaged N(T) per term count &mdash; five clean power
+          laws, fanning apart as T grows. Right: the fitted exponent climbs
+          monotonically with term count, 2.294 &rarr; 2.394.
+        </figcaption>
+      </figure>
+      <ul>
+        <li>D = 2.294(4), 2.319(1), 2.351(2), 2.368(1), 2.394(2) for
+            terms = 2, 3, 4, 6, 10 &mdash; a monotone rise, and the
+            power-law fits get <em>cleaner</em> with more terms
+            (slope-spread 0.052 &rarr; 0.017). At terms = 10,
+            D/d = 0.798 &asymp; 4/5.</li>
+        <li>The headline N ~ T<sup>2.33</sup> is therefore not a constant of
+            the model but a property of the two-term worldline space: richer
+            per-axis function spaces pack with a systematically higher
+            exponent.</li>
+        <li>The raw jam count is non-monotonic at fixed T (dip at terms = 3:
+            98k &rarr; 90k &rarr; 97k &rarr; 107k &rarr; 122k at T = 160)
+            while D rises monotonically &mdash; the dip is a prefactor
+            effect, visible in the left panel as the fan inverting at low T
+            (the legacy model packs <em>more</em> at T = 20).</li>
+        <li>Verification: every job ran 3&ndash;200&times; past the 3e7
+            acceptance window (attempts 1.0e8&ndash;7.1e9), 200/200 curves
+            and dumps collected, no failures.</li>
+      </ul>
+      <p>
+        The verification also caught a cross-era artifact worth recording:
+        the terms = 2 arm reproduces the archived
+        <code>torus3d_phase_e6</code> cells with N uniformly +4.4&ndash;5.6%
+        and ~2&times; the attempts. Cause: engines before the 07-06
+        pipelining rework pushed the <em>post-adaptation</em> batch into the
+        acceptance-stop window, overstating window attempts ~2&times;, so
+        pre-07-06 campaigns effectively stopped at ~2e-6 rather than the
+        requested 1e-6. The offset is T-independent &mdash; old exponents
+        stand, old N prefactors sit ~5% low. Today's data is the first to
+        honor the cutoff exactly.
+      </p>
+      <p>
+        Takeaway: the packing-number exponent has a function-space knob. The
+        2+1 sweep (<code>freq2d_e6</code>, running) tests whether the trend
+        is dictionary-robust; the corrdim pass over these dumps will test
+        whether the <em>spatial</em> dimension of the matter slices moves
+        with terms or stays pinned at 3.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
