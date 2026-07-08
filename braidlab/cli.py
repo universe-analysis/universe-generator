@@ -108,6 +108,34 @@ def _cmd_notify(args: argparse.Namespace) -> None:
         raise SystemExit(1)
 
 
+def _cmd_leaderboard(args: argparse.Namespace) -> None:
+    from glob import glob
+
+    from braidlab import leaderboard
+
+    paths = sorted(p for pattern in args.dbs for p in glob(pattern))
+    if not paths:
+        print(f"no databases match {args.dbs}", file=sys.stderr)
+        raise SystemExit(1)
+    stats = leaderboard.gather(paths)
+    board = leaderboard.format_board(stats)
+    print(board)
+    if args.post:
+        notifier = DiscordNotifier()
+        if not notifier.enabled:
+            print(f"no Discord webhook configured; set {ENV_WEBHOOK}", file=sys.stderr)
+            raise SystemExit(1)
+        total = sum(s.jobs for s in stats)
+        ok = notifier.send_embed(
+            f"🏆 Fleet leaderboard — {total} jobs collected",
+            board,
+            color=COLORS["info"],
+        )
+        print("posted" if ok else "post failed")
+        if not ok:
+            raise SystemExit(1)
+
+
 def _cmd_corrdim(args: argparse.Namespace) -> None:
     store = Store(args.db)
     # Variant campaigns share a dumps dir; restrict aggregation to the jobs this
@@ -206,6 +234,13 @@ def main(argv: list[str] | None = None) -> None:
     sc.add_argument("--labels", action="store_true",
                     help="annotate each point with its value")
     sc.set_defaults(func=_cmd_corrdim)
+
+    sl = sub.add_parser("leaderboard", help="per-worker fleet leaderboard")
+    sl.add_argument("--dbs", nargs="+", required=True,
+                    help="store paths or globs, e.g. 'data/freq/*.db'")
+    sl.add_argument("--post", action="store_true",
+                    help="also post to the Discord webhook")
+    sl.set_defaults(func=_cmd_leaderboard)
 
     sn = sub.add_parser("notify", help="post a message to the Discord webhook")
     sn.add_argument("--message", "-m", required=True, help="message body")
