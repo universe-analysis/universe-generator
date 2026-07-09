@@ -131,6 +131,54 @@
       </p>
     </article>
 
+    <article class="entry" id="freq3d-terms-by-t">
+      <h2>Terms effect separated by T: no pool-fraction collapse, but constant-fraction diagonals restore the legacy exponent</h2>
+      <p class="meta">
+        Same <code>freq3d_e6</code> data, resliced per T &middot; chart
+        <a href="https://github.com/universe-analysis/universe-generator/commit/358420b"><code>358420b</code></a>
+      </p>
+      <p>
+        Follow-up question (Kevin): the term count is bounded by the
+        frequency pool at each resolution (nyq: T&minus;1 unique wiggle
+        frequencies), so is the controlling variable the raw term count or
+        the term count as a <em>fraction of the pool</em>? Reslicing the jam
+        counts per T as N(T, terms)/N(T, 2):
+      </p>
+      <figure class="plot">
+        <img src="freq3d_terms_by_t.png"
+             alt="Left: jam-count enhancement vs term count, one curve per T from 20 to 160, all dipping at terms=3 then rising, with larger enhancement at larger T and suppression below 1 at T=20. Right: the same curves plotted against wiggle terms as a fraction of the frequency pool, fanning out rather than collapsing." />
+        <figcaption>
+          Left: the terms effect at fixed T. Right: the same data vs pool
+          fraction (terms&minus;1)/(T&minus;1) &mdash; no collapse.
+        </figcaption>
+      </figure>
+      <ul>
+        <li>The enhancement is resolution-dependent: at T = 20, ten terms
+            packs 8% <em>less</em> than legacy; the crossover sits near
+            T &asymp; 60, growing to +24% at T = 160.</li>
+        <li>The terms = 3 dip sits at raw terms = 3 for every T (not at a
+            fixed pool fraction) &mdash; a parity-like feature of the term
+            count itself.</li>
+        <li>Rescaling by pool fraction does not collapse the curves, so the
+            fraction is not the single controlling variable&hellip;</li>
+        <li>&hellip;but the exponent <em>along</em> constant-fraction
+            diagonals of the (T, terms) grid comes out
+            D &asymp; 2.25 (frac &asymp; 0.051: cells (20,2)/(60,4)/(100,6))
+            and D &asymp; 2.24 (frac &asymp; 0.025:
+            (40,2)/(80,3)/(120,4)) &mdash; close to the legacy terms = 2
+            local slope over the same windows (&asymp;2.23), and well below
+            the fixed-terms=10 fit (2.394). Much of the fixed-terms D rise
+            may be the pool fraction shrinking with T.</li>
+      </ul>
+      <p>
+        Takeaway: suggestive but not conclusive &mdash; the diagonals are
+        three points each. The clean experiment is a constant-fraction
+        ladder (terms tied to T, several fractions), which needs a
+        kMaxWiggle bump and a terms-per-T campaign knob; queued as the next
+        engine task.
+      </p>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
