@@ -61,6 +61,10 @@ class Job:
     #: Sinusoid terms per axis incl. sin1 (--terms). 2 = the legacy
     #: single-wiggle model (flag omitted, RNG stream bit-identical).
     terms: int = 2
+    #: Uniform frequency sampler (--uniform) instead of the default smart
+    #: (max-of-two bias + legacy coprime rule). NOT part of the store key:
+    #: run uniform campaigns in their own database.
+    uniform: bool = False
     #: Free-form variant tag (e.g. "e6" for a different cutoff). Not part of the
     #: key; appended to the name so variant runs do not collide in the shared
     #: remote workspace.
@@ -89,6 +93,8 @@ class Job:
             base += "_ph"
         if self.sparse:
             base += "_sp"
+        if self.uniform:
+            base += "_un"
         if self.terms != 2:
             base += f"_tm{self.terms}"
         if self.tag:
@@ -126,6 +132,8 @@ class Campaign:
     sparse: bool = False
     #: Sinusoid term counts per axis to sweep (--terms; 2 = legacy model).
     terms_values: tuple[int, ...] = (2,)
+    #: Uniform frequency sampler for every job (see Job.uniform).
+    uniform: bool = False
     #: Variant tag appended to job names (e.g. "e6" for a different cutoff).
     tag: str = ""
 
@@ -155,6 +163,7 @@ class Campaign:
                 phase=self.phase,
                 sparse=self.sparse,
                 terms=k,
+                uniform=self.uniform,
                 tag=self.tag,
             )
             for t in self.t_values

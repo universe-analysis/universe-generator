@@ -36,7 +36,7 @@ def build_command(job: Job, binary: str, curve_path: str) -> list[str]:
         str(job.t),
         "--attempts",
         repr(job.max_attempts),
-        "--smart",
+        "--uniform" if job.uniform else "--smart",
         "--seed",
         str(job.seed),
         "--until-accept-rate",

@@ -163,3 +163,31 @@ def test_campaign_validation() -> None:
         Campaign(
             name="t", dim=2, band="x", t_values=(20,), seeds=(1,), accept_rate=1e-7
         )
+
+
+def test_uniform_job_name_and_command() -> None:
+    """Uniform-sampler jobs get the _un suffix and --uniform instead of --smart."""
+    from braidlab.engine import build_command
+
+    j = Job(
+        dim=3,
+        band="nyq",
+        t=44,
+        seed=2,
+        accept_rate=1e-6,
+        max_attempts=3e12,
+        torus=True,
+        phase=True,
+        uniform=True,
+        terms=3,
+        tag="une6",
+    )
+    assert j.name == "d3_nyq_T44_s2_tor_ph_un_tm3_une6"
+    cmd = build_command(j, "bin", "curve.csv")
+    assert "--uniform" in cmd and "--smart" not in cmd
+    smart = build_command(
+        Job(dim=3, band="nyq", t=44, seed=2, accept_rate=1e-6, max_attempts=3e12),
+        "bin",
+        "curve.csv",
+    )
+    assert "--smart" in smart and "--uniform" not in smart

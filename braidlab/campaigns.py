@@ -255,6 +255,26 @@ CAMPAIGNS: dict[str, Campaign] = {
         terms_values=FREQ_TERMS,
         tag="fqe6",
     ),
+    # Uniform-sampler mini-sweep: does the D-vs-terms trend survive without
+    # the smart high-frequency bias, and is the terms=3 dip the coprime rule?
+    # --uniform has no coprime constraint at ANY term count, so terms=2 vs 3
+    # isolates pure term-count effects (smart's legacy branch couples the two:
+    # it drops the coprime rule exactly when terms > 2).
+    "frequni3d_e6": Campaign(
+        name="frequni3d_e6",
+        dim=3,
+        band="nyq",
+        t_values=FREQ3D_T,
+        seeds=(1, 2, 3),
+        accept_rate=1e-6,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        torus=True,
+        phase=True,
+        uniform=True,
+        terms_values=(2, 3, 10),
+        tag="une6",
+    ),
     "freqdecay3d_e6": _freq_decay(3, 1e-6, "e6"),
     "freqdecay3d_e7": _freq_decay(3, 1e-7, "e7"),
     "freqdecay3d_e8": _freq_decay(3, 1e-8, "e8"),
