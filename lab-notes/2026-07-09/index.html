@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-07-09</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-07-09</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="freqdecay-depth">
+      <h2>Decay ladders: how far from jammed is &ldquo;jammed&rdquo;, and which exponents survive depth</h2>
+      <p class="meta">
+        <code>freqdecay{3,2}d_e{6,7,8}</code> campaigns (torus+phase, terms
+        &isin; {2,10}, 3 seeds; 3+1 at T = 80/160, 2+1 at T = 120/320;
+        cutoffs 1e-6/1e-7/1e-8; smart sampler) &middot; campaign code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/69be0d9"><code>69be0d9</code></a>
+        &middot; chart
+        <a href="https://github.com/universe-analysis/universe-generator/commit/dc300ff"><code>dc300ff</code></a>
+      </p>
+      <p>
+        The multi-depth companion to yesterday's sweeps, and the first
+        cutoff ladder run on an engine that honors its stop criterion exactly
+        (the pre-07-06 accounting bias made older ladders effectively
+        ~2&times; shallow). Three findings:
+      </p>
+      <figure class="plot">
+        <img src="freqdecay_depth.png"
+             alt="Two panels: two-point packing exponent vs cutoff depth for terms 2 and 10. Left, 3+1: both term counts nearly flat across 1e-6 to 1e-8, with a persistent gap between terms 2 (about 2.30) and terms 10 (about 2.40). Right, 2+1: both drift upward strongly with depth, from about 1.37-1.41 at 1e-6 to about 1.46-1.47 at 1e-8, the terms gap closing and inverting." />
+        <figcaption>
+          Two-point exponent (between the arm's T pair) vs cutoff depth.
+          3+1: depth-stable. 2+1: strongly cutoff-limited.
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>No jamming plateau in sight.</strong> N grows a steady
+            10&ndash;16% per cutoff decade in every cell, with no curvature
+            over the three decades &mdash; at 1e-8 the packings are still
+            growing as a slow power law of attempts. Every absolute N in the
+            project is a cutoff-conditional number; only exponents and ratios
+            are portable.</li>
+        <li><strong>3+1 exponents are depth-robust</strong>: terms = 2 moves
+            2.297 &rarr; 2.314 and terms = 10 moves 2.386 &rarr; 2.410 across
+            two decades (&le; 0.02/decade, consistent with the old cutoff
+            study). The terms gap persists at every depth &mdash; so within
+            the smart ensemble the terms trend is a genuine sampler effect,
+            not a convergence artifact (the uniform test, not depth, is what
+            killed it).</li>
+        <li><strong>2+1 exponents are strongly cutoff-limited</strong>:
+            +0.05/decade (terms = 2: 1.373 &rarr; 1.470 from 1e-6 to 1e-8),
+            and the terms gap closes and inverts by 1e-8. The historical
+            1.38 headline is a shallow-window value; 2+1 exponents must
+            always be quoted with their cutoff, and any future 2+1 headline
+            should come from a depth extrapolation, not a single cutoff.</li>
+      </ul>
+      <p>
+        Takeaway: the 3+1 exponent story (now re-anchored at the uniform
+        D &asymp; 2.23) rests on solid depth footing; the 2+1 story needs a
+        deeper or extrapolated measurement before its uniform re-anchor is
+        quoted. Chain bookkeeping: all nine campaigns (two sweeps, one
+        uniform control, six decay arms) completed overnight on the
+        five-worker fleet &mdash; mother, kitt, deep-thought, and a rented
+        dual-4090 box that took every T = 160 e-8 job.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
