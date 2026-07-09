@@ -80,6 +80,12 @@
         whether the <em>spatial</em> dimension of the matter slices moves
         with terms or stays pinned at 3.
       </p>
+      <p>
+        <strong>Update (same evening):</strong> the rise does not survive
+        uniform proposals &mdash; see the
+        <a href="#frequni-sampler-verdict">uniform-sampler verdict</a> below.
+        It is a property of the smart-sampled ensemble, not of the packing.
+      </p>
     </article>
 
     <article class="entry" id="freq2d-terms-exponent">
@@ -129,6 +135,12 @@
         (cutoffs 1e-6/1e-7/1e-8 at two T values, terms &isin; {2,10}) are
         running now for the approach power law.
       </p>
+      <p>
+        <strong>Update (same evening):</strong> in 3+1 the trend is a
+        smart-sampler artifact (<a href="#frequni-sampler-verdict">below</a>);
+        the 2+1 uniform companion has not yet run, but the same correction is
+        expected to apply.
+      </p>
     </article>
 
     <article class="entry" id="freq3d-terms-by-t">
@@ -176,6 +188,72 @@
         ladder (terms tied to T, several fractions), which needs a
         kMaxWiggle bump and a terms-per-T campaign knob; queued as the next
         engine task.
+      </p>
+    </article>
+
+    <article class="entry" id="frequni-sampler-verdict">
+      <h2>Uniform-sampler verdict: the D-vs-terms rise was a smart-sampler artifact &mdash; and the kinematics chapter moves</h2>
+      <p class="meta">
+        <code>frequni3d_e6</code> campaign (uniform frequency proposals,
+        <code>--uniform</code>: no high-frequency bias, no coprime rule at any
+        term count; terms &isin; {2,3,10} &times; T = 20&ndash;160 &times; 3
+        seeds) &middot; sampler knob
+        <a href="https://github.com/universe-analysis/universe-generator/commit/cac46de"><code>cac46de</code></a>
+        &middot; chart
+        <a href="https://github.com/universe-analysis/universe-generator/commit/4a6c3ef"><code>4a6c3ef</code></a>
+      </p>
+      <p>
+        Chris's challenge: the smart bias &ldquo;packs more matter by getting
+        rid of the light,&rdquo; and the coprime rule is a knot-era constraint
+        that has no business in the proposal measure. The one-knob test: rerun
+        the terms sweep with uniform proposals. Verdict &mdash; he was right,
+        twice:
+      </p>
+      <figure class="plot">
+        <img src="frequni3d_terms_exponent.png"
+             alt="Uniform-sampler terms sweep: three parallel power laws and a flat exponent panel, D = 2.231, 2.240, 2.226 for terms 2, 3, 10." />
+        <figcaption>
+          Uniform proposals: D = 2.231(3), 2.240(2), 2.226(2) for
+          terms = 2, 3, 10 &mdash; <strong>flat</strong>. The morning's
+          2.294 &rarr; 2.394 staircase does not survive the sampler change.
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>The exponent is sampler-dependent and, under uniform
+            proposals, terms-invariant at D &asymp; 2.23</strong> (D/d
+            &asymp; 3/4) &mdash; matching the constant-fraction diagonals and
+            the same-window legacy slope. The corrected headline: function-space
+            enrichment does <em>not</em> move the uniform packing exponent;
+            the smart bias inflates it in a terms-dependent way.</li>
+        <li><strong>The terms = 3 dip was the coprime rule</strong>: &minus;8%
+            (smart, T=160) collapses to &minus;0.7% (uniform). The rule is
+            enforced only in the smart terms = 2 branch, so the smart sweep's
+            2&rarr;3 step changed two things at once.</li>
+        <li><strong>The coprime rule silently shaped the kinematics era</strong>:
+            pairwise-coprime tuples allow at most one even axis, and the
+            uniform jam keeps a 39% population of &ge;2-even worldlines
+            (selected against &mdash; 0.8&times;/0.7&times; proposals &mdash;
+            but not evicted). Re-measured on the uniform dumps: mover fraction
+            0.52 &rarr; 0.766; per-axis phase tilt shrinks 3&times;
+            (&lang;v&rang; 0.539 &rarr; 0.603); <strong>w = 0.070 &rarr;
+            0.145 (Chebyshev) / 0.193 (Euclidean)</strong>.</li>
+        <li><strong>What survives, and it is the better result</strong>:
+            jamming's phase/parity selection cools w by 20&ndash;24% below the
+            proposal value in <em>both</em> ensembles and both metrics (old:
+            0.087&rarr;0.070; uniform: 0.185&rarr;0.145, 0.252&rarr;0.193) --
+            the suppression factor, not the absolute w, is the law-like
+            quantity. Also surfaced: with multi-axis movers the model's causal
+            structure is explicitly a per-axis (Chebyshev) light cone; 27% of
+            movers exceed Euclidean speed 1 while respecting it.</li>
+      </ul>
+      <p>
+        Takeaway: exponent story re-anchors to D &asymp; 2.23 with a stronger
+        invariance claim; spatial uniformity untouched; the kinematics section
+        (I.4&ndash;I.6) needs a rebuild on the uniform ensemble. Both earlier
+        entries today should be read with this correction. Next: the 2+1
+        uniform companion, kinematics re-derivation for multi-axis movers, and
+        the fixed-point question (does iterating the jam's measure back as
+        proposals converge to a self-consistent ensemble?).
       </p>
     </article>
 

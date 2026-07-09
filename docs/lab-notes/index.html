@@ -19,18 +19,29 @@
     <!-- DAY LIST: newest at the top. Add a new .day link here on each day's
          first entry. -->
 
+    <a class="day" href="2026-07-09/">
+      <div class="date">2026-07-09</div>
+      <div class="summary">
+        Decay ladders (1e-6/1e-7/1e-8): no jamming plateau in sight &mdash; N
+        grows 10&ndash;16% per cutoff decade in every cell, so absolute jam
+        counts are cutoff-conditional. 3+1 exponents are depth-robust
+        (&le;0.02/decade); 2+1 exponents drift +0.05/decade and the terms gap
+        inverts by 1e-8, so 2+1 headlines need depth extrapolation.
+      </div>
+    </a>
+
     <a class="day" href="2026-07-08/">
       <div class="date">2026-07-08</div>
       <div class="summary">
-        FREQ campaign (3+1): generalizing worldlines to K sinusoid terms per
-        axis shows the packing exponent rising monotonically with term count,
-        D = 2.294 &rarr; 2.394 for terms 2 &rarr; 10 &mdash; the T^2.33
-        headline is a property of the two-term function space, not of the
-        model. Fits get cleaner with more terms; the fixed-T jam-count dip at
-        terms = 3 is a prefactor effect. The 2+1 sweep confirms the trend is
-        dictionary-robust at a third the amplitude (D = 1.405 &rarr; 1.437).
-        Bonus: verification against the archived baseline exposed a pre-07-06
-        acceptance-stop bias (~2e-6 effective cutoff, N ~5% low, exponents
+        FREQ campaign day, in three acts: the terms sweeps first showed the
+        packing exponent rising with term count (2.294 &rarr; 2.394 in 3+1,
+        echoed in 2+1) &mdash; then the uniform-sampler control revealed the
+        rise is a smart-sampler artifact: under uniform proposals D is
+        terms-invariant at &asymp;2.23 (D/d &asymp; 3/4), the terms = 3 dip
+        was the coprime rule, and the kinematics move (w = 0.070 &rarr;
+        0.145&ndash;0.193, with a sampler-invariant ~20% jamming-cooling
+        factor as the surviving law). Also: a pre-07-06 acceptance-stop bias
+        found and characterized (~2e-6 effective cutoff, exponents
         unaffected).
       </div>
     </a>
