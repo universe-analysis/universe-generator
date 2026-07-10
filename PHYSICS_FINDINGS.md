@@ -135,10 +135,15 @@ Systematic invariance tests of N(T) under the model's free knobs
 - **Cutoff depth moves the prefactor, not the law.** A decade of extra depth
   (1e-6 → 1e-7) lifts every N by ×1.150 (3+1) / ×1.203 (2+1), uniformly in T,
   while the fitted exponent moves ≤ 0.02 (3+1) / 0.034 (2+1).
-- **There is no jamming plateau in reach.** Decay ladders to 1e-8 show N
-  still growing 10–16% per cutoff decade with no curvature: every absolute N
-  is a cutoff-conditional number; only exponents, ratios, and distribution
-  shapes are portable.
+- **There is no jamming plateau in reach — and the approach law is
+  dimension-dependent.** 2+1 approaches its jam as a Feder power law
+  (N∞ − N ~ t^−0.12), which is what makes D∞ extrapolable there. 3+1 grows
+  **logarithmically** through 1e-9 (N ≈ b(T)·[const + ln t] over ≥ 4
+  observed decades; T = 20–60, 9 curves) — activated, glassy-like kinetics
+  with no ceiling curvature; any Feder ceiling would need p < 0.01. The log
+  slope itself scales as b ~ T^D with the same exponent, which is why the
+  3+1 exponent is depth-robust while absolute N stays cutoff-conditional
+  forever.
 - **Dictionary size barely moves N.** At fixed T, going from 2 to 10 terms
   per axis changes N by at most +10% (3+1, T=160) and stays within ±5% in
   2+1, with a small (≲1%) dip at terms = 3. The per-T enhancement curves do
@@ -284,11 +289,13 @@ does not.
 
 ## Open questions / next steps
 
-1. **3+1 jamming-limit exponent via the approach law** — the 2+1 version is
-   done (D∞ = 1.434 ± 0.021, section 2); in 3+1 every stored curve through
-   1e-8 rails (no detectable ceiling curvature), so the p vote needs deep
-   small-T 3+1 runs (T = 20–60 at 1e-9, cheap). Does the extrapolation
-   carry 2.321 to 7/3?
+1. **Is the jamming-limit 3+1 exponent 7/3? (kinetic route closed)** — the
+   2+1 extrapolation is done (D∞ = 1.434 ± 0.021, section 2), but 3+1's
+   logarithmic approach (section 3) has no ceiling to extrapolate: deep
+   1e-9 small-T runs confirmed pure log growth. The question now rests on
+   the converged-window cutoff shift (converge3d_e7) and an analytic
+   argument. Also open: *why* is the approach law dimension-dependent
+   (Feder power law in 2+1, activated/log in 3+1)?
 2. **Constant-fraction terms ladder** — terms tied to T at fixed pool
    fraction (needs a kMaxWiggle bump and a terms-per-T campaign knob), to
    close the pool-fraction question of section 3.
