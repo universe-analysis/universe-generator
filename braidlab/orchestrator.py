@@ -185,9 +185,15 @@ class Fleet:
         )
 
     def _scp_from(self, host: str, remote: str, local: Path) -> bool:
-        res = subprocess.run(
-            ["scp", "-q", f"{self._alias(host)}:{remote}", str(local)], timeout=120
-        )
+        # A slow transfer (big dump over a rented box's link) must read as a
+        # failed fetch, not kill the campaign: callers retry on the next poll.
+        try:
+            res = subprocess.run(
+                ["scp", "-q", f"{self._alias(host)}:{remote}", str(local)],
+                timeout=120,
+            )
+        except subprocess.TimeoutExpired:
+            return False
         return res.returncode == 0
 
     def deploy(self, host: str, dims: set[int]) -> None:
@@ -351,9 +357,16 @@ def run_campaign(
                 if job is None or job.key not in remaining:
                     continue
                 dest = store.curves_dir / f"{name}.csv"
-                fleet.fetch_curve(host, name, dest)
+                fetched = fleet.fetch_curve(host, name, dest)
                 if dump:
-                    fleet.fetch_dump(host, name, store.dumps_dir / f"{name}.csv")
+                    fetched = (
+                        fleet.fetch_dump(host, name, store.dumps_dir / f"{name}.csv")
+                        and fetched
+                    )
+                if not fetched:
+                    # Transient transfer failure; the files persist in the
+                    # remote workspace, so collect this job on a later poll.
+                    continue
                 store.mark(
                     job,
                     "done",

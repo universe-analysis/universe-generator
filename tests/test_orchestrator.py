@@ -1,5 +1,7 @@
 """Tests for the pure orchestration logic (no SSH)."""
 
+from pathlib import Path
+
 import pytest
 
 from braidlab.config import Job
@@ -90,3 +92,21 @@ def test_fleet_gpu_token_workspace_and_alias() -> None:
     assert fleet._dir("vast:1") == "~/braidlab_run_g1"
     assert fleet._alias("mother") == "mother"
     assert fleet._dir("mother") == "~/braidlab_run"
+
+
+def test_scp_from_timeout_reads_as_failed_fetch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A hung transfer must not raise out of the poll loop (it killed a
+    campaign mid-leg on 2026-07-09); it reads as a failed fetch and the
+    caller retries on a later poll."""
+    import subprocess
+
+    from braidlab.orchestrator import Fleet
+
+    def fake_run(cmd: object, **kwargs: object) -> object:
+        raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 120))  # type: ignore[arg-type]
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    fleet = Fleet("/tmp/src")
+    assert fleet._scp_from("vast:1", "~/x.csv", tmp_path / "x.csv") is False
