@@ -69,6 +69,19 @@ PACK2D_T = tuple(range(20, 301, 40))  # 20, 60, ..., 300
 PACKTERMS3D_T = (80, 160)
 PACKTERMS2D_T = (140, 300)
 
+#: CONVERGE campaigns (2026-07-10): pin both headline exponents. 3+1 extends
+#: the T ladder past the dense-grid VRAM ceiling with the sparse engine (does
+#: the local slope converge on D/d = 3/4, i.e. D = 2.25?); 2+1 instead
+#: extends in cutoff depth for a jamming-limit extrapolation of its
+#: cutoff-drifting exponent (the 1e-6/1e-7 rungs are the PACK stores, same
+#: ladder). T = 400 is deliberately held back from the 3+1 ladder; to add it
+#: later, append it here and re-run -- the store diff dispatches only the
+#: new cells.
+CONVERGE_SEEDS = tuple(range(1, 6))  # 5 seeds
+CONVERGE3D_T = (200, 240, 280, 320, 360)
+CONVERGE2D_T = PACK2D_T  # 20, 60, ..., 300 -- matches pack2d_e6/e7
+CONVERGE2D_E9_T = (140, 300)  # far anchor for the depth extrapolation
+
 
 def _pack(dim: int, rate: float, tag: str) -> Campaign:
     """One cutoff arm of the PACK baseline (2-term, 8-T ladder)."""
@@ -242,6 +255,38 @@ CAMPAIGNS: dict[str, Campaign] = {
     "pack2d_e7": _pack(2, 1e-7, "e7"),
     "packterms3d_e6": _pack_terms(3),
     "packterms2d_e6": _pack_terms(2),
+    # CONVERGE: exponent convergence (see the CONVERGE_* constants above).
+    "converge3d_e6": Campaign(
+        name="converge3d_e6",
+        dim=3,
+        t_values=CONVERGE3D_T,
+        seeds=CONVERGE_SEEDS,
+        accept_rate=1e-6,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        sparse=True,
+        tag="cv3e6",
+    ),
+    "converge2d_e8": Campaign(
+        name="converge2d_e8",
+        dim=2,
+        t_values=CONVERGE2D_T,
+        seeds=CONVERGE_SEEDS,
+        accept_rate=1e-8,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        tag="cv2e8",
+    ),
+    "converge2d_e9": Campaign(
+        name="converge2d_e9",
+        dim=2,
+        t_values=CONVERGE2D_E9_T,
+        seeds=(1, 2, 3),
+        accept_rate=1e-9,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        tag="cv2e9",
+    ),
 }
 
 
