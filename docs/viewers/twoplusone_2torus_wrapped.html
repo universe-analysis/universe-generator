@@ -233,7 +233,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v17';
+    const VIEWER_VERSION = 'v18';
 
     let functions = [];
     let Z_cache = [];
@@ -253,10 +253,12 @@
 
 
 	//	Z-index now doesn't use hardcoded values
+    // Canonical z grid, identical to the CUDA engines: T interior points of
+    // (0, pi), one step in from each end.
     function bakeZValues() {
-        const zStart = 0, zEnd = Math.PI;
-        const step = (zEnd - zStart) / ((time_steps+2) - 1);
-        Z_cache = Array.from({ length: time_steps }, (_, i) => ((zStart+step) + (i * step)));
+        const zEnd = Math.PI;
+        const step = zEnd / (time_steps + 1);
+        Z_cache = Array.from({ length: time_steps }, (_, i) => step + i * step);
     }
 
     // ---- per-time-step uniform spatial hash (comoving, cell = 2/T) ----
