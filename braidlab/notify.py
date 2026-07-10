@@ -26,11 +26,11 @@ ENV_WEBHOOK = "BRAIDLAB_DISCORD_WEBHOOK"
 
 #: Embed side-bar colors, keyed by event kind.
 COLORS = {
-    "start": 0x5865F2,     # blurple  -- a campaign is dispatching
+    "start": 0x5865F2,  # blurple  -- a campaign is dispatching
     "progress": 0x3498DB,  # blue     -- a periodic progress ping
-    "done": 0x2ECC71,      # green    -- finished cleanly
-    "fail": 0xE74C3C,      # red      -- a failure or host drop
-    "info": 0x95A5A6,      # grey     -- ad-hoc / manual message
+    "done": 0x2ECC71,  # green    -- finished cleanly
+    "fail": 0xE74C3C,  # red      -- a failure or host drop
+    "info": 0x95A5A6,  # grey     -- ad-hoc / manual message
 }
 
 
@@ -130,9 +130,7 @@ class DiscordNotifier:
             "Progress": f"{done}/{total} jobs ({pct}%)",
             "Elapsed": _humanize_duration(elapsed),
         }
-        return self.send_embed(
-            f"… {name} running", "", fields, COLORS["progress"]
-        )
+        return self.send_embed(f"… {name} running", "", fields, COLORS["progress"])
 
     def campaign_done(
         self, name: str, total: int, duration: float, output: str
@@ -149,6 +147,4 @@ class DiscordNotifier:
 
     def campaign_failed(self, name: str, message: str) -> bool:
         """A failure or host drop worth surfacing."""
-        return self.send_embed(
-            f"⚠ {name}: problem", message, None, COLORS["fail"]
-        )
+        return self.send_embed(f"⚠ {name}: problem", message, None, COLORS["fail"])

@@ -51,9 +51,7 @@ def plan_assignment(
     for job in sorted(jobs, key=lambda j: -j.t):
         eligible = [h for h in hosts if job.t <= caps.get(h, 10**9)]
         if not eligible:
-            raise ValueError(
-                f"no host can run T={job.t} within caps {caps}"
-            )
+            raise ValueError(f"no host can run T={job.t} within caps {caps}")
         host = min(eligible, key=lambda h: load[h])
         out[host].append(job)
         load[host] += job.t**2
