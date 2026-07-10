@@ -1,14 +1,68 @@
 // braid_cuda3d — GPU batch-reject RSA packing engine (3+1).
 //
-// Three spatial axes (x,y,w), each two-term slope-1; comoving by sin(z);
-// collision = per-time-step Chebyshev <= CELL=2/T over a 3x3x3 neighbourhood.
-// Flat dense 3D grid per time-step (comoving coords bounded to [-1,1]); fits a
-// 24GB 3090 for the low/moderate T we need for the convergence question.
+// ============================================================================
+// What this program does
+// ============================================================================
+// It grows one random "universe": a jammed packing of closed sinusoidal
+// worldlines, built by random sequential adsorption (RSA):
 //
+//     propose a random worldline
+//       -> keep it iff it stays at least one exclusion distance away from
+//          every worldline kept so far, at every timestep
+//       -> repeat, recording the kept count N as a function of attempts
+//
+// until the acceptance rate decays below a threshold (--until-accept-rate;
+// the packing is then "jammed" for practical purposes) or an attempt budget
+// runs out (--attempts). Outputs: the growth curve N(attempts) as CSV
+// (--curve) and optionally the parameters of every accepted worldline
+// (--dump-params), from which downstream analysis reconstructs the full
+// packing at any z (correlation dimension, equation of state, ...).
+//
+// ============================================================================
+// The model
+// ============================================================================
+// Time is a conformal coordinate z on (0, pi), sampled at T interior steps;
+// sin(z) plays the role of the scale factor (the universe expands from z=0,
+// peaks at z=pi/2, recollapses toward z=pi). A worldline has three spatial
+// coordinates (x, y, w), each a closed loop in z built from sinusoids:
+//
+//     x(z) = sum_j ax_j * [sin(bx_j*z + fx_j) - sin(fx_j)]  +  ax2 * sin(z)
+//
+// (same form for y and w). The frequencies bx_j are integers >= 2, so with
+// the -sin(f) offsets every term vanishes at z = 0 and pi and the worldline
+// closes on itself. The physical constraint is a unit slope ("rapidity")
+// budget on the wiggle group, sum_j |ax_j * bx_j| = 1: each amplitude is
+// (its share of 1) / (its frequency), so the group's maximum d/dz slope is
+// exactly 1 -- light-speed-bounded trajectories that all saturate the bound.
+//
+// All collision logic runs in COMOVING coordinates X = x / sin(z), where the
+// exclusion region is constant: a Chebyshev (L-infinity) cube of half-width
+// CELL = 2/T around each worldline point (--euclid-collision swaps in the L2
+// ball). As z -> 0 or pi, x vanishes like sin(z), so X stays finite; the
+// sin1 term ax2*sin(z) is a pure comoving offset (a constant shift of X)
+// that places the worldline in the box. The comoving domain is [-1, 1]^3:
+// a hard wall in the legacy model, a period-2 torus in the current one
+// (--torus; positions wrap, separations take the minimum image).
+//
+// Two worldlines collide iff at ANY of the T timesteps their comoving
+// separation is within CELL on every axis. An accepted worldline is thus
+// stored as T points, one per timestep, in per-timestep collision grids
+// with cells of size CELL -- a candidate can only collide with points in
+// its own or an adjacent cell, so each timestep checks a 3x3x3
+// neighbourhood.
+//
+// Memory: the dense per-timestep grid is T * gw^3 cells ~ T^4 ints. Fits a
+// 24 GB 3090 for the low/moderate T of the convergence question; --sparse
+// (below) lifts that ceiling.
+//
+// ============================================================================
+// Model variants (engine flags)
+// ============================================================================
 // --torus switches to the new-dogma model: the slope-1 budget binds the wiggle
 // term alone (|a*b| = 1), the sin1 term is a free comoving offset, and the
 // comoving domain is a period-2 torus (wrapped positions, minimum-image
-// collision, no wall).
+// collision, no wall). Without it, the wiggle group and sin1 share the budget
+// (sum |a*b| = 1 - |sin1 amplitude|) and |X| = 1 is a hard wall.
 //
 // --phase switches to the phase schema: the wiggle term gains a free phase
 // f ~ U[0, pi) on even frequencies (odd ones must stay phase-free for the loop
@@ -33,6 +87,19 @@
 // pushed out, each by more than the fp32 error); gray-zone candidates are
 // settled by the exact double-precision host recheck, so the admitted packing
 // obeys the same collision rule as the dense path.
+//
+// ============================================================================
+// How it runs: GPU prefilter, host authority
+// ============================================================================
+// Proposing and testing are embarrassingly parallel, admitting is not (RSA is
+// order-dependent). So the GPU generates and tests candidates in big batches
+// ("rounds") against a possibly slightly-stale copy of the packing -- a
+// PREFILTER that discards the overwhelming majority -- and the few survivors
+// go to the host, which re-checks each one exactly against the authoritative
+// up-to-date packing and admits them serially in slot order. Since accepted
+// points are never removed, a stale device grid is always a SUBSET of the
+// true packing: staleness can only let extra candidates through, never
+// wrongly reject, and the host recheck settles every survivor.
 //
 // The main loop is pipelined: two survivor buffers on one CUDA stream, so
 // round r+1's kernel overlaps the host-side admission of round r. The device
@@ -75,6 +142,12 @@
         }                                                                                  \
     } while (0)
 
+// ---------- RNG: xoshiro256** seeded via splitmix64 ----------
+// Matches the original Rust prototype bit-for-bit, so candidate generation is
+// reproducible across engine generations. Each candidate gets its OWN
+// generator, seeded counter-style from (base seed, round, thread id) in the
+// kernels -- no RNG state carries between rounds and no threads share a
+// stream.
 struct Rng {
     uint64_t s[4];
 };
@@ -139,6 +212,12 @@ void parallel_for(size_t n, const Fn& fn) {
 // Max wiggle terms per axis (--terms counts sin1, so terms <= kMaxWiggle + 1).
 constexpr int kMaxWiggle = 9;
 
+// One candidate worldline: the parameters of the header formula
+//     x(z) = sum_j ax[j] * [sin(bx[j]*z + fx[j]) - sin(fx[j])] + ax2*sin(z)
+// per axis (same for y, w); collision tests evaluate the comoving position
+// X(z) = x(z)/sin(z). Only the first nw = terms-1 slots of each array are
+// used; the struct stays fixed-size (POD) so survivor buffers can be copied
+// device<->host as flat memory.
 struct Path {
     double ax[kMaxWiggle], ay[kMaxWiggle], aw[kMaxWiggle];  // wiggle amplitudes
     double bx[kMaxWiggle], by[kMaxWiggle], bw[kMaxWiggle];  // wiggle frequencies (integer)
@@ -186,7 +265,8 @@ __host__ __device__ inline void draw_unique_freqs(Rng& r,
 }
 
 // Split 1 into nw parts, uniform on the simplex: nw-1 sorted cuts of [0,1],
-// the parts are the gaps between consecutive cuts.
+// the parts are the gaps between consecutive cuts. Used to divide the unit
+// slope budget across an axis's wiggle terms.
 __host__ __device__ inline void split_unit(Rng& r, int nw, double* w) {
     double cuts[kMaxWiggle + 1];
     cuts[0] = 0.0;
@@ -256,6 +336,18 @@ __device__ inline int find_key(const int* keys, int lo, int hi, int key) {
     return (lo < hi0 && keys[lo] == key) ? lo : -1;
 }
 
+// Draw one candidate worldline from the proposal measure. Per axis:
+//   * frequencies: nw unique integers, uniform in [2, modmax+1];
+//   * slope budget: split across the wiggle terms uniformly on the simplex,
+//     each amplitude = (its share) / (its frequency), so sum |a_j*b_j| equals
+//     the budget exactly -- 1 on the torus, 1 - |sin1 draw| at the hard wall;
+//   * sin1 amplitude: uniform in [0, 1) (edge-weighted with --angle-sample);
+//   * signs: an independent random flip on every amplitude;
+//   * phases (--phase): even-frequency terms get f ~ U[0, pi), odd ones stay
+//     phase-free (the loop only closes for even b when a phase is added).
+// The exact draw ORDER is a compatibility contract: it fixes the RNG stream,
+// which keeps candidate generation bit-identical across engine generations
+// (the nw == 1 branch is the frozen legacy sequence).
 __host__ __device__ inline Path propose(
     Rng& r, uint32_t modmax, bool angle, bool torus, bool phase, int nw) {
     Path p = {};
@@ -392,9 +484,19 @@ __host__ __device__ inline Path propose(
     return p;
 }
 
-// Dense-grid collision test: exact double-precision trajectory + Chebyshev /
-// L2 exclusion. This is the reference prefilter -- bit-compatible with the
-// historical engine.
+// Dense-grid collision test: does candidate p overlap the accepted packing?
+// Evaluates the trajectory in exact double precision and applies the
+// Chebyshev / L2 exclusion rule -- the same rule the authoritative host
+// recheck uses (this is the reference prefilter, bit-compatible with the
+// historical engine; the sparse variant below is the fast approximate one).
+//
+// Timesteps are visited endpoints-first (`order`): near z = 0 and pi the
+// 1/sin(z) factor stretches trajectories across the comoving box, so wall
+// hits and overlaps are detected soonest there and most rejected candidates
+// exit after scanning only a few timesteps. Per timestep, the accepted
+// points live in a uniform grid with cells of size CELL, so anything within
+// CELL of the candidate sits in the 3x3x3 cell neighbourhood; cellStart is a
+// CSR index into the point arrays (see the rebuild in main).
 __device__ bool collides_dev(const Path& p,
                              int nw,
                              int T,
@@ -688,6 +790,12 @@ __device__ bool collides_sparse_dev(const Path& p,
     return false;
 }
 
+// One GPU thread = one candidate: seed a private RNG from (seed, round, tid),
+// propose a worldline, prefilter it against the device grid, and append
+// survivors to survOut via atomicAdd. The slot a survivor lands in depends on
+// warp scheduling, so survivor ORDER -- and therefore the final packing --
+// varies run to run even at a fixed seed; per-candidate math is fully
+// deterministic.
 __global__ void test_kernel(uint64_t baseSeed,
                             uint64_t round,
                             int batch,
@@ -729,6 +837,7 @@ __global__ void test_kernel(uint64_t baseSeed,
     }
 }
 
+// Same per-thread flow as test_kernel, with the fp32 sparse-grid prefilter.
 __global__ void test_kernel_sparse(uint64_t baseSeed,
                                    uint64_t round,
                                    int batch,
@@ -833,7 +942,12 @@ int main(int argc, char** argv) {
         else if (!strcmp(argv[i], "--dump-params"))
             paramPath = argv[++i];
     }
-    // Fixed-convergence stop: hold acceptance rate (not attempts) constant across T.
+    // Fixed-convergence stop: rather than running every T to the same attempt
+    // count (which leaves small T far deeper into the tail than large T), stop
+    // each run when the SLIDING-WINDOW acceptance rate falls below the same
+    // threshold, so all T are equally converged. The window is sized to expect
+    // ~30 acceptances at the threshold rate (relative noise ~1/sqrt(30)),
+    // clamped to [2e7, 5e9] attempts.
     std::deque<std::pair<long long, long long>> window;
     long long winAtt = 0, winAdm = 0;
     long long winTarget =
@@ -895,6 +1009,8 @@ int main(int argc, char** argv) {
         invz[i] = 1.0 / sinz[i];
         order[i] = i;
     }
+    // Endpoint-first visit order for every collision scan (sorted by distance
+    // to the nearer end of the z grid) -- see collides_dev for why.
     std::sort(order.begin(), order.end(),
               [&](int a, int b) { return std::min(a, T - 1 - a) < std::min(b, T - 1 - b); });
 
@@ -974,6 +1090,12 @@ int main(int argc, char** argv) {
     if (sparse)
         CK(cudaMalloc(&dKeyStart, (T + 1) * 4));
 
+    // ---------- authoritative host-side packing ----------
+    // px/py/pw hold the comoving position of every accepted worldline at every
+    // timestep (px[i][j] = point of worldline j at timestep i); hgrid is a
+    // per-timestep hash grid over the same points for the exact host recheck.
+    // The device grids are rebuilt FROM these (maybe_rebuild), so the host copy
+    // is the single source of truth.
     std::vector<std::vector<double>> px(T), py(T), pw(T);
     // Incremental sparse-rebuild state: per timestep, the point indices sorted
     // by cell key (kept across rebuilds so only fresh points need sorting),
@@ -993,6 +1115,8 @@ int main(int argc, char** argv) {
         return torus ? (int)floor((v + 1.0) / cell) : (int)floor(v / cell);
     };
     auto hnb = [&](int c, int d) -> int { return torus ? (c + d + gw) % gw : c + d; };
+    // Exact recheck of one trajectory against the authoritative packing --
+    // the same exclusion rule as collides_dev, over the host hash grid.
     auto host_collides = [&](const double* X, const double* Y, const double* W) -> bool {
         for (int oi = 0; oi < T; oi++) {
             int i = order[oi];
@@ -1350,6 +1474,9 @@ int main(int argc, char** argv) {
         round++;
     };
 
+    // ---------- main packing loop ----------
+    // Alternates the two survivor buffers: enqueue round r+1, then drain and
+    // admit round r while r+1 runs on the GPU.
     maybe_rebuild();  // initial (empty) grid upload
     bool stopEnqueue = false;
     int cur = 0;
@@ -1449,10 +1576,15 @@ int main(int argc, char** argv) {
                 admitted++;
             }
         }
+        // Adapt the batch toward a few hundred survivors per round: enough to
+        // keep the GPU saturated, few enough that host admission and the
+        // fixed-prefix copy stay cheap. Early runs (high acceptance) use small
+        // batches; the deep tail grows them toward 2^26 candidates a round.
         if (got > 512 && batch > 4096)
             batch /= 2;
         else if (got < 64 && batch < (1 << 26))
             batch *= 2;
+        // Log-spaced growth-curve samples (one point per 1.15x in attempts).
         while (attempts >= nextMs) {
             curve.push_back({attempts, N});
             nextMs = (long long)(nextMs * 1.15) + 1;

@@ -1,5 +1,26 @@
 // braid_cuda — GPU batch-reject RSA packing engine (2+1).
 //
+// The two-spatial-dimension sibling of braid_cuda3d.cu; read that file's
+// header for the full story. Same model, one axis fewer:
+//
+//   * Random sequential adsorption: propose a random closed worldline, keep
+//     it iff it stays at least one exclusion distance from every worldline
+//     kept so far at every timestep, repeat; record N(attempts).
+//   * A worldline has two spatial coordinates, each a sum of sinusoids over
+//     conformal time z in (0, pi):
+//         x(z) = sum_j ax_j*[sin(bx_j*z + fx_j) - sin(fx_j)] + ax2*sin(z)
+//     with integer frequencies b >= 2 and the unit slope budget
+//     sum |a_j*b_j| = 1 (torus model; shared with sin1 at the hard wall).
+//   * Collisions are tested in comoving coordinates X = x/sin(z): Chebyshev
+//     square of half-width CELL = 2/T, per timestep, over the domain
+//     [-1, 1]^2 (hard wall by default, periodic with --torus).
+//
+// Differences from the 3+1 engine: the loop is synchronous (one survivor
+// buffer, kernel and host admission alternate -- the 2D grid is cheap enough
+// that pipelining never mattered), there is no --sparse mode and no
+// --euclid-collision / --angle-sample, and it adds the --subpaths second
+// packing phase described below.
+//
 // Mirrors the Rust engine's model and RNG exactly (xoshiro256** + the same
 // `propose`), so candidate generation is bit-identical. The collision test for
 // a whole batch of candidates runs on the GPU; the host maintains the accepted
@@ -64,7 +85,11 @@
         }                                                                                  \
     } while (0)
 
-// ---------- RNG (xoshiro256**), identical to the Rust engine ----------
+// ---------- RNG: xoshiro256** seeded via splitmix64, identical to the Rust
+// engine ----------
+// Each candidate gets its OWN generator, seeded counter-style from
+// (base seed, round, thread id) in test_kernel -- no RNG state carries
+// between rounds and no threads share a stream.
 struct Rng {
     uint64_t s[4];
 };
@@ -106,6 +131,12 @@ constexpr double kPi = 3.14159265358979323846;
 // Bounds the fixed-size Path struct that rides through the survivor buffers.
 constexpr int kMaxWiggle = 9;
 
+// One candidate worldline: the parameters of the header formula
+//     x(z) = sum_j ax[j] * [sin(bx[j]*z + fx[j]) - sin(fx[j])] + ax2*sin(z)
+// (same for y); collision tests evaluate the comoving position
+// X(z) = x(z)/sin(z). Only the first nw = terms-1 slots of each array are
+// used; the struct stays fixed-size (POD) so survivor buffers can be copied
+// device<->host as flat memory.
 struct Path {
     double ax[kMaxWiggle], ay[kMaxWiggle];  // wiggle amplitudes
     double bx[kMaxWiggle], by[kMaxWiggle];  // wiggle frequencies (integer-valued)
@@ -168,7 +199,8 @@ __host__ __device__ inline void draw_unique_freqs(Rng& r,
 }
 
 // Split 1 into nw parts, uniform on the simplex: nw-1 sorted cuts of [0,1],
-// the parts are the gaps between consecutive cuts.
+// the parts are the gaps between consecutive cuts. Used to divide the unit
+// slope budget across an axis's wiggle terms.
 __host__ __device__ inline void split_unit(Rng& r, int nw, double* w) {
     double cuts[kMaxWiggle + 1];
     cuts[0] = 0.0;
@@ -188,6 +220,18 @@ __host__ __device__ inline void split_unit(Rng& r, int nw, double* w) {
         w[j] = cuts[j + 1] - cuts[j];
 }
 
+// Draw one candidate worldline from the proposal measure. Per axis:
+//   * frequencies: nw unique integers, uniform in [2, modmax+1];
+//   * slope budget: split across the wiggle terms uniformly on the simplex,
+//     each amplitude = (its share) / (its frequency), so sum |a_j*b_j| equals
+//     the budget exactly -- 1 on the torus, 1 - |sin1 draw| at the hard wall;
+//   * sin1 amplitude: uniform in [0, 1);
+//   * signs: an independent random flip on every amplitude;
+//   * phases (--phase): even-frequency terms get f ~ U[0, pi), odd ones stay
+//     phase-free (the loop only closes for even b when a phase is added).
+// The exact draw ORDER is a compatibility contract: it fixes the RNG stream,
+// which keeps candidate generation bit-identical across engine generations
+// (the nw == 1 branch is the frozen legacy sequence).
 __host__ __device__ inline Path propose(
     Rng& r, uint32_t modmax, bool torus, bool phase, int nw) {
     Path p = {};
@@ -282,6 +326,15 @@ __host__ __device__ inline Path propose(
 }
 
 // ---------- device collision test against the CSR grid ----------
+// Does candidate p overlap the accepted packing? Evaluates the comoving
+// trajectory in exact double precision and applies the Chebyshev exclusion
+// per timestep: anything within CELL of the candidate sits in the 3x3
+// neighbourhood of its grid cell (cells are CELL-sized), whose points the
+// cellStart/cellLen CSR arrays index. Timesteps are visited endpoints-first
+// (`order`): near z = 0 and pi the 1/sin(z) factor stretches trajectories
+// across the comoving box, so rejections show up soonest there and most
+// candidates exit after scanning only a few timesteps.
+//
 // Unique mode (sub=false): any contact rejects (early exit), as always.
 // Subpath mode (sub=true): scan EVERY contact; reject on a contact with a
 // second distinct group ID, or on touching nothing at all — survivors touch
@@ -384,6 +437,12 @@ __device__ bool collides_dev(const Path& p,
     return false;
 }
 
+// One GPU thread = one candidate: seed a private RNG from (seed, round, tid),
+// propose a worldline, prefilter it against the device grid, and append
+// survivors to survOut via atomicAdd. The slot a survivor lands in depends on
+// warp scheduling, so survivor ORDER -- and therefore the final packing --
+// varies run to run even at a fixed seed; per-candidate math is fully
+// deterministic.
 __global__ void test_kernel(uint64_t baseSeed,
                             uint64_t round,
                             int batch,
@@ -576,7 +635,12 @@ int main(int argc, char** argv) {
     CK(cudaMalloc(&dCellStart, ncell * 4));
     CK(cudaMalloc(&dCellLen, ncell * 4));
 
-    // host accepted points per timestep, host grid for admit re-check
+    // ---------- authoritative host-side packing ----------
+    // px/py hold the comoving position of every accepted worldline at every
+    // timestep (px[i][j] = point of worldline j at timestep i); hgrid is a
+    // per-timestep hash grid over the same points (with each point's group ID)
+    // for the exact host recheck. The device grid is rebuilt FROM these
+    // (uploadGrid), so the host copy is the single source of truth.
     std::vector<std::vector<double>> px(T), py(T);
     std::vector<Path> acceptedPaths;  // populated only when --dump-params is set
     std::vector<int> acceptedGids;    // parallel to acceptedPaths (dump gid column)
@@ -592,6 +656,8 @@ int main(int argc, char** argv) {
         return torus ? (int)floor((v + 1.0) / cell) : (int)floor(v / cell);
     };
     auto hnb = [&](int c, int d) -> int { return torus ? (c + d + gw) % gw : c + d; };
+    // Exact recheck of one trajectory against the authoritative packing --
+    // the same exclusion rule as collides_dev, over the host hash grid.
     auto host_collides = [&](const double* X, const double* Y) -> bool {
         for (int oi = 0; oi < T; oi++) {
             int i = order[oi];
@@ -782,6 +848,10 @@ int main(int argc, char** argv) {
         return newCells;
     };
 
+    // ---------- phase 1: unique packing ----------
+    // Synchronous rounds: rebuild + upload the grid, run one prefilter batch,
+    // then admit its survivors serially (GPU idles during admission; cheap
+    // here, unlike the pipelined 3+1 engine).
     while (attempts < (long long)budget && !(maxN && N >= maxN)) {
         uploadGrid();
 
@@ -823,7 +893,7 @@ int main(int argc, char** argv) {
             batch /= 2;
         else if (got < 64 && batch < (1 << 26))
             batch *= 2;
-        // --- milestones ---
+        // --- milestones: log-spaced curve samples (one per 1.15x attempts) ---
         while (attempts >= nextMs) {
             curve.push_back({attempts, N, Nsub, filledCells});
             nextMs = (long long)(nextMs * 1.15) + 1;
