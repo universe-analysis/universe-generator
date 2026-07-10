@@ -60,26 +60,27 @@ below uses placeholders.
 
 ```bash
 # dry-run: see the job split
-uv run python -m braidlab plan corrdim3d --hosts host1,host2,host3
+uv run python -m braidlab plan freq3d_e6 --hosts host1,host2,host3
 
 # run (resumable; safe to Ctrl-C and re-run). --host-max caps a host's largest
 # T (GPU memory); the biggest-T jobs then land only on the roomiest card.
-uv run python -m braidlab run corrdim3d \
-    --hosts host1,host2,host3 --db data/corrdim/run.db \
+uv run python -m braidlab run freq3d_e6 \
+    --hosts host1,host2,host3 --db data/freq/freq3d_e6.db \
     --host-max host1=160,host2=160 --poll 120
 
 # seed-averaged correlation-dimension report from collected dumps
-uv run python -m braidlab corrdim --db data/corrdim/run.db --dim 3 --band nyq
+uv run python -m braidlab corrdim --db data/freq/freq3d_e6.db --dim 3 --band nyq
 ```
 
-Predefined campaigns (`braidlab/campaigns.py`): `corrdim3d` / `corrdim2d`
-(the dimension studies), `corrdim3d_e6` (cutoff check), `corrdim3d_euclid`
-(sphere-collision variant), `torus3d` / `torus2d` (+ `_e6` cutoff variants) for
-the torus model, `torus3d_phase_e6` / `torus2d_phase_e6` (torus + the phase
+Predefined campaigns (`braidlab/campaigns.py`): `torus3d` / `torus2d`
+(+ `_e6` cutoff variants), `torus3d_phase_e6` / `torus2d_phase_e6` (the phase
 schema, engine flag `--phase`), `freq3d_e6` / `freq2d_e6` (the FREQ campaign:
 term-count sweep, engine flag `--terms`, terms ∈ {2,3,4,6,10} on torus+phase)
 with `freqdecay{3,2}d_e{6,7,8}` companions (2 T × terms {2,10} per cutoff, for
-the approach power law), plus the older `3plus1` / `2plus1`.
+the approach power law). The engines are torus-only with the uniform sampler
+since 2026-07-09; the wall-era campaigns (`corrdim3d`/`corrdim2d`, the euclid
+variant, `3plus1`/`2plus1`) were removed with that cleanup — their stores and
+dumps remain under `data/`, and the definitions live in git history.
 
 ### Discord notifications
 

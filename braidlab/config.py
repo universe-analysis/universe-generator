@@ -45,13 +45,8 @@ class Job:
     seed: int
     accept_rate: float
     max_attempts: float
-    #: Edge-weighted amplitude sampler (--angle-sample). Not part of the key.
-    angle: bool = False
     #: L2-ball exclusion (--euclid-collision) instead of Chebyshev cube.
     euclid: bool = False
-    #: Torus (new-dogma) model (--torus): |a*b|=1 budget on the wiggle term,
-    #: free sin1 comoving offset, periodic comoving domain.
-    torus: bool = False
     #: Phase schema (--phase): free phase on the wiggle term for even
     #: frequencies. (The symmetric z grid that used to ride along with this
     #: flag is unconditional in the engines since 2026-07-09.)
@@ -84,8 +79,6 @@ class Job:
         base = f"d{self.dim}_{self.band}_T{self.t}_s{self.seed}"
         if self.euclid:
             base += "_eu"
-        if self.torus:
-            base += "_tor"
         if self.phase:
             base += "_ph"
         if self.sparse:
@@ -113,14 +106,10 @@ class Campaign:
     seeds: tuple[int, ...]
     accept_rate: float
     max_attempts: float = 3e12
-    #: Use the edge-weighted amplitude sampler for every job.
-    angle: bool = False
     #: Emit + collect per-worldline parameter dumps (for correlation dimension).
     dump: bool = False
     #: Use the L2-ball exclusion instead of the Chebyshev cube.
     euclid: bool = False
-    #: Use the torus (new-dogma) model: |a*b|=1, free sin1, periodic domain.
-    torus: bool = False
     #: Use the phase schema: free even-frequency phases (see Job.phase).
     phase: bool = False
     #: Use the sparse collision grid (3+1): VRAM ~ N*T, for T beyond dense cap.
@@ -150,9 +139,7 @@ class Campaign:
                 seed=s,
                 accept_rate=self.accept_rate,
                 max_attempts=self.max_attempts,
-                angle=self.angle,
                 euclid=self.euclid,
-                torus=self.torus,
                 phase=self.phase,
                 sparse=self.sparse,
                 terms=k,

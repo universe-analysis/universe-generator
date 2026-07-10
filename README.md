@@ -39,10 +39,10 @@ gotchas) are documented in [`braidlab/ORCHESTRATOR.md`](braidlab/ORCHESTRATOR.md
 # Python side (uv)
 ./setup_env.sh                 # create/activate the venv
 uv run pytest                  # tests
-uv run python -m braidlab plan corrdim3d --hosts host1,host2   # dry-run a campaign
+uv run python -m braidlab plan freq3d_e6 --hosts host1,host2   # dry-run a campaign
 
 # Analysis on collected dumps
-uv run python -m braidlab corrdim --db data/corrdim/run.db --dim 3 --band nyq
+uv run python -m braidlab corrdim --db data/freq/freq3d_e6.db --dim 3 --band nyq
 ```
 
 The GPU engines build with `nvcc` (see `cuda/Makefile`); the fleet runner builds

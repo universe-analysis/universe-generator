@@ -1,10 +1,10 @@
 """Command-line interface for braidlab.
 
 Usage:
-    python -m braidlab run 3plus1 --hosts host1,host2 --db data/run.db
+    python -m braidlab run freq3d_e6 --hosts host1,host2 --db data/run.db
     python -m braidlab analyze --db data/run.db
     python -m braidlab report  --db data/run.db --out report.html
-    python -m braidlab plan 3plus1            # dry-run: list jobs, no launch
+    python -m braidlab plan freq3d_e6         # dry-run: list jobs, no launch
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ def _parse_host_max(text: str) -> dict[str, int]:
             caps[host.strip()] = int(cap)
     return caps
 
+
 _SOURCE_DIR = Path(__file__).resolve().parent.parent  # braid_engine/ (has cuda/)
 
 
@@ -50,13 +51,11 @@ def _campaign_summary(camp, hosts: list[str], db: str) -> tuple[str, dict]:
     if len(ts) > 1:
         t_range += f" (step {ts[1] - ts[0]})"
     description = (
-        f"{camp.dim}+1D RSA packing to jamming · band={camp.band} · "
+        f"{camp.dim}+1D RSA packing to jamming · torus model · band={camp.band} · "
         f"cutoff={camp.accept_rate:g}"
     )
     if getattr(camp, "euclid", False):
         description += " · sphere (L2) collision"
-    if getattr(camp, "torus", False):
-        description += " · torus model (|a·b|=1, free sin1, periodic)"
     fields = {
         "Hosts": ", ".join(hosts),
         "T range": t_range,
@@ -75,8 +74,10 @@ def _cmd_run(args: argparse.Namespace) -> None:
     store = Store(args.db)
     fleet = Fleet(_SOURCE_DIR)
     host_max_t = _parse_host_max(args.host_max) if args.host_max else None
-    print(f"running {camp.name}: {len(camp.jobs())} jobs over {hosts}"
-          f"{' (dumps)' if camp.dump else ''}")
+    print(
+        f"running {camp.name}: {len(camp.jobs())} jobs over {hosts}"
+        f"{' (dumps)' if camp.dump else ''}"
+    )
     description, fields = _campaign_summary(camp, hosts, args.db)
     run_campaign(
         camp.jobs(),
@@ -156,10 +157,12 @@ def _cmd_corrdim(args: argparse.Namespace) -> None:
         return
     print(f"{'T':>4} {'seeds':>5} {'sphere':>14} {'cube':>14} {'box':>14}")
     for s in stats:
-        print(f"{s.t:>4} {s.n_seeds:>5} "
-              f"{s.sphere_mean:>7.3f}+/-{s.sphere_sem:<5.3f} "
-              f"{s.cube_mean:>7.3f}+/-{s.cube_sem:<5.3f} "
-              f"{s.box_mean:>7.3f}+/-{s.box_sem:<5.3f}")
+        print(
+            f"{s.t:>4} {s.n_seeds:>5} "
+            f"{s.sphere_mean:>7.3f}+/-{s.sphere_sem:<5.3f} "
+            f"{s.cube_mean:>7.3f}+/-{s.cube_sem:<5.3f} "
+            f"{s.box_mean:>7.3f}+/-{s.box_sem:<5.3f}"
+        )
     print(f"converged D ~ {corrdim.converged_value(stats):.3f}")
     out = corrdim.plot_convergence(stats, args.out, labels=args.labels)
     print(f"wrote {out}")
@@ -211,8 +214,9 @@ def main(argv: list[str] | None = None) -> None:
     sr.add_argument("--db", required=True)
     sr.add_argument("--poll", type=int, default=120)
     sr.add_argument("--no-deploy", action="store_true", help="skip engine build")
-    sr.add_argument("--host-max", default="",
-                    help="per-host max T, e.g. host1=160,host2=160")
+    sr.add_argument(
+        "--host-max", default="", help="per-host max T, e.g. host1=160,host2=160"
+    )
     sr.set_defaults(func=_cmd_run)
 
     sa = sub.add_parser("analyze", help="print D for all completed (dim, band)")
@@ -229,24 +233,38 @@ def main(argv: list[str] | None = None) -> None:
     sc.add_argument("--dim", type=int, default=3)
     sc.add_argument("--band", default="nyq")
     sc.add_argument("--out", default="corrdim_convergence.png")
-    sc.add_argument("--terms", type=int, default=None,
-                    help="restrict to one term count (terms-sweep stores)")
-    sc.add_argument("--labels", action="store_true",
-                    help="annotate each point with its value")
+    sc.add_argument(
+        "--terms",
+        type=int,
+        default=None,
+        help="restrict to one term count (terms-sweep stores)",
+    )
+    sc.add_argument(
+        "--labels", action="store_true", help="annotate each point with its value"
+    )
     sc.set_defaults(func=_cmd_corrdim)
 
     sl = sub.add_parser("leaderboard", help="per-worker fleet leaderboard")
-    sl.add_argument("--dbs", nargs="+", required=True,
-                    help="store paths or globs, e.g. 'data/freq/*.db'")
-    sl.add_argument("--post", action="store_true",
-                    help="also post to the Discord webhook")
+    sl.add_argument(
+        "--dbs",
+        nargs="+",
+        required=True,
+        help="store paths or globs, e.g. 'data/freq/*.db'",
+    )
+    sl.add_argument(
+        "--post", action="store_true", help="also post to the Discord webhook"
+    )
     sl.set_defaults(func=_cmd_leaderboard)
 
     sn = sub.add_parser("notify", help="post a message to the Discord webhook")
     sn.add_argument("--message", "-m", required=True, help="message body")
     sn.add_argument("--title", default="", help="embed title (omit for plain text)")
-    sn.add_argument("--color", default="info", choices=sorted(COLORS),
-                    help="embed color: start|progress|done|fail|info")
+    sn.add_argument(
+        "--color",
+        default="info",
+        choices=sorted(COLORS),
+        help="embed color: start|progress|done|fail|info",
+    )
     sn.set_defaults(func=_cmd_notify)
 
     args = p.parse_args(argv)

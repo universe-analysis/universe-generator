@@ -36,22 +36,19 @@ def build_command(job: Job, binary: str, curve_path: str) -> list[str]:
         str(job.t),
         "--attempts",
         repr(job.max_attempts),
-        # Uniform is the engine's only sampler since the smart removal
-        # (2026-07-09); passed explicitly so a stale smart-default binary on a
-        # host fails loudly (--uniform unknown there is harmless, but a silent
-        # smart run is not -- old binaries defaulted to smart).
+        # Uniform is the engine's only sampler and the torus its only
+        # geometry (both since 2026-07-09); passed explicitly so a stale
+        # binary with the old defaults (smart sampler, hard wall) fails
+        # loudly instead of silently running the wrong model.
         "--uniform",
+        "--torus",
         "--seed",
         str(job.seed),
         "--until-accept-rate",
         repr(job.accept_rate),
     ]
-    if job.angle:
-        cmd += ["--angle-sample"]
     if job.euclid:
         cmd += ["--euclid-collision"]
-    if job.torus:
-        cmd += ["--torus"]
     if job.phase:
         cmd += ["--phase"]
     if job.sparse:

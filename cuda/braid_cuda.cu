@@ -10,10 +10,11 @@
 //     conformal time z in (0, pi):
 //         x(z) = sum_j ax_j*[sin(bx_j*z + fx_j) - sin(fx_j)] + ax2*sin(z)
 //     with integer frequencies b >= 2 and the unit slope budget
-//     sum |a_j*b_j| = 1 (torus model; shared with sin1 at the hard wall).
+//     sum |a_j*b_j| = 1 on the wiggle group (sin1 is a free comoving offset).
 //   * Collisions are tested in comoving coordinates X = x/sin(z): Chebyshev
-//     square of half-width CELL = 2/T, per timestep, over the domain
-//     [-1, 1]^2 (hard wall by default, periodic with --torus).
+//     square of half-width CELL = 2/T, per timestep, over the periodic
+//     domain [-1, 1)^2 (a torus; the only geometry since 2026-07-09, when
+//     the legacy hard wall was removed -- --torus is an accepted no-op).
 //
 // Differences from the 3+1 engine: the loop is synchronous (one survivor
 // buffer, kernel and host admission alternate -- the 2D grid is cheap enough
@@ -223,18 +224,17 @@ __host__ __device__ inline void split_unit(Rng& r, int nw, double* w) {
 
 // Draw one candidate worldline from the proposal measure. Per axis:
 //   * frequencies: nw unique integers, uniform in [2, modmax+1];
-//   * slope budget: split across the wiggle terms uniformly on the simplex,
-//     each amplitude = (its share) / (its frequency), so sum |a_j*b_j| equals
-//     the budget exactly -- 1 on the torus, 1 - |sin1 draw| at the hard wall;
-//   * sin1 amplitude: uniform in [0, 1);
+//   * slope budget: the unit budget splits across the wiggle terms uniformly
+//     on the simplex, each amplitude = (its share) / (its frequency), so
+//     sum |a_j*b_j| = 1 exactly;
+//   * sin1 amplitude (the comoving offset): uniform in [0, 1);
 //   * signs: an independent random flip on every amplitude;
 //   * phases (--phase): even-frequency terms get f ~ U[0, pi), odd ones stay
 //     phase-free (the loop only closes for even b when a phase is added).
 // The exact draw ORDER is a compatibility contract: it fixes the RNG stream,
 // which keeps candidate generation bit-identical across engine generations
 // (the nw == 1 branch is the frozen legacy sequence).
-__host__ __device__ inline Path propose(
-    Rng& r, uint32_t modmax, bool torus, bool phase, int nw) {
+__host__ __device__ inline Path propose(Rng& r, uint32_t modmax, bool phase, int nw) {
     Path p = {};
     if (nw == 1) {
         // Legacy single-wiggle model: draw order preserved verbatim so the RNG
@@ -248,17 +248,12 @@ __host__ __device__ inline Path propose(
         uint32_t by = rng_below(r, modmax) + 2;
         p.ax2 = xs;
         p.ay2 = ys;
-        if (torus) {
-            // New-dogma budget: the slope-1 constraint binds the wiggle term
-            // alone (|a*b| = 1); the sin1 term is a free comoving offset -- in
-            // comoving coordinates it is a CONSTANT, so a uniform draw makes
-            // the packing homogeneous on the torus by construction.
-            p.ax[0] = 1.0 / bx;
-            p.ay[0] = 1.0 / by;
-        } else {
-            p.ax[0] = (1.0 - xs) / bx;
-            p.ay[0] = (1.0 - ys) / by;
-        }
+        // New-dogma budget: the slope-1 constraint binds the wiggle term
+        // alone (|a*b| = 1); the sin1 term is a free comoving offset -- in
+        // comoving coordinates it is a CONSTANT, so a uniform draw makes
+        // the packing homogeneous on the torus by construction.
+        p.ax[0] = 1.0 / bx;
+        p.ay[0] = 1.0 / by;
         p.bx[0] = bx;
         p.by[0] = by;
         if (rng_flip(r))
@@ -293,14 +288,11 @@ __host__ __device__ inline Path propose(
     double wx[kMaxWiggle], wy[kMaxWiggle];
     split_unit(r, nw, wx);
     split_unit(r, nw, wy);
-    // Torus: the whole unit budget goes to the wiggle group (sum |a*b| = 1).
-    // Hard wall: the group shares the slope budget with sin1, as before.
-    double budx = torus ? 1.0 : (1.0 - xs);
-    double budy = torus ? 1.0 : (1.0 - ys);
+    // The whole unit budget goes to the wiggle group (sum |a*b| = 1).
     for (int j = 0; j < nw; j++) {
-        p.ax[j] = budx * wx[j] / bxa[j];
+        p.ax[j] = wx[j] / bxa[j];
         p.bx[j] = bxa[j];
-        p.ay[j] = budy * wy[j] / bya[j];
+        p.ay[j] = wy[j] / bya[j];
         p.by[j] = bya[j];
     }
     for (int j = 0; j < nw; j++)
@@ -351,14 +343,11 @@ __device__ bool collides_dev(const Path& p,
                              const double* invz,
                              double cell,
                              int gw,
-                             int off,
                              const int* cellStart,
                              const int* cellLen,
                              const double* ptsX,
                              const double* ptsY,
-                             const int* order,
-                             bool torus) {
-    double edge = 1.0 - 0.5 * cell;  // path radius CELL/2 hits the hard wall at |X|=1
+                             const int* order) {
     // Phase offsets re-pin each component to zero at the endpoints.
     double offx[kMaxWiggle], offy[kMaxWiggle];
     for (int j = 0; j < nw; j++) {
@@ -390,36 +379,21 @@ __device__ bool collides_dev(const Path& p,
             X = (p.ax[0] * sin(p.bx[0] * z[i]) + p.ax2 * sinz[i]) * invz[i];
             Y = (p.ay[0] * sin(p.by[0] * z[i]) + p.ay2 * sinz[i]) * invz[i];
         }
-        int cx, cy;
-        if (torus) {
-            // Periodic domain: wrap onto [-1, 1); there is no wall.
-            X = torus_wrap(X);
-            Y = torus_wrap(Y);
-            cx = (int)floor((X + 1.0) / cell);
-            cy = (int)floor((Y + 1.0) / cell);
-        } else {
-            if (fabs(X) > edge || fabs(Y) > edge)
-                return true;  // edge collision
-            cx = (int)floor(X / cell);
-            cy = (int)floor(Y / cell);
-        }
+        // Wrap onto the fundamental domain [-1, 1) and index the grid; the
+        // 3x3 neighbour scan wraps modulo the grid.
+        X = torus_wrap(X);
+        Y = torus_wrap(Y);
+        const int cx = (int)floor((X + 1.0) / cell);
+        const int cy = (int)floor((Y + 1.0) / cell);
         for (int dx = -1; dx <= 1; dx++) {
-            int gx = torus ? (cx + dx + gw) % gw : cx + dx + off;
-            if (gx < 0 || gx >= gw)
-                continue;
+            int gx = (cx + dx + gw) % gw;
             for (int dy = -1; dy <= 1; dy++) {
-                int gy = torus ? (cy + dy + gw) % gw : cy + dy + off;
-                if (gy < 0 || gy >= gw)
-                    continue;
+                int gy = (cy + dy + gw) % gw;
                 long gc = (long)i * gw * gw + (long)gx * gw + gy;
                 int st = cellStart[gc], ln = cellLen[gc];
                 for (int k = 0; k < ln; k++) {
-                    double dX = X - ptsX[st + k];
-                    double dY = Y - ptsY[st + k];
-                    if (torus) {
-                        dX = torus_delta(dX);
-                        dY = torus_delta(dY);
-                    }
+                    const double dX = torus_delta(X - ptsX[st + k]);
+                    const double dY = torus_delta(Y - ptsY[st + k]);
                     if (fabs(dX) <= cell && fabs(dY) <= cell) {
                         if (!sub)
                             return true;  // unique mode: any contact rejects
@@ -448,7 +422,6 @@ __global__ void test_kernel(uint64_t baseSeed,
                             uint64_t round,
                             int batch,
                             uint32_t modmax,
-                            bool torus,
                             bool phase,
                             int nw,
                             bool sub,
@@ -459,7 +432,6 @@ __global__ void test_kernel(uint64_t baseSeed,
                             const double* invz,
                             double cell,
                             int gw,
-                            int off,
                             const int* cellStart,
                             const int* cellLen,
                             const double* ptsX,
@@ -474,9 +446,9 @@ __global__ void test_kernel(uint64_t baseSeed,
     Rng r;
     rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
-    Path p = propose(r, modmax, torus, phase, nw);
-    if (!collides_dev(p, nw, sub, ptsGid, T, z, sinz, invz, cell, gw, off, cellStart, cellLen,
-                      ptsX, ptsY, order, torus)) {
+    Path p = propose(r, modmax, phase, nw);
+    if (!collides_dev(p, nw, sub, ptsGid, T, z, sinz, invz, cell, gw, cellStart, cellLen, ptsX,
+                      ptsY, order)) {
         int slot = atomicAdd(survCount, 1);
         if (slot < survCap)
             survOut[slot] = p;
@@ -497,7 +469,6 @@ int main(int argc, char** argv) {
     const char* curvePath = nullptr;
     int maxfreq = 0;             // 0 = default modulation cap T/2
     double acceptThresh = 0;     // 0 = run to --attempts; >0 = stop when accept-rate < thresh
-    bool torus = false;          // new-dogma model: |a*b|=1, free sin1 offset, periodic domain
     bool phase = false;          // phase schema: free even-frequency phases
     int terms = 2;               // total sinusoid terms per axis, incl. sin1 (2 = legacy)
     bool subpaths = false;       // phase 2: pack subpaths into the jammed uniques
@@ -530,9 +501,11 @@ int main(int argc, char** argv) {
             maxfreq = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--until-accept-rate"))
             acceptThresh = atof(argv[++i]);
-        else if (!strcmp(argv[i], "--torus"))
-            torus = true;
-        else if (!strcmp(argv[i], "--phase"))
+        else if (!strcmp(argv[i], "--torus")) {
+            // The torus is the only geometry; the flag is kept as a no-op so
+            // existing command lines (and the orchestrator's argv, which
+            // passes it as a guard against stale wall-default binaries) run.
+        } else if (!strcmp(argv[i], "--phase"))
             phase = true;
         else if (!strcmp(argv[i], "--terms"))
             terms = atoi(argv[++i]);
@@ -590,10 +563,10 @@ int main(int argc, char** argv) {
         nwSub = subTerms - 1;
     }
     // Torus grid: exactly T cells of width CELL span [-1, 1), so the modular
-    // neighbour scan wraps cleanly at the seam. Hard-wall grid keeps its margin.
-    int gw = torus ? T : T + 4, off = torus ? 0 : (T + 4) / 2;
-    fprintf(stderr, "2+1%s%s: T=%d  modmax=%u (maxfreq=%u)  terms=%d\n",
-            torus ? " (torus)" : "", phase ? " (phase)" : "", T, modmax, modmax + 1, terms);
+    // neighbour scan wraps cleanly at the seam.
+    const int gw = T;
+    fprintf(stderr, "2+1 (torus)%s: T=%d  modmax=%u (maxfreq=%u)  terms=%d\n",
+            phase ? " (phase)" : "", T, modmax, modmax + 1, terms);
     if (subpaths)
         fprintf(stderr, "subpaths: terms=%d  max-n=%lld\n", nwSub + 1, maxN);
     // z tables + endpoint-first order. The canonical grid (2026-07-09, was
@@ -646,21 +619,15 @@ int main(int argc, char** argv) {
     std::vector<std::unordered_map<long, std::vector<HPt>>> hgrid(T);
     long long filledCells = 0;  // occupied (t, cx, cy) buckets of hgrid
 
-    double edge = 1.0 - 0.5 * cell;  // path radius CELL/2 hits the hard wall at |X|=1
-    // Host hash-grid cell index. Torus: wrapped positions live in [-1,1), so the
-    // index is periodic in [0, gw); neighbours wrap modulo gw. Hard wall: raw
-    // floor(v/cell) (the hash key handles negatives).
-    auto hix = [&](double v) -> int {
-        return torus ? (int)floor((v + 1.0) / cell) : (int)floor(v / cell);
-    };
-    auto hnb = [&](int c, int d) -> int { return torus ? (c + d + gw) % gw : c + d; };
+    // Host hash-grid cell index: wrapped positions live in [-1,1), so the
+    // index is periodic in [0, gw); neighbours wrap modulo gw.
+    auto hix = [&](double v) -> int { return (int)floor((v + 1.0) / cell); };
+    auto hnb = [&](int c, int d) -> int { return (c + d + gw) % gw; };
     // Exact recheck of one trajectory against the authoritative packing --
     // the same exclusion rule as collides_dev, over the host hash grid.
     auto host_collides = [&](const double* X, const double* Y) -> bool {
         for (int oi = 0; oi < T; oi++) {
             int i = order[oi];
-            if (!torus && (fabs(X[i]) > edge || fabs(Y[i]) > edge))
-                return true;  // edge collision
             int cx = hix(X[i]), cy = hix(Y[i]);
             for (int dx = -1; dx <= 1; dx++)
                 for (int dy = -1; dy <= 1; dy++) {
@@ -669,12 +636,8 @@ int main(int argc, char** argv) {
                     if (it == hgrid[i].end())
                         continue;
                     for (auto& pt : it->second) {
-                        double dX = X[i] - pt.x;
-                        double dY = Y[i] - pt.y;
-                        if (torus) {
-                            dX = torus_delta(dX);
-                            dY = torus_delta(dY);
-                        }
+                        const double dX = torus_delta(X[i] - pt.x);
+                        const double dY = torus_delta(Y[i] - pt.y);
                         if (fabs(dX) <= cell && fabs(dY) <= cell)
                             return true;
                     }
@@ -689,8 +652,6 @@ int main(int argc, char** argv) {
         int gid = -1;
         for (int oi = 0; oi < T; oi++) {
             int i = order[oi];
-            if (!torus && (fabs(X[i]) > edge || fabs(Y[i]) > edge))
-                return -1;  // edge collision
             int cx = hix(X[i]), cy = hix(Y[i]);
             for (int dx = -1; dx <= 1; dx++)
                 for (int dy = -1; dy <= 1; dy++) {
@@ -699,12 +660,8 @@ int main(int argc, char** argv) {
                     if (it == hgrid[i].end())
                         continue;
                     for (auto& pt : it->second) {
-                        double dX = X[i] - pt.x;
-                        double dY = Y[i] - pt.y;
-                        if (torus) {
-                            dX = torus_delta(dX);
-                            dY = torus_delta(dY);
-                        }
+                        const double dX = torus_delta(X[i] - pt.x);
+                        const double dY = torus_delta(Y[i] - pt.y);
                         if (fabs(dX) <= cell && fabs(dY) <= cell) {
                             if (gid == -1)
                                 gid = pt.gid;
@@ -717,9 +674,7 @@ int main(int argc, char** argv) {
         return gid;  // -1 when it touched nothing
     };
     // Device-grid cell index for the CSR rebuild (must mirror collides_dev).
-    auto gix = [&](double v) -> int {
-        return torus ? (int)floor((v + 1.0) / cell) : (int)floor(v / cell) + off;
-    };
+    auto gix = [&](double v) -> int { return (int)floor((v + 1.0) / cell); };
 
     // survivor buffers (the multi-term Path is ~350 B, so the cap is kept at a
     // level that still dwarfs the ~256-survivors/round adaptation target)
@@ -822,10 +777,8 @@ int main(int argc, char** argv) {
                 Xb[i] = (p.ax[0] * sin(p.bx[0] * z[i]) + p.ax2 * sinz[i]) * invz[i];
                 Yb[i] = (p.ay[0] * sin(p.by[0] * z[i]) + p.ay2 * sinz[i]) * invz[i];
             }
-            if (torus) {
-                Xb[i] = torus_wrap(Xb[i]);
-                Yb[i] = torus_wrap(Yb[i]);
-            }
+            Xb[i] = torus_wrap(Xb[i]);
+            Yb[i] = torus_wrap(Yb[i]);
         }
     };
     // Admit Xb/Yb into the host structures under the given group ID; returns
@@ -856,10 +809,9 @@ int main(int argc, char** argv) {
         // --- launch batch test ---
         CK(cudaMemset(dSurvCount, 0, 4));
         int threads = 256, blocks = (int)((batch + threads - 1) / threads);
-        test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, torus, phase, nw,
-                                         false, dPtsGid, T, dz, dsinz, dinvz, cell, gw, off,
-                                         dCellStart, dCellLen, dPtsX, dPtsY, dorder, dSurv,
-                                         dSurvCount, survCap);
+        test_kernel<<<blocks, threads>>>(
+            seed, round, (int)batch, modmax, phase, nw, false, dPtsGid, T, dz, dsinz, dinvz,
+            cell, gw, dCellStart, dCellLen, dPtsX, dPtsY, dorder, dSurv, dSurvCount, survCap);
         CK(cudaDeviceSynchronize());
         int sc;
         CK(cudaMemcpy(&sc, dSurvCount, 4, cudaMemcpyDeviceToHost));
@@ -936,10 +888,10 @@ int main(int argc, char** argv) {
             uploadGrid();
             CK(cudaMemset(dSurvCount, 0, 4));
             int threads = 256, blocks = (int)((batch + threads - 1) / threads);
-            test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, torus, phase,
-                                             nwSub, true, dPtsGid, T, dz, dsinz, dinvz, cell,
-                                             gw, off, dCellStart, dCellLen, dPtsX, dPtsY,
-                                             dorder, dSurv, dSurvCount, survCap);
+            test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, phase, nwSub,
+                                             true, dPtsGid, T, dz, dsinz, dinvz, cell, gw,
+                                             dCellStart, dCellLen, dPtsX, dPtsY, dorder, dSurv,
+                                             dSurvCount, survCap);
             CK(cudaDeviceSynchronize());
             int sc;
             CK(cudaMemcpy(&sc, dSurvCount, 4, cudaMemcpyDeviceToHost));

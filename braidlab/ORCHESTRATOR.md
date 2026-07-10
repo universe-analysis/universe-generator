@@ -16,7 +16,7 @@ Module map:
 | Module | Role |
 |---|---|
 | `config.py` | `Campaign` (declarative experiment) expands to `Job`s, one per `(dim, band, T, seed)`. |
-| `campaigns.py` | Named campaigns (`3plus1`, `corrdim3d`, …). |
+| `campaigns.py` | Named campaigns (`freq3d_e6`, `torus3d_phase_e6`, …). |
 | `engine.py` | `build_command` — argv for one packing run. |
 | `orchestrator.py` | `plan_assignment` (pure), `Fleet` (SSH/SCP side effects), `run_campaign` (the driver loop). |
 | `store.py` | SQLite store keyed by job identity; `curves/` and `dumps/` dirs alongside the db. |
@@ -30,12 +30,12 @@ tested without hardware); `Fleet` is the only thing that touches SSH.
 
 ```bash
 # Dry run — see the job split (no launch):
-uv run python -m braidlab plan corrdim3d --hosts host3,host1,host2
+uv run python -m braidlab plan freq3d_e6 --hosts host3,host1,host2
 
 # Launch (resumable; safe to Ctrl-C and re-run):
-uv run python -m braidlab run corrdim3d \
+uv run python -m braidlab run freq3d_e6 \
     --hosts host3,host1,host2 \
-    --db data/corrdim/run.db \
+    --db data/freq/freq3d_e6.db \
     --host-max host1=160,host2=160 \
     --poll 120
 
@@ -43,7 +43,7 @@ uv run python -m braidlab run corrdim3d \
 #   add --no-deploy
 
 # Seed-averaged correlation-dimension report from collected dumps:
-uv run python -m braidlab corrdim --db data/corrdim/run.db --out corrdim_convergence.png
+uv run python -m braidlab corrdim --db data/freq/freq3d_e6.db --out corrdim_convergence.png
 ```
 
 The `run` driver **blocks**, polling every `--poll` seconds until every job is
@@ -159,9 +159,8 @@ does not even allocate. The sparse prefilter runs entirely in fp32 with
 table-driven trig, so it is also the *fast* mode (~10% faster than dense at
 T=60 on a 3080, despite the binary-search lookup); sparse job names carry an
 `_sp` suffix so they never collide with dense runs in the shared workspace.
-Validated against the stored corrdim3d T=60 experiment: dense/sparse tail
-deviation < 1%, both inside the 5-seed spread (see
-`analysis/compare_jamming.py`).
+Validated against a stored T=60 experiment: dense/sparse tail deviation
+< 1%, both inside the 5-seed spread (see `analysis/compare_jamming.py`).
 
 ### VRAM breakdown (dense mode: where it actually goes)
 
@@ -189,8 +188,8 @@ double-index layout was ×16. The grid is the wall; everything else is small:
 
 Consequences:
 - **Dense 3+1 caps at T≈255 on 24 GB** because the grid is T⁴; **2+1 is ~T³**
-  (T × a T² lattice), so even T=400 is small — that is why `corrdim2d` can push
-  T high.
+  (T × a T² lattice), so even T=400 is small — that is why the 2+1 campaigns
+  can push T high.
 - The grid is **mostly empty at high T** (the pack fills a ~2.8-D fractal subset
   of a 4-D lattice) — which is exactly why `--sparse` works: it stores only the
   occupied cells and removes the T⁴ term entirely.
@@ -213,8 +212,8 @@ Recover from a host drop by simply re-running the same `braidlab run` command.
 
 ## Parameter-dump campaigns (correlation dimension)
 
-`corrdim3d` sets `angle=True` (`--angle-sample`, edge sampler) and `dump=True`.
-When `dump=True`, `render_runner` has each job also write `dumps/$name.csv`, then
+Campaigns with `dump=True` (all current ones) have `render_runner` make each
+job also write `dumps/$name.csv`, then
 **subsamples on the host**:
 
 ```bash
@@ -263,7 +262,9 @@ PY
 removal 2026-07-09; passed explicitly so a stale smart-default binary fails
 loudly) · `--seed <s>` ·
 `--until-accept-rate <r>` (the fixed-convergence stop) · `--maxfreq <m>` (band) ·
-`--angle-sample` (edge sampler) · `--torus` (new-dogma model) · `--phase`
+`--torus` (no-op since 2026-07-09 — the torus is the only geometry; passed as
+a stale-binary guard, like `--uniform`) · `--phase`
 (free even-frequency phases; adds fx/fy/fw dump columns — the symmetric z grid
 is unconditional in the engines since 2026-07-09) ·
 `--curve <path>` · `--dump-params <path>`.
+(`--smart` and `--angle-sample` were removed 2026-07-09 and are fatal errors.)
