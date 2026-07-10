@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-07-10</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-07-10</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="converge-exponents">
+      <h2>CONVERGE: the 3+1 exponent converges at 2.321 &mdash; D/d = 3/4 is dead; the 2+1 exponent still refuses a limit</h2>
+      <p class="meta">
+        <code>converge3d_e6</code> (sparse engine, T = 200&ndash;360 &times; 5
+        seeds, 1e-6) + <code>converge2d_e8</code> / <code>converge2d_e9</code>
+        (the pack2d ladder at 1e-8, 5 seeds; T &isin; {140,300} &times; 3
+        seeds at 1e-9), stitched with the PACK e6/e7 stores &middot; campaign
+        code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/664cb68"><code>664cb68</code></a>
+        &middot; chart
+        <a href="https://github.com/universe-analysis/universe-generator/commit/3de1b48"><code>3de1b48</code></a>
+      </p>
+      <p>
+        The convergence campaign pair: extend 3+1 in resolution (the sparse
+        engine sails past the dense grid's VRAM ceiling &mdash; T = 360 ran
+        in &lt;4 GB) and 2+1 in cutoff depth, to pin down where each headline
+        exponent actually lands.
+      </p>
+      <figure class="plot">
+        <img src="converge_exponents.png"
+             alt="Two panels. Left: local packing exponent versus T for 3+1, rising from 2.15 at T about 28 and flattening from T about 180 onward onto a dashed line at D = 2.321, clearly above the D/d=3/4 reference at 2.25 and just below the 7/3 reference. Right: 2+1 packing exponent versus cutoff from 1e-6 to 1e-9, full-ladder fits rising 1.393 to 1.440 and two-point values reaching 1.473 at 1e-9, with no flattening." />
+        <figcaption>
+          Left: 3+1 local slope vs T &mdash; converged from T &asymp; 160.
+          Right: 2+1 exponent vs cutoff depth &mdash; still climbing at 1e-9.
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>3+1: D = 2.321 &plusmn; 0.001 (stat), converged.</strong>
+            The local slope rises from 2.15 at the ladder bottom and sits flat
+            across five consecutive rungs from T = 160 to 360 (2.316, 2.327,
+            2.318, 2.328, 2.319). The rise seen on shorter ladders was
+            low-T curvature, not an unconverged exponent.</li>
+        <li><strong>D/d = 3/4 is ruled out</strong> (2.25 sits ~9&sigma; below
+            the plateau) &mdash; and the plateau lands close to, but below,
+            7/3 &asymp; 2.333. With the known +0.016/decade cutoff shift, the
+            jamming-limit value plausibly brushes 7/3; that is now the sharp
+            open question.</li>
+        <li><strong>2+1: no limit yet.</strong> Full-ladder fits give 1.393
+            &rarr; 1.407 &rarr; 1.440 across 1e-6/1e-7/1e-8 and the 1e-9
+            two-point anchor reads 1.473 &plusmn; 0.011 &mdash; the drift is
+            not decelerating through four decades. A naive
+            exponent-vs-log-cutoff extrapolation has nothing to converge on;
+            the jamming-limit 2+1 exponent needs the approach law fit directly
+            to the stored kinetic curves (a Feder-law analog) rather than
+            deeper brute force.</li>
+        <li>Prefactor growth at T = 300 decelerates mildly: +24%, +14%, +12%
+            per decade across the four rungs.</li>
+      </ul>
+      <p>
+        Bookkeeping: 25/25 + 40/40 + 6/6 jobs. One rented box (vast-2) died
+        mid-campaign; its three collected jobs survived, its five strays were
+        re-dispatched to the remaining 4090s from the resumable store, and
+        the whole affair cost ~20 minutes of wall-clock. The 1e-6 sparse
+        ladder is cheap &mdash; the T = 360 tier ran ~15 min/job on a 4090
+        &mdash; so appending T = 400+ later is a small job whenever we want a
+        longer plateau.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
