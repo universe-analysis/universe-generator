@@ -8,6 +8,74 @@ distilled narrative is the paper (`paper/main.tex`, "A packing model of a
 closed universe", Bentley & Bentley — **note: the paper predates the uniform
 re-anchor below and needs revision**).
 
+## 0. Orientation — what this universe is
+
+*For someone arriving from scratch. Everything here is restated precisely in
+the numbered sections.*
+
+**The universe.** A closed toy cosmos with one cycle: conformal time z runs
+from a big bang at z = 0 to a crunch at z = π, and the scale factor is
+sin z — space expands, turns around at z = π/2 (maximum expansion, "the
+turnaround"), and recollapses. Space itself is a comoving torus: each of the
+d spatial axes (we study d = 3 and d = 2, written 3+1 and 2+1) is a circle of
+circumference 2, so there is no boundary and no statable center. Physical
+positions are x = X·sin z: every history begins and ends at zero physical
+size, but the comoving coordinate X — where things sit on the torus — never
+collapses.
+
+**Matter.** A particle is not a point with an equation of motion; it is an
+entire worldline, chosen once, whole. Each is a closed-form sinusoidal thread
+through the full history: a static home position on the torus (reached via
+the `a1·sin z` term), plus a peculiar-motion wiggle `a·sin(bz + f)` with an
+integer frequency b and, on even frequencies, a free phase f. A hard budget
+`|a·b| = 1` caps every axis's peculiar velocity — a built-in speed of light
+(per axis, so the causal cone is a box, not a ball). A worldline has no
+forces acting on it and no choices to make; everything about it is fixed at
+birth by the tuple (b, f, a1) per axis.
+
+**The one law.** Matter is created by random sequential adsorption (RSA):
+propose a worldline by drawing its parameters from the uniform (maximum-
+entropy) measure, and accept it iff it stays at least one exclusion radius
+(1/T, in the wrap-around Chebyshev sense) away from every already-accepted
+worldline at every one of T sampled moments of the history. Accepted means
+permanent; rejected means gone. Repeat until essentially nothing more fits —
+the universe is *jammed*. There is no energy, no interaction, no dynamics,
+no fine-tuned initial condition: the only physics is that two things cannot
+be in the same place at the same time, enforced across an entire cosmic
+history at once. A worldline is not admitted because of where it is now; it
+is admitted because it can *coexist with everything else, forever*.
+
+**The resolution knob.** T is the single control parameter: it is
+simultaneously the number of time samples, the particle diameter (2/T), and
+the highest peculiar frequency allowed (the Nyquist band b ≤ T). Making T
+larger is refining the same universe — smaller particles, finer time
+sampling, richer motion — which is why every result is stated as a scaling
+in T. One RSA run at one seed is one universe; campaigns generate ensembles
+of them (the GPU engines in `cuda/`, orchestrated across a small fleet by
+`braidlab/`).
+
+**The experiments.** Four questions organize everything measured so far.
+*How much fits?* — the jam count N grows as a clean power T^D whose exponent
+D is not the dimension of space or of any fractal the matter traces out; it
+is a new, dynamical capacity exponent of the whole-history packing problem
+(sections 2–3, 5). *Where does it sit?* — the jammed matter is exactly
+uniform across space and across time, indistinguishable from ideal
+homogeneity (section 4). *What survives?* — jamming is a selection: it
+prunes even frequencies, and it prunes phases that make particles fast at
+the turnaround, sculpting a relativistic arcsine speed distribution it was
+never told about (sections 6–7). *What does it feel like?* — read
+thermodynamically, the turnaround universe is matter-like, with a pressure
+suppression below the proposal ensemble that is the model's most law-like
+kinematic number (section 8).
+
+**Why this is interesting.** Cosmology usually gets homogeneity, matter
+content, and velocity distributions from dynamics plus initial conditions.
+Here a single constraint — mutual exclusion over a complete closed history —
+generates statistical regularities of all three kinds on its own, and they
+are robust to every knob we have turned (cutoff depth, dictionary size,
+phases). The project is an attempt to map which features of a universe can
+be *packing effects*.
+
 ## 1. The model
 
 Per spatial axis, `x(z) = a·[sin(bz + f) − sin f] + a1·sin z` over the
