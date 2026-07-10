@@ -36,7 +36,11 @@ def build_command(job: Job, binary: str, curve_path: str) -> list[str]:
         str(job.t),
         "--attempts",
         repr(job.max_attempts),
-        "--uniform" if job.uniform else "--smart",
+        # Uniform is the engine's only sampler since the smart removal
+        # (2026-07-09); passed explicitly so a stale smart-default binary on a
+        # host fails loudly (--uniform unknown there is harmless, but a silent
+        # smart run is not -- old binaries defaulted to smart).
+        "--uniform",
         "--seed",
         str(job.seed),
         "--until-accept-rate",

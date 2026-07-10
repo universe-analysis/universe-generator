@@ -100,15 +100,6 @@ __host__ __device__ inline uint32_t rng_below(Rng& r, uint32_t n) {
 __host__ __device__ inline bool rng_flip(Rng& r) {
     return rng_next(r) & 1ULL;
 }
-__host__ __device__ inline uint32_t igcd(uint32_t a, uint32_t b) {
-    while (b) {
-        uint32_t t = a % b;
-        a = b;
-        b = t;
-    }
-    return a;
-}
-
 constexpr double kPi = 3.14159265358979323846;
 
 // Compile-time cap on wiggle terms per axis (--terms K uses K-1 of them).
@@ -137,24 +128,24 @@ __host__ __device__ inline double torus_delta(double d) {
     return d;
 }
 
-// One biased-or-uniform frequency draw in [2, modmax+1] (smart = max of two
-// uniforms, favouring finer wiggles).
-__host__ __device__ inline uint32_t draw_freq(Rng& r, uint32_t modmax, bool smart) {
-    if (!smart)
-        return rng_below(r, modmax) + 2;
-    uint32_t a1 = rng_below(r, modmax), a2 = rng_below(r, modmax);
-    return (a1 > a2 ? a1 : a2) + 2;
+// One uniform frequency draw in [2, modmax+1]. (The old "smart" sampler --
+// max-of-two bias + coprime rule -- was removed 2026-07-09: the FREQ campaign
+// showed its D-vs-terms trend was a sampler artifact; see lab notes 07-08.)
+__host__ __device__ inline uint32_t draw_freq(Rng& r, uint32_t modmax) {
+    return rng_below(r, modmax) + 2;
 }
 
 // nw unique frequencies for one axis. Duplicates re-draw (bounded); if the
 // guard blows, the smallest unused frequency fills the slot deterministically.
-__host__ __device__ inline void draw_unique_freqs(
-    Rng& r, uint32_t modmax, bool smart, int nw, uint32_t* out) {
+__host__ __device__ inline void draw_unique_freqs(Rng& r,
+                                                  uint32_t modmax,
+                                                  int nw,
+                                                  uint32_t* out) {
     for (int j = 0; j < nw; j++) {
         uint32_t b = 0;
         bool dup = true;
         for (int guard = 0; dup && guard < 64; guard++) {
-            b = draw_freq(r, modmax, smart);
+            b = draw_freq(r, modmax);
             dup = false;
             for (int k = 0; k < j; k++)
                 if (out[k] == b)
@@ -198,29 +189,18 @@ __host__ __device__ inline void split_unit(Rng& r, int nw, double* w) {
 }
 
 __host__ __device__ inline Path propose(
-    Rng& r, uint32_t modmax, bool smart, bool torus, bool phase, int nw) {
+    Rng& r, uint32_t modmax, bool torus, bool phase, int nw) {
     Path p = {};
     if (nw == 1) {
         // Legacy single-wiggle model: draw order preserved verbatim so the RNG
         // stream (and thus candidate generation) stays bit-identical to the
         // pre---terms engine.
         double xs = rng_f64(r), ys = rng_f64(r);
-        uint32_t bx, by;
-        if (!smart) {
-            bx = rng_below(r, modmax) + 2;
-            by = rng_below(r, modmax) + 2;
-        } else {
-            int guard = 0;
-            while (true) {
-                uint32_t a1 = rng_below(r, modmax), a2 = rng_below(r, modmax);
-                bx = (a1 > a2 ? a1 : a2) + 2;
-                uint32_t b1 = rng_below(r, modmax), b2 = rng_below(r, modmax);
-                by = (b1 > b2 ? b1 : b2) + 2;
-                if (igcd(bx, by) == 1 || guard >= 24)
-                    break;
-                guard++;
-            }
-        }
+        // Draw order preserved verbatim from the old uniform branch, so the
+        // RNG stream (and thus candidate generation) stays bit-identical to
+        // pre-removal --uniform runs.
+        uint32_t bx = rng_below(r, modmax) + 2;
+        uint32_t by = rng_below(r, modmax) + 2;
         p.ax2 = xs;
         p.ay2 = ys;
         if (torus) {
@@ -258,14 +238,13 @@ __host__ __device__ inline Path propose(
         }
         return p;
     }
-    // Generalized multi-term model. Smart keeps the high-frequency bias per
-    // draw but drops the cross-axis coprime rule (no single pair to test).
+    // Generalized multi-term model.
     double xs = rng_f64(r), ys = rng_f64(r);
     p.ax2 = xs;
     p.ay2 = ys;
     uint32_t bxa[kMaxWiggle], bya[kMaxWiggle];
-    draw_unique_freqs(r, modmax, smart, nw, bxa);
-    draw_unique_freqs(r, modmax, smart, nw, bya);
+    draw_unique_freqs(r, modmax, nw, bxa);
+    draw_unique_freqs(r, modmax, nw, bya);
     double wx[kMaxWiggle], wy[kMaxWiggle];
     split_unit(r, nw, wx);
     split_unit(r, nw, wy);
@@ -409,7 +388,6 @@ __global__ void test_kernel(uint64_t baseSeed,
                             uint64_t round,
                             int batch,
                             uint32_t modmax,
-                            bool smart,
                             bool torus,
                             bool phase,
                             int nw,
@@ -436,7 +414,7 @@ __global__ void test_kernel(uint64_t baseSeed,
     Rng r;
     rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
-    Path p = propose(r, modmax, smart, torus, phase, nw);
+    Path p = propose(r, modmax, torus, phase, nw);
     if (!collides_dev(p, nw, sub, ptsGid, T, z, sinz, invz, cell, gw, off, cellStart, cellLen,
                       ptsX, ptsY, order, torus)) {
         int slot = atomicAdd(survCount, 1);
@@ -456,7 +434,6 @@ int main(int argc, char** argv) {
     int T = 120;
     double budget = 1e8;
     uint64_t seed = 12345;
-    bool smart = true;
     const char* curvePath = nullptr;
     int maxfreq = 0;             // 0 = default modulation cap T/2
     double acceptThresh = 0;     // 0 = run to --attempts; >0 = stop when accept-rate < thresh
@@ -477,11 +454,17 @@ int main(int argc, char** argv) {
             budget = atof(argv[++i]);
         else if (!strcmp(argv[i], "--seed"))
             seed = strtoull(argv[++i], 0, 10);
-        else if (!strcmp(argv[i], "--uniform"))
-            smart = false;
-        else if (!strcmp(argv[i], "--smart"))
-            smart = true;
-        else if (!strcmp(argv[i], "--curve"))
+        else if (!strcmp(argv[i], "--uniform")) {
+            // Uniform is the only frequency sampler; the flag is kept as a
+            // no-op so existing command lines (and the orchestrator's argv,
+            // which passes it as a guard against stale binaries) still run.
+        } else if (!strcmp(argv[i], "--smart")) {
+            fprintf(stderr,
+                    "error: --smart was removed 2026-07-09 (the smart sampler's "
+                    "D-vs-terms trend was an artifact; see lab notes 2026-07-08). "
+                    "Frequencies are always drawn uniformly now.\n");
+            return 1;
+        } else if (!strcmp(argv[i], "--curve"))
             curvePath = argv[++i];
         else if (!strcmp(argv[i], "--maxfreq"))
             maxfreq = atoi(argv[++i]);
@@ -805,8 +788,8 @@ int main(int argc, char** argv) {
         // --- launch batch test ---
         CK(cudaMemset(dSurvCount, 0, 4));
         int threads = 256, blocks = (int)((batch + threads - 1) / threads);
-        test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, smart, torus, phase,
-                                         nw, false, dPtsGid, T, dz, dsinz, dinvz, cell, gw, off,
+        test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, torus, phase, nw,
+                                         false, dPtsGid, T, dz, dsinz, dinvz, cell, gw, off,
                                          dCellStart, dCellLen, dPtsX, dPtsY, dorder, dSurv,
                                          dSurvCount, survCap);
         CK(cudaDeviceSynchronize());
@@ -885,9 +868,9 @@ int main(int argc, char** argv) {
             uploadGrid();
             CK(cudaMemset(dSurvCount, 0, 4));
             int threads = 256, blocks = (int)((batch + threads - 1) / threads);
-            test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, smart, torus,
-                                             phase, nwSub, true, dPtsGid, T, dz, dsinz, dinvz,
-                                             cell, gw, off, dCellStart, dCellLen, dPtsX, dPtsY,
+            test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, torus, phase,
+                                             nwSub, true, dPtsGid, T, dz, dsinz, dinvz, cell,
+                                             gw, off, dCellStart, dCellLen, dPtsX, dPtsY,
                                              dorder, dSurv, dSurvCount, survCap);
             CK(cudaDeviceSynchronize());
             int sc;

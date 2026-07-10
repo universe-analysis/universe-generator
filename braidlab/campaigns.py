@@ -255,11 +255,11 @@ CAMPAIGNS: dict[str, Campaign] = {
         terms_values=FREQ_TERMS,
         tag="fqe6",
     ),
-    # Uniform-sampler mini-sweep: does the D-vs-terms trend survive without
-    # the smart high-frequency bias, and is the terms=3 dip the coprime rule?
-    # --uniform has no coprime constraint at ANY term count, so terms=2 vs 3
-    # isolates pure term-count effects (smart's legacy branch couples the two:
-    # it drops the coprime rule exactly when terms > 2).
+    # Uniform-sampler mini-sweep (ran 2026-07-08 as the control against the
+    # then-default smart sampler; its verdict -- D is terms-invariant under
+    # uniform proposals -- is why the smart sampler was removed 2026-07-09).
+    # Kept so its store in data/freq/ stays resumable; the engine is
+    # uniform-only now, so the definition no longer needs a sampler knob.
     "frequni3d_e6": Campaign(
         name="frequni3d_e6",
         dim=3,
@@ -271,7 +271,6 @@ CAMPAIGNS: dict[str, Campaign] = {
         dump=True,
         torus=True,
         phase=True,
-        uniform=True,
         terms_values=(2, 3, 10),
         tag="une6",
     ),

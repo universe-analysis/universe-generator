@@ -259,7 +259,9 @@ PY
 
 ## Engine flags the orchestrator uses
 
-`-t <T>` · `--attempts <N>` · `--smart` · `--seed <s>` ·
+`-t <T>` · `--attempts <N>` · `--uniform` (the only sampler since the smart
+removal 2026-07-09; passed explicitly so a stale smart-default binary fails
+loudly) · `--seed <s>` ·
 `--until-accept-rate <r>` (the fixed-convergence stop) · `--maxfreq <m>` (band) ·
 `--angle-sample` (edge sampler) · `--torus` (new-dogma model) · `--phase`
 (even-frequency phases + symmetric z grid; adds fx/fy/fw dump columns) ·

@@ -165,8 +165,11 @@ def test_campaign_validation() -> None:
         )
 
 
-def test_uniform_job_name_and_command() -> None:
-    """Uniform-sampler jobs get the _un suffix and --uniform instead of --smart."""
+def test_command_is_always_uniform() -> None:
+    """Every job passes --uniform and never --smart (smart removed 2026-07-09).
+
+    The explicit flag guards against a stale smart-default binary on a host.
+    """
     from braidlab.engine import build_command
 
     j = Job(
@@ -178,16 +181,15 @@ def test_uniform_job_name_and_command() -> None:
         max_attempts=3e12,
         torus=True,
         phase=True,
-        uniform=True,
         terms=3,
         tag="une6",
     )
-    assert j.name == "d3_nyq_T44_s2_tor_ph_un_tm3_une6"
+    assert j.name == "d3_nyq_T44_s2_tor_ph_tm3_une6"
     cmd = build_command(j, "bin", "curve.csv")
     assert "--uniform" in cmd and "--smart" not in cmd
-    smart = build_command(
+    plain = build_command(
         Job(dim=3, band="nyq", t=44, seed=2, accept_rate=1e-6, max_attempts=3e12),
         "bin",
         "curve.csv",
     )
-    assert "--smart" in smart and "--uniform" not in smart
+    assert "--uniform" in plain and "--smart" not in plain

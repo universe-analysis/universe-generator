@@ -110,15 +110,6 @@ __host__ __device__ inline uint32_t rng_below(Rng& r, uint32_t n) {
 __host__ __device__ inline bool rng_flip(Rng& r) {
     return rng_next(r) & 1ULL;
 }
-__host__ __device__ inline uint32_t igcd(uint32_t a, uint32_t b) {
-    while (b) {
-        uint32_t t = a % b;
-        a = b;
-        b = t;
-    }
-    return a;
-}
-
 constexpr double kPi = 3.14159265358979323846;
 
 // Chunked parallel-for over [0, n): fn(lo, hi) runs on worker threads over
@@ -155,24 +146,24 @@ struct Path {
     double ax2, ay2, aw2;                                   // sin1 amplitudes
 };
 
-// One biased-or-uniform frequency draw in [2, modmax+1] (smart = max of two
-// uniforms, favouring finer wiggles).
-__host__ __device__ inline uint32_t draw_freq(Rng& r, uint32_t modmax, bool smart) {
-    if (!smart)
-        return rng_below(r, modmax) + 2;
-    uint32_t a1 = rng_below(r, modmax), a2 = rng_below(r, modmax);
-    return (a1 > a2 ? a1 : a2) + 2;
+// One uniform frequency draw in [2, modmax+1]. (The old "smart" sampler --
+// max-of-two bias + coprime rule -- was removed 2026-07-09: the FREQ campaign
+// showed its D-vs-terms trend was a sampler artifact; see lab notes 07-08.)
+__host__ __device__ inline uint32_t draw_freq(Rng& r, uint32_t modmax) {
+    return rng_below(r, modmax) + 2;
 }
 
 // nw unique frequencies for one axis. Duplicates re-draw (bounded); if the
 // guard blows, the smallest unused frequency fills the slot deterministically.
-__host__ __device__ inline void draw_unique_freqs(
-    Rng& r, uint32_t modmax, bool smart, int nw, uint32_t* out) {
+__host__ __device__ inline void draw_unique_freqs(Rng& r,
+                                                  uint32_t modmax,
+                                                  int nw,
+                                                  uint32_t* out) {
     for (int j = 0; j < nw; j++) {
         uint32_t b = 0;
         bool dup = true;
         for (int guard = 0; dup && guard < 64; guard++) {
-            b = draw_freq(r, modmax, smart);
+            b = draw_freq(r, modmax);
             dup = false;
             for (int k = 0; k < j; k++)
                 if (out[k] == b)
@@ -266,7 +257,7 @@ __device__ inline int find_key(const int* keys, int lo, int hi, int key) {
 }
 
 __host__ __device__ inline Path propose(
-    Rng& r, uint32_t modmax, bool smart, bool angle, bool torus, bool phase, int nw) {
+    Rng& r, uint32_t modmax, bool angle, bool torus, bool phase, int nw) {
     Path p = {};
     if (nw == 1) {
         // Legacy single-wiggle model: draw order preserved verbatim so the RNG
@@ -282,26 +273,12 @@ __host__ __device__ inline Path propose(
             ys = rng_f64(r);
             ws = rng_f64(r);
         }
-        uint32_t bx, by, bw;
-        if (!smart) {
-            bx = rng_below(r, modmax) + 2;
-            by = rng_below(r, modmax) + 2;
-            bw = rng_below(r, modmax) + 2;
-        } else {
-            int guard = 0;
-            while (true) {
-                uint32_t a1 = rng_below(r, modmax), a2 = rng_below(r, modmax);
-                bx = (a1 > a2 ? a1 : a2) + 2;
-                uint32_t b1 = rng_below(r, modmax), b2 = rng_below(r, modmax);
-                by = (b1 > b2 ? b1 : b2) + 2;
-                uint32_t c1 = rng_below(r, modmax), c2 = rng_below(r, modmax);
-                bw = (c1 > c2 ? c1 : c2) + 2;
-                if ((igcd(bx, by) == 1 && igcd(bx, bw) == 1 && igcd(by, bw) == 1) ||
-                    guard >= 24)
-                    break;
-                guard++;
-            }
-        }
+        // Draw order preserved verbatim from the old uniform branch, so the
+        // RNG stream (and thus candidate generation) stays bit-identical to
+        // pre-removal --uniform runs.
+        uint32_t bx = rng_below(r, modmax) + 2;
+        uint32_t by = rng_below(r, modmax) + 2;
+        uint32_t bw = rng_below(r, modmax) + 2;
         p.ax2 = xs;
         p.ay2 = ys;
         p.aw2 = ws;
@@ -349,8 +326,7 @@ __host__ __device__ inline Path propose(
         }
         return p;
     }
-    // Generalized multi-term model. Smart keeps the high-frequency bias per
-    // draw but drops the cross-axis coprime rule (no single pair to test).
+    // Generalized multi-term model.
     double xs, ys, ws;
     if (angle) {
         xs = angle_magnitude(r);
@@ -365,9 +341,9 @@ __host__ __device__ inline Path propose(
     p.ay2 = ys;
     p.aw2 = ws;
     uint32_t bxa[kMaxWiggle], bya[kMaxWiggle], bwa[kMaxWiggle];
-    draw_unique_freqs(r, modmax, smart, nw, bxa);
-    draw_unique_freqs(r, modmax, smart, nw, bya);
-    draw_unique_freqs(r, modmax, smart, nw, bwa);
+    draw_unique_freqs(r, modmax, nw, bxa);
+    draw_unique_freqs(r, modmax, nw, bya);
+    draw_unique_freqs(r, modmax, nw, bwa);
     double wx[kMaxWiggle], wy[kMaxWiggle], ww[kMaxWiggle];
     split_unit(r, nw, wx);
     split_unit(r, nw, wy);
@@ -716,7 +692,6 @@ __global__ void test_kernel(uint64_t baseSeed,
                             uint64_t round,
                             int batch,
                             uint32_t modmax,
-                            bool smart,
                             bool angle,
                             bool euclid,
                             bool torus,
@@ -745,7 +720,7 @@ __global__ void test_kernel(uint64_t baseSeed,
     Rng r;
     rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
-    Path p = propose(r, modmax, smart, angle, torus, phase, nw);
+    Path p = propose(r, modmax, angle, torus, phase, nw);
     if (!collides_dev(p, nw, T, z, sinz, invz, cell, gw, off, gw2, gw3, cellStart, ptsX, ptsY,
                       ptsW, order, euclid, torus)) {
         int slot = atomicAdd(survCount, 1);
@@ -758,7 +733,6 @@ __global__ void test_kernel_sparse(uint64_t baseSeed,
                                    uint64_t round,
                                    int batch,
                                    uint32_t modmax,
-                                   bool smart,
                                    bool angle,
                                    bool euclid,
                                    bool torus,
@@ -791,7 +765,7 @@ __global__ void test_kernel_sparse(uint64_t baseSeed,
     Rng r;
     rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
-    Path p = propose(r, modmax, smart, angle, torus, phase, nw);
+    Path p = propose(r, modmax, angle, torus, phase, nw);
     if (!collides_sparse_dev(p, nw, T, sinbT, cosbm1T, sinzF, invzF, cellF, cellTightF,
                              edgeLooseF, gw, off, gw2, keys, keyStart, cellOff, ptsXf, ptsYf,
                              ptsWf, order, euclid, torus, phase)) {
@@ -805,7 +779,6 @@ int main(int argc, char** argv) {
     int T = 80;
     double budget = 1e8;
     uint64_t seed = 12345;
-    bool smart = true;
     const char* curvePath = nullptr;
     int maxfreq = 0;          // 0 = default modulation cap T/2
     double acceptThresh = 0;  // 0 = run to --attempts; >0 = stop when accept-rate < thresh
@@ -825,11 +798,17 @@ int main(int argc, char** argv) {
             budget = atof(argv[++i]);
         else if (!strcmp(argv[i], "--seed"))
             seed = strtoull(argv[++i], 0, 10);
-        else if (!strcmp(argv[i], "--uniform"))
-            smart = false;
-        else if (!strcmp(argv[i], "--smart"))
-            smart = true;
-        else if (!strcmp(argv[i], "--maxfreq"))
+        else if (!strcmp(argv[i], "--uniform")) {
+            // Uniform is the only frequency sampler; the flag is kept as a
+            // no-op so existing command lines (and the orchestrator's argv,
+            // which passes it as a guard against stale binaries) still run.
+        } else if (!strcmp(argv[i], "--smart")) {
+            fprintf(stderr,
+                    "error: --smart was removed 2026-07-09 (the smart sampler's "
+                    "D-vs-terms trend was an artifact; see lab notes 2026-07-08). "
+                    "Frequencies are always drawn uniformly now.\n");
+            return 1;
+        } else if (!strcmp(argv[i], "--maxfreq"))
             maxfreq = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--curve"))
             curvePath = argv[++i];
@@ -1353,14 +1332,14 @@ int main(int argc, char** argv) {
         int threads = 256, blocks = (int)((batch + threads - 1) / threads);
         if (sparse)
             test_kernel_sparse<<<blocks, threads, 0, st>>>(
-                seed, round, (int)batch, modmax, smart, angle, euclid, torus, phase, nw, T,
-                dSinbT, dCosbm1T, dSinzF, dInvzF, (float)cell, (float)cellTight,
-                (float)edgeLoose, gw, off, gw2, dKeys, dKeyStart, dCellOff, dPtsXf, dPtsYf,
-                dPtsWf, dorder, dSurv[b], dSurvCount[b], survCap);
+                seed, round, (int)batch, modmax, angle, euclid, torus, phase, nw, T, dSinbT,
+                dCosbm1T, dSinzF, dInvzF, (float)cell, (float)cellTight, (float)edgeLoose, gw,
+                off, gw2, dKeys, dKeyStart, dCellOff, dPtsXf, dPtsYf, dPtsWf, dorder, dSurv[b],
+                dSurvCount[b], survCap);
         else
             test_kernel<<<blocks, threads, 0, st>>>(
-                seed, round, (int)batch, modmax, smart, angle, euclid, torus, phase, nw, T, dz,
-                dsinz, dinvz, cell, gw, off, gw2, gw3, dCellStart, dPtsX, dPtsY, dPtsW, dorder,
+                seed, round, (int)batch, modmax, angle, euclid, torus, phase, nw, T, dz, dsinz,
+                dinvz, cell, gw, off, gw2, gw3, dCellStart, dPtsX, dPtsY, dPtsW, dorder,
                 dSurv[b], dSurvCount[b], survCap);
         CK(cudaMemcpyAsync(hCount[b], dSurvCount[b], 4, cudaMemcpyDeviceToHost, st));
         CK(cudaMemcpyAsync(hSurvPin[b], dSurv[b], copyCap * sizeof(Path),
@@ -1581,7 +1560,7 @@ int main(int argc, char** argv) {
         rng_seed(pr, seed ^ 0xABCDEF1234567890ULL);
         std::vector<double> X(T), Y(T), W(T);
         for (long long t = 0; t < probeN; t++) {
-            Path p = propose(pr, modmax, smart, angle, torus, phase, nw);
+            Path p = propose(pr, modmax, angle, torus, phase, nw);
             eval_path(p, X.data(), Y.data(), W.data());
             int b = bin_of(p.ax2);  // bin by the X-centre of the proposal
             prop[b]++;
