@@ -267,6 +267,21 @@ CAMPAIGNS: dict[str, Campaign] = {
         sparse=True,
         tag="cv3e6",
     ),
+    # The 7/3 chase: the converged window again at 1e-7 (stitch with
+    # pack3d_e7 for T <= 160). If the exponent's cutoff shift carries the
+    # 2.321 plateau to ~2.333, the jamming-limit exponent is plausibly
+    # exactly 7/3.
+    "converge3d_e7": Campaign(
+        name="converge3d_e7",
+        dim=3,
+        t_values=CONVERGE3D_T,
+        seeds=CONVERGE_SEEDS,
+        accept_rate=1e-7,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        sparse=True,
+        tag="cv3e7",
+    ),
     "converge2d_e8": Campaign(
         name="converge2d_e8",
         dim=2,
