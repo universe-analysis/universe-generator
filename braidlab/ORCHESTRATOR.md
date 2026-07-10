@@ -261,7 +261,9 @@ PY
 `-t <T>` · `--attempts <N>` · `--uniform` (the only sampler since the smart
 removal 2026-07-09; passed explicitly so a stale smart-default binary fails
 loudly) · `--seed <s>` ·
-`--until-accept-rate <r>` (the fixed-convergence stop) · `--maxfreq <m>` (band) ·
+`--until-accept-rate <r>` (the fixed-convergence stop) · `--maxfreq <T>`
+(always passed with the job's T; maxfreq = T is hard-coded since 2026-07-09
+and the engines fatally reject any other value) ·
 `--torus` (no-op since 2026-07-09 — the torus is the only geometry; passed as
 a stale-binary guard, like `--uniform`) · `--phase` (no-op since 2026-07-09 —
 the phase schema, free even-frequency phases, is always on; passed so a stale

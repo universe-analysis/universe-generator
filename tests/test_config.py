@@ -2,19 +2,22 @@
 
 import pytest
 
-from braidlab.config import Campaign, Job, maxfreq_for
+from braidlab.config import Campaign, Job
 
 
-def test_maxfreq_rules() -> None:
-    assert maxfreq_for("default", 40) == 0
-    assert maxfreq_for("nyq", 40) == 40
-    assert maxfreq_for("safe", 40) == 34  # round(0.85 * 40)
-    assert maxfreq_for("safe", 52) == 44  # round(44.2)
+def test_maxfreq_is_always_t() -> None:
+    """maxfreq = T is hard-coded (2026-07-09): every command passes --maxfreq T
+    (a guard against stale T/2-default binaries; the engines reject any other
+    value), and the only accepted band label is 'nyq'.
+    """
+    from braidlab.engine import build_command
 
-
-def test_maxfreq_unknown() -> None:
+    j = Job(dim=3, t=44, seed=2, accept_rate=1e-7, max_attempts=3e12)
+    assert j.maxfreq == 44
+    cmd = build_command(j, "bin", "curve.csv")
+    assert cmd[cmd.index("--maxfreq") + 1] == "44"
     with pytest.raises(ValueError):
-        maxfreq_for("bogus", 40)
+        Job(dim=3, t=44, seed=2, accept_rate=1e-7, max_attempts=3e12, band="safe")
 
 
 def test_job_identity() -> None:
@@ -30,7 +33,6 @@ def test_terms_job_name_key_and_command() -> None:
 
     j = Job(
         dim=3,
-        band="nyq",
         t=44,
         seed=2,
         accept_rate=1e-6,
@@ -57,7 +59,6 @@ def test_campaign_expands_terms_values() -> None:
     c = Campaign(
         name="t",
         dim=2,
-        band="nyq",
         t_values=(20, 40),
         seeds=(1, 2),
         accept_rate=1e-6,
@@ -73,7 +74,6 @@ def test_campaign_rejects_bad_terms() -> None:
         Campaign(
             name="t",
             dim=2,
-            band="nyq",
             t_values=(20,),
             seeds=(1,),
             accept_rate=1e-6,
@@ -127,7 +127,6 @@ def test_campaign_expands() -> None:
     c = Campaign(
         name="t",
         dim=2,
-        band="safe",
         t_values=(20, 40),
         seeds=(1, 2, 3),
         accept_rate=1e-7,
@@ -140,12 +139,27 @@ def test_campaign_expands() -> None:
 
 def test_campaign_validation() -> None:
     with pytest.raises(ValueError):
-        Campaign(
-            name="t", dim=5, band="nyq", t_values=(20,), seeds=(1,), accept_rate=1e-7
-        )
+        Campaign(name="t", dim=5, t_values=(20,), seeds=(1,), accept_rate=1e-7)
+    with pytest.raises(ValueError):
+        Campaign(name="t", dim=2, t_values=(20,), seeds=(1,), accept_rate=0)
+
+
+def test_subpaths_knob() -> None:
+    """Subpaths is a 2+1-only campaign knob: _sub name suffix + --subpaths."""
+    from braidlab.engine import build_command
+
+    c = Campaign(
+        name="t", dim=2, t_values=(20,), seeds=(1,), accept_rate=1e-6, subpaths=True
+    )
+    (j,) = c.jobs()
+    assert j.name == "d2_nyq_T20_s1_ph_sub"
+    assert "--subpaths" in build_command(j, "bin", "curve.csv")
+    # Off by default, and rejected outside 2+1.
+    plain = Job(dim=2, t=20, seed=1, accept_rate=1e-6, max_attempts=3e12)
+    assert "--subpaths" not in build_command(plain, "bin", "curve.csv")
     with pytest.raises(ValueError):
         Campaign(
-            name="t", dim=2, band="x", t_values=(20,), seeds=(1,), accept_rate=1e-7
+            name="t", dim=3, t_values=(20,), seeds=(1,), accept_rate=1e-6, subpaths=True
         )
 
 

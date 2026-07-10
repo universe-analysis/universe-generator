@@ -1,50 +1,31 @@
-"""Campaign and job definitions, plus the frequency-band rule.
+"""Campaign and job definitions.
 
 A `Campaign` is a declarative description of an experiment: which spatial
-dimension, frequency band, timestep ladder, seeds, and stop threshold. It
-expands into a flat list of `Job`s -- one packing run each.
+dimension, timestep ladder, seeds, stop threshold (decay cutoff), term count,
+and subpath mode. It expands into a flat list of `Job`s -- one packing run
+each. The frequency band is not a knob: the full Nyquist band (max frequency
+= T) is hard-coded in the engines since 2026-07-09.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-#: Frequency-band rules. Each maps to an actual max frequency at a given T.
-BANDS = ("default", "safe", "nyq")
-
-
-def maxfreq_for(band: str, t: int) -> int:
-    """Return the actual max frequency for a band rule at timestep count `t`.
-
-    Returns 0 for the engine's built-in default (T/2), which is passed through
-    by omitting the --maxfreq flag.
-
-    Args:
-        band: One of "default" (T/2), "safe" (round 0.85*T), "nyq" (T).
-        t: Number of timesteps.
-
-    Raises:
-        ValueError: If `band` is not a known rule.
-    """
-    if band == "default":
-        return 0
-    if band == "safe":
-        return round(0.85 * t)
-    if band == "nyq":
-        return t
-    raise ValueError(f"unknown band {band!r}; expected one of {BANDS}")
-
 
 @dataclass(frozen=True)
 class Job:
-    """A single packing run: one (dim, band, T, seed) at a stop threshold."""
+    """A single packing run: one (dim, T, seed) at a stop threshold."""
 
     dim: int
-    band: str
     t: int
     seed: int
     accept_rate: float
     max_attempts: float
+    #: Frequency-band label. The full Nyquist band (max frequency = T) is the
+    #: model's only rule since 2026-07-09 -- the engines reject any other
+    #: --maxfreq value -- so this is a fixed identity column kept for store
+    #: and job-name compatibility, not a knob.
+    band: str = "nyq"
     #: L2-ball exclusion (--euclid-collision) instead of Chebyshev cube.
     euclid: bool = False
     #: Sparse collision grid (--sparse, 3+1 engine): sorted-key lookup +
@@ -53,10 +34,23 @@ class Job:
     #: Sinusoid terms per axis incl. sin1 (--terms). 2 = the legacy
     #: single-wiggle model (flag omitted, RNG stream bit-identical).
     terms: int = 2
+    #: Second-phase subpath packing (--subpaths, 2+1 engine only): after the
+    #: unique packing jams, pack candidates that touch exactly one existing
+    #: group. Off by default.
+    subpaths: bool = False
     #: Free-form variant tag (e.g. "e6" for a different cutoff). Not part of the
     #: key; appended to the name so variant runs do not collide in the shared
     #: remote workspace.
     tag: str = ""
+
+    def __post_init__(self) -> None:
+        if self.band != "nyq":
+            raise ValueError(
+                f"band must be 'nyq' (maxfreq = T is hard-coded since "
+                f"2026-07-09), got {self.band!r}"
+            )
+        if self.subpaths and self.dim != 2:
+            raise ValueError("subpaths is a 2+1 engine feature (dim must be 2)")
 
     @property
     def key(self) -> tuple[int, str, int, int, float, int]:
@@ -85,14 +79,16 @@ class Job:
             base += "_sp"
         if self.terms != 2:
             base += f"_tm{self.terms}"
+        if self.subpaths:
+            base += "_sub"
         if self.tag:
             base += f"_{self.tag}"
         return base
 
     @property
     def maxfreq(self) -> int:
-        """Actual max frequency for this job's band (0 = engine default)."""
-        return maxfreq_for(self.band, self.t)
+        """Actual max frequency: always T (the full Nyquist band)."""
+        return self.t
 
 
 @dataclass(frozen=True)
@@ -101,7 +97,6 @@ class Campaign:
 
     name: str
     dim: int
-    band: str
     t_values: tuple[int, ...]
     seeds: tuple[int, ...]
     accept_rate: float
@@ -114,25 +109,26 @@ class Campaign:
     sparse: bool = False
     #: Sinusoid term counts per axis to sweep (--terms; 2 = legacy model).
     terms_values: tuple[int, ...] = (2,)
+    #: Second-phase subpath packing (2+1 only). Off by default.
+    subpaths: bool = False
     #: Variant tag appended to job names (e.g. "e6" for a different cutoff).
     tag: str = ""
 
     def __post_init__(self) -> None:
         if self.dim not in (2, 3):
             raise ValueError(f"dim must be 2 or 3, got {self.dim}")
-        if self.band not in BANDS:
-            raise ValueError(f"band must be one of {BANDS}, got {self.band!r}")
         if self.accept_rate <= 0:
             raise ValueError("accept_rate must be > 0")
         if any(k < 2 for k in self.terms_values):
             raise ValueError(f"terms_values must all be >= 2, got {self.terms_values}")
+        if self.subpaths and self.dim != 2:
+            raise ValueError("subpaths is a 2+1 engine feature (dim must be 2)")
 
     def jobs(self) -> list[Job]:
         """Expand into the flat list of runs (T x seed x terms)."""
         return [
             Job(
                 dim=self.dim,
-                band=self.band,
                 t=t,
                 seed=s,
                 accept_rate=self.accept_rate,
@@ -140,6 +136,7 @@ class Campaign:
                 euclid=self.euclid,
                 sparse=self.sparse,
                 terms=k,
+                subpaths=self.subpaths,
                 tag=self.tag,
             )
             for t in self.t_values

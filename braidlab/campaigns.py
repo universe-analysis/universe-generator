@@ -6,7 +6,8 @@ These encode the decisions reached during the RSA analysis:
     that predate it — 2plus1/3plus1, corrdim3d, corrdim3d_euclid/_e6,
     corrdim2d — were removed with it and live in git history; their
     stores/dumps remain on disk),
-  * full Nyquist band (``maxfreq = T``, i.e. band="nyq"),
+  * full Nyquist band (``maxfreq = T`` — hard-coded in the engines since
+    2026-07-09; no longer a campaign knob),
   * fixed-convergence stop (constant acceptance rate across T),
   * many seeds per T for a bootstrap error bar.
 
@@ -56,13 +57,53 @@ FREQDECAY3D_T = (80, 160)
 FREQDECAY2D_T = (120, 320)
 FREQDECAY_TERMS = (2, 10)
 
+#: PACK campaigns (2026-07-09): is the packing number N(T) invariant under the
+#: model knobs? Baseline legacy 2-term arms on an 8-value T ladder per
+#: dimension at the 1e-6 cutoff, the same ladders again at 1e-7 (decay-rate
+#: dependence), and a term-count sweep (FREQ_TERMS) at two T per dimension
+#: (term dependence). Subpaths stay off throughout. All run under the
+#: always-on phase schema and the hard-coded maxfreq = T.
+PACK_SEEDS = tuple(range(1, 6))  # 5 seeds
+PACK3D_T = tuple(range(20, 161, 20))  # 20, 40, ..., 160
+PACK2D_T = tuple(range(20, 301, 40))  # 20, 60, ..., 300
+PACKTERMS3D_T = (80, 160)
+PACKTERMS2D_T = (140, 300)
+
+
+def _pack(dim: int, rate: float, tag: str) -> Campaign:
+    """One cutoff arm of the PACK baseline (2-term, 8-T ladder)."""
+    return Campaign(
+        name=f"pack{dim}d_{tag}",
+        dim=dim,
+        t_values=PACK3D_T if dim == 3 else PACK2D_T,
+        seeds=PACK_SEEDS,
+        accept_rate=rate,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        tag=f"pk{tag}",
+    )
+
+
+def _pack_terms(dim: int) -> Campaign:
+    """The PACK term sweep: FREQ_TERMS at two T, 1e-6 cutoff."""
+    return Campaign(
+        name=f"packterms{dim}d_e6",
+        dim=dim,
+        t_values=PACKTERMS3D_T if dim == 3 else PACKTERMS2D_T,
+        seeds=PACK_SEEDS,
+        accept_rate=1e-6,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        terms_values=FREQ_TERMS,
+        tag="pktme6",
+    )
+
 
 def _freq_decay(dim: int, rate: float, tag: str) -> Campaign:
     """One cutoff arm of the FREQ decay study."""
     return Campaign(
         name=f"freqdecay{dim}d_{tag}",
         dim=dim,
-        band="nyq",
         t_values=FREQDECAY3D_T if dim == 3 else FREQDECAY2D_T,
         seeds=FREQDECAY_SEEDS,
         accept_rate=rate,
@@ -81,7 +122,6 @@ CAMPAIGNS: dict[str, Campaign] = {
     "torus3d": Campaign(
         name="torus3d",
         dim=3,
-        band="nyq",
         t_values=CORRDIM_T,
         seeds=CORRDIM_SEEDS,
         accept_rate=ACCEPT_RATE,
@@ -96,7 +136,6 @@ CAMPAIGNS: dict[str, Campaign] = {
     "torus3d_e6": Campaign(
         name="torus3d_e6",
         dim=3,
-        band="nyq",
         t_values=CORRDIM_T,
         seeds=CORRDIM_SEEDS,
         accept_rate=1e-6,
@@ -113,7 +152,6 @@ CAMPAIGNS: dict[str, Campaign] = {
     "torus3d_phase_e6": Campaign(
         name="torus3d_phase_e6",
         dim=3,
-        band="nyq",
         t_values=CORRDIM_T,
         seeds=CORRDIM_SEEDS,
         accept_rate=1e-6,
@@ -124,7 +162,6 @@ CAMPAIGNS: dict[str, Campaign] = {
     "torus2d_phase_e6": Campaign(
         name="torus2d_phase_e6",
         dim=2,
-        band="nyq",
         t_values=CORRDIM2D_T,
         seeds=CORRDIM2D_SEEDS,
         accept_rate=1e-6,
@@ -135,7 +172,6 @@ CAMPAIGNS: dict[str, Campaign] = {
     "torus2d_e6": Campaign(
         name="torus2d_e6",
         dim=2,
-        band="nyq",
         t_values=CORRDIM2D_T,
         seeds=CORRDIM2D_SEEDS,
         accept_rate=1e-6,
@@ -147,7 +183,6 @@ CAMPAIGNS: dict[str, Campaign] = {
     "torus2d": Campaign(
         name="torus2d",
         dim=2,
-        band="nyq",
         t_values=CORRDIM2D_T,
         seeds=CORRDIM2D_SEEDS,
         accept_rate=ACCEPT_RATE,
@@ -159,7 +194,6 @@ CAMPAIGNS: dict[str, Campaign] = {
     "freq3d_e6": Campaign(
         name="freq3d_e6",
         dim=3,
-        band="nyq",
         t_values=FREQ3D_T,
         seeds=FREQ_SEEDS,
         accept_rate=1e-6,
@@ -171,7 +205,6 @@ CAMPAIGNS: dict[str, Campaign] = {
     "freq2d_e6": Campaign(
         name="freq2d_e6",
         dim=2,
-        band="nyq",
         t_values=FREQ2D_T,
         seeds=FREQ_SEEDS,
         accept_rate=1e-6,
@@ -188,7 +221,6 @@ CAMPAIGNS: dict[str, Campaign] = {
     "frequni3d_e6": Campaign(
         name="frequni3d_e6",
         dim=3,
-        band="nyq",
         t_values=FREQ3D_T,
         seeds=(1, 2, 3),
         accept_rate=1e-6,
@@ -203,6 +235,13 @@ CAMPAIGNS: dict[str, Campaign] = {
     "freqdecay2d_e6": _freq_decay(2, 1e-6, "e6"),
     "freqdecay2d_e7": _freq_decay(2, 1e-7, "e7"),
     "freqdecay2d_e8": _freq_decay(2, 1e-8, "e8"),
+    # PACK: packing-number invariance (see the PACK_* constants above).
+    "pack3d_e6": _pack(3, 1e-6, "e6"),
+    "pack2d_e6": _pack(2, 1e-6, "e6"),
+    "pack3d_e7": _pack(3, 1e-7, "e7"),
+    "pack2d_e7": _pack(2, 1e-7, "e7"),
+    "packterms3d_e6": _pack_terms(3),
+    "packterms2d_e6": _pack_terms(2),
 }
 
 

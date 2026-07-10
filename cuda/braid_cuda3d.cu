@@ -790,7 +790,7 @@ int main(int argc, char** argv) {
     double budget = 1e8;
     uint64_t seed = 12345;
     const char* curvePath = nullptr;
-    int maxfreq = 0;          // 0 = default modulation cap T/2
+    int maxfreq = 0;          // --maxfreq value; validated against T below, never obeyed
     double acceptThresh = 0;  // 0 = run to --attempts; >0 = stop when accept-rate < thresh
     bool euclid = false;      // L2-ball exclusion (vs the default Chebyshev cube)
     bool sparse = false;      // sparse grid (sorted keys + float32 points): VRAM ~ N*T
@@ -859,8 +859,18 @@ int main(int argc, char** argv) {
     long long winTarget =
         acceptThresh > 0 ? (long long)std::min(5e9, std::max(2e7, 30.0 / acceptThresh)) : 0;
     const double PI = 3.14159265358979323846;
-    // --maxfreq F sets the ACTUAL max frequency to F (freq draw is [2, modmax+1], so
-    // modmax=F-1). Default (no flag) keeps the model's T/2+1 cap (modmax=T/2).
+    // The full Nyquist band is hard-coded (2026-07-09): the max frequency
+    // always equals T (freq draw [2, T], so modmax = T-1). --maxfreq is
+    // validated, not obeyed -- any value other than T is fatal, so an old
+    // command line cannot silently run a narrower band. The orchestrator
+    // passes --maxfreq T explicitly to guard stale T/2-default binaries.
+    if (maxfreq != 0 && maxfreq != T) {
+        fprintf(stderr,
+                "error: --maxfreq %d: the max frequency is hard-coded to T=%d "
+                "(the full Nyquist band) since 2026-07-09.\n",
+                maxfreq, T);
+        return 1;
+    }
     double cell = 2.0 / T;
     // Sparse prefilter margins. The fp32 table trajectory carries a worst-case
     // absolute error of a few 1e-7 (the physical terms scale with sin z, so
@@ -873,8 +883,7 @@ int main(int argc, char** argv) {
     // the admitted packing obeys the same rule as the dense path.
     const double kF32Margin = 2e-5;
     const double cellTight = cell - kF32Margin;
-    uint32_t modmax =
-        (maxfreq > 2) ? (uint32_t)(maxfreq - 1) : (uint32_t)(T / 2 > 2 ? T / 2 : 2);
+    uint32_t modmax = (uint32_t)(T - 1 > 2 ? T - 1 : 2);
     // Wiggle-term count: --terms counts sin1, so nw = terms-1. Capped by the
     // Path struct (kMaxWiggle) and by the pool of unique frequencies (modmax).
     if (terms < 2)

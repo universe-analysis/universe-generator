@@ -9,10 +9,11 @@ Protocol (the reason this package exists):
     N(T) = theta * C * T**D, so the log-log slope is D for any theta -- bias from
     incomplete jamming cancels in the exponent.
   * Average many seeds per T to drive down variance.
-  * Use the full effective frequency band (safe-full = round(0.85*T)).
+  * Use the full Nyquist frequency band (maxfreq = T; hard-coded in the
+    engines since 2026-07-09).
 """
 
-from braidlab.config import BANDS, Campaign, Job, maxfreq_for
+from braidlab.config import Campaign, Job
 
-__all__ = ["BANDS", "Campaign", "Job", "maxfreq_for"]
+__all__ = ["Campaign", "Job"]
 __version__ = "0.1.0"

@@ -51,7 +51,7 @@ def _campaign_summary(camp, hosts: list[str], db: str) -> tuple[str, dict]:
     if len(ts) > 1:
         t_range += f" (step {ts[1] - ts[0]})"
     description = (
-        f"{camp.dim}+1D RSA packing to jamming · torus model · band={camp.band} · "
+        f"{camp.dim}+1D RSA packing to jamming · torus model · maxfreq=T · "
         f"cutoff={camp.accept_rate:g}"
     )
     if getattr(camp, "euclid", False):
