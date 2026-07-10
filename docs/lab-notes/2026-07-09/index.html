@@ -69,6 +69,91 @@
       </p>
     </article>
 
+    <article class="entry" id="pack-invariance">
+      <h2>PACK: the packing number N(T) is invariant where it matters</h2>
+      <p class="meta">
+        <code>pack{3,2}d_e{6,7}</code> + <code>packterms{3,2}d_e6</code>
+        campaigns (torus+phase, uniform sampler, 5 seeds, subpaths off;
+        3+1 T = 20&ndash;160, 2+1 T = 20&ndash;300; term sweep at
+        3+1 T &isin; {80,160}, 2+1 T &isin; {140,300}) &middot; campaign code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/807398d"><code>807398d</code></a>
+        &middot; chart
+        <a href="https://github.com/universe-analysis/universe-generator/commit/6964f0f"><code>6964f0f</code></a>
+        &middot; orchestrator fix
+        <a href="https://github.com/universe-analysis/universe-generator/commit/d75e586"><code>d75e586</code></a>
+      </p>
+      <p>
+        First full campaign under the post-cleanup engines (phase schema
+        always on, maxfreq = T hard-coded, uniform-only sampler): is the jam
+        count N(T) a robust object, or does it move with the model knobs?
+        Six stores, 260 runs, on deep-thought + the rented dual-4090 box
+        (3+1) and mother + kitt (2+1).
+      </p>
+      <figure class="plot">
+        <img src="pack3d_nvt.png"
+             alt="Log-log jam count N versus T for 3+1 at cutoffs 1e-6 and 1e-7. Both series are straight and parallel; fits give exponents 2.201 and 2.217, with the 1e-7 points uniformly about 15 percent above the 1e-6 points." />
+        <figcaption>
+          3+1: N(T) at 1e-6 vs 1e-7. The exponent barely moves
+          (2.201 &rarr; 2.217); the decade of extra depth is a pure
+          prefactor lift (&times;1.150).
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="pack2d_nvt.png"
+             alt="Log-log jam count N versus T for 2+1 at cutoffs 1e-6 and 1e-7. Straight parallel series; fitted exponents 1.363 and 1.397, the 1e-7 points about 20 percent above." />
+        <figcaption>
+          2+1: same layout. Exponent 1.363 &rarr; 1.397 (+0.034/decade,
+          the known 2+1 cutoff drift), prefactor &times;1.203.
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>Cutoff moves the prefactor, not the law.</strong> A
+            decade of depth lifts every N by ~15% (3+1) / ~20% (2+1) &mdash;
+            the &ldquo;no plateau&rdquo; growth from the decay ladders &mdash;
+            while the fitted exponent shifts &le; 0.02 (3+1) / 0.034 (2+1).
+            The full-ladder fits (2.20 / 1.36 at 1e-6) sit below yesterday's
+            high-T two-point values because the local slope steepens with T:
+            on this same data, T = 80 &rarr; 160 gives 2.265 (e6) / 2.280
+            (e7), and 2+1's T = 140 &rarr; 300 gives 1.393 / 1.415, matching
+            the decay arms. Exponents are portable; quote them with their
+            window.</li>
+        <li><strong>The dictionary barely matters.</strong> Under the uniform
+            engine, going from 2 to 10 terms per axis moves N by at most
+            +10% (3+1, terms = 10) and stays within &plusmn;5% in 2+1, with a
+            small terms = 3 dip in both. Compare the old smart-sampler story
+            where terms shifted the exponent itself &mdash; one more
+            confirmation that trend was sampler-made. The pool-fraction
+            replot does not collapse the per-T curves, so what little effect
+            remains tracks the raw term count, not the (terms&minus;1)/(T&minus;1)
+            pool fraction.</li>
+      </ul>
+      <figure class="plot">
+        <img src="packterms3d_ratio.png"
+             alt="Two panels for 3+1: jam-count ratio N(T, terms) over N(T, terms=2) versus term count at T=80 and T=160, rising to about 1.10 at terms=10 with a dip at terms=3; and the same ratios versus pool fraction, where the two T curves do not collapse." />
+        <figcaption>
+          3+1 term sweep: N moves &le; 10% across a 5&times; dictionary
+          change; no pool-fraction collapse.
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="packterms2d_ratio.png"
+             alt="Same two panels for 2+1 at T=140 and T=300: ratios stay between roughly 0.95 and 1.03 across all term counts." />
+        <figcaption>
+          2+1 term sweep: flat within &plusmn;5%.
+        </figcaption>
+      </figure>
+      <p>
+        Takeaway: N(T) is a real, knob-robust observable &mdash; its exponent
+        survives cutoff depth and dictionary size; only the (cutoff-conditional)
+        prefactor moves. Bookkeeping: the <code>packterms3d_e6</code> leg was
+        killed mid-run by an scp of a T = 160, terms = 10 dump timing out
+        (the exception escaped the poll loop); fixed in
+        <a href="https://github.com/universe-analysis/universe-generator/commit/d75e586"><code>d75e586</code></a>
+        (a timed-out fetch now retries on a later poll) and the leg resumed
+        from its store without losing a job.
+      </p>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
