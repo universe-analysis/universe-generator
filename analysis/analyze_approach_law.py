@@ -35,8 +35,9 @@ import numpy as np
 
 #: Fit window: the last `TAIL_DECADES` decades of attempts of each curve.
 TAIL_DECADES = 2.0
-#: Scanned approach exponents p (d_eff = 1/p from ~0.7 to 20).
-P_GRID = np.linspace(0.05, 1.5, 146)
+#: Scanned approach exponents p (d_eff = 1/p from ~0.7 to 100), log-spaced
+#: so the slow-approach regime (p << 0.1, the deep 3+1 curves) is resolved.
+P_GRID = np.geomspace(0.01, 1.5, 200)
 
 
 def load_curve(path: Path) -> tuple[np.ndarray, np.ndarray]:
@@ -50,7 +51,10 @@ def load_curve(path: Path) -> tuple[np.ndarray, np.ndarray]:
 
 
 def fit_feder(
-    t: np.ndarray, n: np.ndarray, p_fixed: float | None = None
+    t: np.ndarray,
+    n: np.ndarray,
+    p_fixed: float | None = None,
+    tail_decades: float = TAIL_DECADES,
 ) -> tuple[float, float, bool]:
     """Fit N(t) = N_inf - c * t^(-p) on the curve tail.
 
@@ -60,7 +64,7 @@ def fit_feder(
     railed at the grid edge, i.e. the tail alone does not constrain the
     approach exponent and the extrapolated ceiling is unreliable.
     """
-    tail = t >= t[-1] / 10**TAIL_DECADES
+    tail = t >= t[-1] / 10**tail_decades
     tt, nn = t[tail], n[tail]
     grid = P_GRID if p_fixed is None else np.array([p_fixed])
     best: tuple[float, float, float] | None = None
@@ -78,7 +82,11 @@ def fit_feder(
 
 
 def ceilings(
-    dbs: list[Path], dim: int, band: str, p_override: float | None = None
+    dbs: list[Path],
+    dim: int,
+    band: str,
+    p_override: float | None = None,
+    tail_decades: float = TAIL_DECADES,
 ) -> dict[int, tuple[float, float, float, int]]:
     """Seed-averaged N_inf and d_eff per T across the given stores.
 
@@ -115,13 +123,30 @@ def ceilings(
         interior_ps: list[float] = []
         for _, t_arr, n_arr in curves:
             try:
-                _, p, interior = fit_feder(t_arr, n_arr)
+                _, p, interior = fit_feder(t_arr, n_arr, tail_decades=tail_decades)
             except ValueError:
                 continue
             if interior:
                 interior_ps.append(p)
         if not interior_ps:
-            raise SystemExit("no curve constrains the approach exponent (all railed)")
+            # Every fit railed at the small-p edge: the residual keeps
+            # improving toward p -> 0, whose limit is N = a + b*ln t. Report
+            # the log-law fits — a real diagnosis (activated, glassy-like
+            # kinetics with no Feder ceiling in reach) — instead of ceilings.
+            print("all Feder fits railed; log-law diagnosis (N = a + b*ln t):")
+            print(f"{'T':>5} {'dN/decade':>10} {'rms':>8} {'final N':>9}")
+            for t, t_arr, n_arr in curves:
+                tail = t_arr >= t_arr[-1] / 10**tail_decades
+                tt, nn = t_arr[tail], n_arr[tail]
+                a_mat = np.vstack([np.ones_like(tt), np.log(tt)]).T
+                (_, b), res, *_ = np.linalg.lstsq(a_mat, nn, rcond=None)
+                rms = float(np.sqrt(res[0] / len(nn))) if res.size else 0.0
+                print(f"{t:>5} {b * np.log(10):>10.1f} {rms:>8.2f} {nn[-1]:>9.0f}")
+            raise SystemExit(
+                "no Feder ceiling within reach: every tail is consistent with "
+                "logarithmic growth (any ceiling needs p < "
+                f"{P_GRID[0]:.3g}, i.e. N_inf far above the data)"
+            )
         p_shared = float(np.median(interior_ps))
         q1, q3 = np.percentile(interior_ps, [25, 75])
         print(
@@ -133,7 +158,9 @@ def ceilings(
     by_t: dict[int, list[float]] = {}
     for t, t_arr, n_arr in curves:
         try:
-            n_inf, _, _ = fit_feder(t_arr, n_arr, p_fixed=p_shared)
+            n_inf, _, _ = fit_feder(
+                t_arr, n_arr, p_fixed=p_shared, tail_decades=tail_decades
+            )
         except ValueError:
             continue
         by_t.setdefault(t, []).append(n_inf)
@@ -175,10 +202,23 @@ def main() -> None:
         help="skip the shared-p vote and use this approach exponent "
         "(for bracketing the p systematic)",
     )
+    parser.add_argument(
+        "--tail-decades",
+        type=float,
+        default=TAIL_DECADES,
+        help="fit window: last N decades of attempts (deep slow-approach "
+        "curves need a wider window for the curvature to be visible)",
+    )
     parser.add_argument("--out", type=Path, default=None, help="optional chart")
     args = parser.parse_args()
 
-    ceil = ceilings(args.db, args.dim, args.band, p_override=args.p_fixed)
+    ceil = ceilings(
+        args.db,
+        args.dim,
+        args.band,
+        p_override=args.p_fixed,
+        tail_decades=args.tail_decades,
+    )
     print(f"{'T':>5} {'N_inf':>10} {'sem':>7} {'d_eff':>7} {'runs':>5}")
     for t, (n_inf, sem, d_eff, k) in ceil.items():
         print(f"{t:>5} {n_inf:>10.0f} {sem:>7.0f} {d_eff:>7.2f} {k:>5}")
