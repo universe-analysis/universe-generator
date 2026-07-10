@@ -264,5 +264,6 @@ removal 2026-07-09; passed explicitly so a stale smart-default binary fails
 loudly) · `--seed <s>` ·
 `--until-accept-rate <r>` (the fixed-convergence stop) · `--maxfreq <m>` (band) ·
 `--angle-sample` (edge sampler) · `--torus` (new-dogma model) · `--phase`
-(even-frequency phases + symmetric z grid; adds fx/fy/fw dump columns) ·
+(free even-frequency phases; adds fx/fy/fw dump columns — the symmetric z grid
+is unconditional in the engines since 2026-07-09) ·
 `--curve <path>` · `--dump-params <path>`.

@@ -53,7 +53,8 @@ class Job:
     #: free sin1 comoving offset, periodic comoving domain.
     torus: bool = False
     #: Phase schema (--phase): free phase on the wiggle term for even
-    #: frequencies, plus the symmetric endpoint-free z grid.
+    #: frequencies. (The symmetric z grid that used to ride along with this
+    #: flag is unconditional in the engines since 2026-07-09.)
     phase: bool = False
     #: Sparse collision grid (--sparse, 3+1 engine): sorted-key lookup +
     #: float32 points; VRAM ~ N*T instead of ~T^4, for T beyond the dense cap.
@@ -120,7 +121,7 @@ class Campaign:
     euclid: bool = False
     #: Use the torus (new-dogma) model: |a*b|=1, free sin1, periodic domain.
     torus: bool = False
-    #: Use the phase schema: even-frequency phases + symmetric z grid.
+    #: Use the phase schema: free even-frequency phases (see Job.phase).
     phase: bool = False
     #: Use the sparse collision grid (3+1): VRAM ~ N*T, for T beyond dense cap.
     sparse: bool = False

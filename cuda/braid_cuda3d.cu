@@ -66,8 +66,9 @@
 //
 // --phase switches to the phase schema: the wiggle term gains a free phase
 // f ~ U[0, pi) on even frequencies (odd ones must stay phase-free for the loop
-// to close), each component is offset by a*sin(f) so it still starts at zero,
-// and the z grid becomes the symmetric T-interior-points-of-(0, pi) indexing.
+// to close), each component offset by a*sin(f) so it still starts at zero.
+// (The symmetric z grid that used to ride along with this flag is now
+// unconditional -- see the z-table comment in main.)
 //
 // --terms K generalizes each axis to K sinusoid terms: the sin1 term plus
 // K-1 wiggle terms (K=2 is the legacy model, bit-identical RNG stream). Each
@@ -894,7 +895,7 @@ int main(int argc, char** argv) {
     bool angle = false;       // edge-weighted sin1 sampling (vs flat uniform)
     bool euclid = false;      // L2-ball exclusion (vs the default Chebyshev cube)
     bool torus = false;       // new-dogma model: |a*b|=1, free sin1 offset, periodic domain
-    bool phase = false;       // phase schema: even-frequency phases + symmetric z grid
+    bool phase = false;       // phase schema: free even-frequency phases
     bool sparse = false;      // sparse grid (sorted keys + float32 points): VRAM ~ N*T
     int terms = 2;            // total sinusoid terms per axis, incl. sin1 (2 = legacy)
     const char* diagPrefix = nullptr;  // if set, write occupancy + probe diagnostics
@@ -990,19 +991,16 @@ int main(int argc, char** argv) {
     // neighbour scan wraps cleanly at the seam. Hard-wall grid keeps its margin.
     int gw = torus ? T : T + 4, off = torus ? 0 : (T + 4) / 2;
     long gw2 = (long)gw * gw, gw3 = gw2 * gw;
-    // z tables + endpoint-first order. The phase schema replaces the hardcoded
-    // 0.01 endpoint clamp with a symmetric grid: T interior points of (0, pi),
-    // one step in from each end (matches the viewer's z indexing).
+    // z tables + endpoint-first order. The canonical grid (2026-07-09, was
+    // previously gated on --phase): T interior points of (0, pi), one step in
+    // from each end -- step = pi/(T+1), z_i = (i+1)*step -- matching the
+    // viewer's bakeZValues. The old default grid (z0 = 0.01 endpoint clamp,
+    // step = (pi - 0.02)/(T-1)) is gone; reproducing pre-change non-phase
+    // runs needs the git history.
     std::vector<double> z(T), sinz(T), invz(T);
     std::vector<int> order(T);
-    double z0, step;
-    if (phase) {
-        step = PI / (T + 1);
-        z0 = step;
-    } else {
-        z0 = 0.01;
-        step = (PI - 0.01 - z0) / (T - 1);
-    }
+    const double step = PI / (T + 1);
+    const double z0 = step;
     for (int i = 0; i < T; i++) {
         z[i] = z0 + i * step;
         sinz[i] = sin(z[i]);
