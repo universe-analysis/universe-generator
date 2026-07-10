@@ -19,7 +19,7 @@ def test_maxfreq_unknown() -> None:
 
 def test_job_identity() -> None:
     j = Job(dim=3, band="nyq", t=44, seed=2, accept_rate=1e-7, max_attempts=3e12)
-    assert j.name == "d3_nyq_T44_s2"
+    assert j.name == "d3_nyq_T44_s2_ph"
     assert j.key == (3, "nyq", 44, 2, 1e-7, 2)
     assert j.maxfreq == 44
 
@@ -35,7 +35,6 @@ def test_terms_job_name_key_and_command() -> None:
         seed=2,
         accept_rate=1e-6,
         max_attempts=3e12,
-        phase=True,
         terms=10,
         tag="fqe6",
     )
@@ -94,8 +93,12 @@ def test_command_is_always_torus() -> None:
     assert "--torus" in cmd and "--angle-sample" not in cmd
 
 
-def test_phase_job_name_and_command() -> None:
-    """Phase jobs get the _ph suffix (workspace collision guard) and --phase."""
+def test_phase_is_always_on() -> None:
+    """Every job carries the _ph suffix and passes --phase: the phase schema
+    is the engines' only mode (2026-07-09). The suffix keeps names identical
+    to the opt-in era's phase runs and distinct from stale phase-off remote
+    files; the explicit flag guards against stale opt-in binaries.
+    """
     from braidlab.engine import build_command
 
     j = Job(
@@ -105,18 +108,19 @@ def test_phase_job_name_and_command() -> None:
         seed=2,
         accept_rate=1e-6,
         max_attempts=3e12,
-        phase=True,
         tag="e6",
     )
     assert j.name == "d3_nyq_T44_s2_ph_e6"
     assert "--phase" in build_command(j, "bin", "curve.csv")
 
 
-def test_phase_campaign_expands_phase_jobs() -> None:
+def test_phase_campaign_matches_its_opt_in_era_names() -> None:
+    """torus3d_phase_e6 job names are unchanged from when phase was opt-in,
+    so its store and remote workspace stay resumable."""
     from braidlab.campaigns import get
 
     c = get("torus3d_phase_e6")
-    assert all(j.phase for j in c.jobs())
+    assert all("_ph_" in j.name for j in c.jobs())
 
 
 def test_campaign_expands() -> None:
@@ -159,7 +163,6 @@ def test_command_is_always_uniform() -> None:
         seed=2,
         accept_rate=1e-6,
         max_attempts=3e12,
-        phase=True,
         terms=3,
         tag="une6",
     )

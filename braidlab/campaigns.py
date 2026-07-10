@@ -1,10 +1,11 @@
 """Predefined campaigns — the corrected measurement.
 
 These encode the decisions reached during the RSA analysis:
-  * torus model, uniform sampler, symmetric z grid (the engines' only mode
-    since the 2026-07-09 cleanup; the wall-era campaigns that predate it —
-    2plus1/3plus1, corrdim3d, corrdim3d_euclid/_e6, corrdim2d — were removed
-    with it and live in git history; their stores/dumps remain on disk),
+  * torus model, uniform sampler, symmetric z grid, phase schema (the
+    engines' only mode since the 2026-07-09 cleanup; the wall-era campaigns
+    that predate it — 2plus1/3plus1, corrdim3d, corrdim3d_euclid/_e6,
+    corrdim2d — were removed with it and live in git history; their
+    stores/dumps remain on disk),
   * full Nyquist band (``maxfreq = T``, i.e. band="nyq"),
   * fixed-convergence stop (constant acceptance rate across T),
   * many seeds per T for a bootstrap error bar.
@@ -67,7 +68,6 @@ def _freq_decay(dim: int, rate: float, tag: str) -> Campaign:
         accept_rate=rate,
         max_attempts=MAX_ATTEMPTS,
         dump=True,
-        phase=True,
         terms_values=FREQDECAY_TERMS,
         tag=f"fqd{tag}",
     )
@@ -104,11 +104,12 @@ CAMPAIGNS: dict[str, Campaign] = {
         dump=True,
         tag="e6",
     ),
-    # Phase schema on the torus model: even-frequency phases on the wiggle term
-    # (Chris's viewer schema, engine flag --phase; when this campaign ran, the
-    # flag also selected the symmetric z grid, unconditional since 2026-07-09).
-    # Same T grid / seeds / 1e-6 cutoff as torus3d_e6, so the with/without-phase
-    # comparison is one-knob. The _ph name suffix keeps remote files distinct.
+    # Phase schema on the torus model (Chris's viewer schema: even-frequency
+    # phases on the wiggle term). The phase schema is always on since
+    # 2026-07-09, so these are now IDENTICAL to torus3d_e6 / torus2d_e6 —
+    # kept as separate entries so their stores in data/ stay resumable.
+    # When they ran, phase was opt-in (--phase, which then also selected the
+    # symmetric z grid) and torus*_e6 were the phase-free control arms.
     "torus3d_phase_e6": Campaign(
         name="torus3d_phase_e6",
         dim=3,
@@ -118,7 +119,6 @@ CAMPAIGNS: dict[str, Campaign] = {
         accept_rate=1e-6,
         max_attempts=MAX_ATTEMPTS,
         dump=True,
-        phase=True,
         tag="e6",
     ),
     "torus2d_phase_e6": Campaign(
@@ -130,7 +130,6 @@ CAMPAIGNS: dict[str, Campaign] = {
         accept_rate=1e-6,
         max_attempts=MAX_ATTEMPTS,
         dump=True,
-        phase=True,
         tag="e6",
     ),
     "torus2d_e6": Campaign(
@@ -166,7 +165,6 @@ CAMPAIGNS: dict[str, Campaign] = {
         accept_rate=1e-6,
         max_attempts=MAX_ATTEMPTS,
         dump=True,
-        phase=True,
         terms_values=FREQ_TERMS,
         tag="fqe6",
     ),
@@ -179,7 +177,6 @@ CAMPAIGNS: dict[str, Campaign] = {
         accept_rate=1e-6,
         max_attempts=MAX_ATTEMPTS,
         dump=True,
-        phase=True,
         terms_values=FREQ_TERMS,
         tag="fqe6",
     ),
@@ -197,7 +194,6 @@ CAMPAIGNS: dict[str, Campaign] = {
         accept_rate=1e-6,
         max_attempts=MAX_ATTEMPTS,
         dump=True,
-        phase=True,
         terms_values=(2, 3, 10),
         tag="une6",
     ),

@@ -73,12 +73,15 @@ uv run python -m braidlab corrdim --db data/freq/freq3d_e6.db --dim 3 --band nyq
 ```
 
 Predefined campaigns (`braidlab/campaigns.py`): `torus3d` / `torus2d`
-(+ `_e6` cutoff variants), `torus3d_phase_e6` / `torus2d_phase_e6` (the phase
-schema, engine flag `--phase`), `freq3d_e6` / `freq2d_e6` (the FREQ campaign:
-term-count sweep, engine flag `--terms`, terms ∈ {2,3,4,6,10} on torus+phase)
+(+ `_e6` cutoff variants), `torus3d_phase_e6` / `torus2d_phase_e6` (from the
+era when the phase schema was opt-in; now identical to the `_e6` variants,
+kept so their stores stay resumable), `freq3d_e6` / `freq2d_e6` (the FREQ
+campaign: term-count sweep, engine flag `--terms`, terms ∈ {2,3,4,6,10})
 with `freqdecay{3,2}d_e{6,7,8}` companions (2 T × terms {2,10} per cutoff, for
 the approach power law). The engines are torus-only with the uniform sampler
-since 2026-07-09; the wall-era campaigns (`corrdim3d`/`corrdim2d`, the euclid
+and the phase schema ALWAYS ON since 2026-07-09 (`--phase` is an accepted
+no-op that the orchestrator still passes to guard against stale opt-in
+binaries); the wall-era campaigns (`corrdim3d`/`corrdim2d`, the euclid
 variant, `3plus1`/`2plus1`) were removed with that cleanup — their stores and
 dumps remain under `data/`, and the definitions live in git history.
 

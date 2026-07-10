@@ -28,11 +28,12 @@
 // grid and serially admits the (rare) survivors. Batch size adapts: small while
 // acceptance is high (early), huge in the deep tail (rejection-dominated).
 //
-// --phase switches to the phase schema: the wiggle term gains a free phase
-// f ~ U[0, pi) on even frequencies (odd ones must stay phase-free for the loop
-// to close), each component offset by a*sin(f) so it still starts at zero.
-// (The symmetric z grid that used to ride along with this flag is now
-// unconditional -- see the z-table comment in main.)
+// The phase schema is always on (since 2026-07-09; previously opt-in via
+// --phase): the wiggle term gains a free phase f ~ U[0, pi) on even
+// frequencies (odd ones must stay phase-free for the loop to close), each
+// component offset by a*sin(f) so it still starts at zero. --phase is an
+// accepted no-op; the orchestrator still passes it as a guard against stale
+// opt-in binaries, which would silently run phase-free without it.
 //
 // --terms K generalizes the model from one wiggle term to K-1 of them per axis
 // (K counts the always-present sin1 term). Each wiggle term gets a unique
@@ -142,7 +143,7 @@ constexpr int kMaxWiggle = 9;
 struct Path {
     double ax[kMaxWiggle], ay[kMaxWiggle];  // wiggle amplitudes
     double bx[kMaxWiggle], by[kMaxWiggle];  // wiggle frequencies (integer-valued)
-    double fx[kMaxWiggle], fy[kMaxWiggle];  // wiggle phases (0 unless --phase + even freq)
+    double fx[kMaxWiggle], fy[kMaxWiggle];  // wiggle phases (0 on odd frequencies)
     double ax2, ay2;                        // sin(1*z) amplitudes
 };
 
@@ -229,12 +230,12 @@ __host__ __device__ inline void split_unit(Rng& r, int nw, double* w) {
 //     sum |a_j*b_j| = 1 exactly;
 //   * sin1 amplitude (the comoving offset): uniform in [0, 1);
 //   * signs: an independent random flip on every amplitude;
-//   * phases (--phase): even-frequency terms get f ~ U[0, pi), odd ones stay
+//   * phases: even-frequency terms get f ~ U[0, pi), odd ones stay
 //     phase-free (the loop only closes for even b when a phase is added).
 // The exact draw ORDER is a compatibility contract: it fixes the RNG stream,
 // which keeps candidate generation bit-identical across engine generations
 // (the nw == 1 branch is the frozen legacy sequence).
-__host__ __device__ inline Path propose(Rng& r, uint32_t modmax, bool phase, int nw) {
+__host__ __device__ inline Path propose(Rng& r, uint32_t modmax, int nw) {
     Path p = {};
     if (nw == 1) {
         // Legacy single-wiggle model: draw order preserved verbatim so the RNG
@@ -268,14 +269,12 @@ __host__ __device__ inline Path propose(Rng& r, uint32_t modmax, bool phase, int
         // frequencies -- the loop closes at z=pi only where sin(b*pi + f)
         // equals sin(f), so odd frequencies stay phase-free. The a*sin(f)
         // offset applied at evaluation time re-pins the component to zero at
-        // the endpoints. Drawn last so the baseline (phase off) RNG stream is
-        // untouched.
-        if (phase) {
-            if (bx % 2 == 0)
-                p.fx[0] = rng_f64(r) * kPi;
-            if (by % 2 == 0)
-                p.fy[0] = rng_f64(r) * kPi;
-        }
+        // the endpoints. Drawn last so the prefix of the RNG stream stays
+        // bit-identical to the pre-phase engines.
+        if (bx % 2 == 0)
+            p.fx[0] = rng_f64(r) * kPi;
+        if (by % 2 == 0)
+            p.fy[0] = rng_f64(r) * kPi;
         return p;
     }
     // Generalized multi-term model.
@@ -307,14 +306,12 @@ __host__ __device__ inline Path propose(Rng& r, uint32_t modmax, bool phase, int
         p.ay2 = -p.ay2;
     // Per-term phases, same rule as the single-wiggle model: even frequencies
     // only, and each term is re-pinned to zero by its own a*sin(f) offset.
-    if (phase) {
-        for (int j = 0; j < nw; j++)
-            if (bxa[j] % 2 == 0)
-                p.fx[j] = rng_f64(r) * kPi;
-        for (int j = 0; j < nw; j++)
-            if (bya[j] % 2 == 0)
-                p.fy[j] = rng_f64(r) * kPi;
-    }
+    for (int j = 0; j < nw; j++)
+        if (bxa[j] % 2 == 0)
+            p.fx[j] = rng_f64(r) * kPi;
+    for (int j = 0; j < nw; j++)
+        if (bya[j] % 2 == 0)
+            p.fy[j] = rng_f64(r) * kPi;
     return p;
 }
 
@@ -422,7 +419,6 @@ __global__ void test_kernel(uint64_t baseSeed,
                             uint64_t round,
                             int batch,
                             uint32_t modmax,
-                            bool phase,
                             int nw,
                             bool sub,
                             const int* ptsGid,
@@ -446,7 +442,7 @@ __global__ void test_kernel(uint64_t baseSeed,
     Rng r;
     rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
-    Path p = propose(r, modmax, phase, nw);
+    Path p = propose(r, modmax, nw);
     if (!collides_dev(p, nw, sub, ptsGid, T, z, sinz, invz, cell, gw, cellStart, cellLen, ptsX,
                       ptsY, order)) {
         int slot = atomicAdd(survCount, 1);
@@ -469,7 +465,6 @@ int main(int argc, char** argv) {
     const char* curvePath = nullptr;
     int maxfreq = 0;             // 0 = default modulation cap T/2
     double acceptThresh = 0;     // 0 = run to --attempts; >0 = stop when accept-rate < thresh
-    bool phase = false;          // phase schema: free even-frequency phases
     int terms = 2;               // total sinusoid terms per axis, incl. sin1 (2 = legacy)
     bool subpaths = false;       // phase 2: pack subpaths into the jammed uniques
     double subBudget = 0;        // --sub-attempts (0 = reuse the --attempts budget)
@@ -505,9 +500,12 @@ int main(int argc, char** argv) {
             // The torus is the only geometry; the flag is kept as a no-op so
             // existing command lines (and the orchestrator's argv, which
             // passes it as a guard against stale wall-default binaries) run.
-        } else if (!strcmp(argv[i], "--phase"))
-            phase = true;
-        else if (!strcmp(argv[i], "--terms"))
+        } else if (!strcmp(argv[i], "--phase")) {
+            // The phase schema is always on (since 2026-07-09); the flag is
+            // kept as a no-op, and the orchestrator passes it as a guard
+            // against stale opt-in binaries (which would run phase-free
+            // without it).
+        } else if (!strcmp(argv[i], "--terms"))
             terms = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--subpaths"))
             subpaths = true;
@@ -565,8 +563,8 @@ int main(int argc, char** argv) {
     // Torus grid: exactly T cells of width CELL span [-1, 1), so the modular
     // neighbour scan wraps cleanly at the seam.
     const int gw = T;
-    fprintf(stderr, "2+1 (torus)%s: T=%d  modmax=%u (maxfreq=%u)  terms=%d\n",
-            phase ? " (phase)" : "", T, modmax, modmax + 1, terms);
+    fprintf(stderr, "2+1 (torus, phase): T=%d  modmax=%u (maxfreq=%u)  terms=%d\n", T, modmax,
+            modmax + 1, terms);
     if (subpaths)
         fprintf(stderr, "subpaths: terms=%d  max-n=%lld\n", nwSub + 1, maxN);
     // z tables + endpoint-first order. The canonical grid (2026-07-09, was
@@ -809,9 +807,9 @@ int main(int argc, char** argv) {
         // --- launch batch test ---
         CK(cudaMemset(dSurvCount, 0, 4));
         int threads = 256, blocks = (int)((batch + threads - 1) / threads);
-        test_kernel<<<blocks, threads>>>(
-            seed, round, (int)batch, modmax, phase, nw, false, dPtsGid, T, dz, dsinz, dinvz,
-            cell, gw, dCellStart, dCellLen, dPtsX, dPtsY, dorder, dSurv, dSurvCount, survCap);
+        test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, nw, false, dPtsGid, T,
+                                         dz, dsinz, dinvz, cell, gw, dCellStart, dCellLen,
+                                         dPtsX, dPtsY, dorder, dSurv, dSurvCount, survCap);
         CK(cudaDeviceSynchronize());
         int sc;
         CK(cudaMemcpy(&sc, dSurvCount, 4, cudaMemcpyDeviceToHost));
@@ -888,10 +886,10 @@ int main(int argc, char** argv) {
             uploadGrid();
             CK(cudaMemset(dSurvCount, 0, 4));
             int threads = 256, blocks = (int)((batch + threads - 1) / threads);
-            test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, phase, nwSub,
-                                             true, dPtsGid, T, dz, dsinz, dinvz, cell, gw,
-                                             dCellStart, dCellLen, dPtsX, dPtsY, dorder, dSurv,
-                                             dSurvCount, survCap);
+            test_kernel<<<blocks, threads>>>(seed, round, (int)batch, modmax, nwSub, true,
+                                             dPtsGid, T, dz, dsinz, dinvz, cell, gw, dCellStart,
+                                             dCellLen, dPtsX, dPtsY, dorder, dSurv, dSurvCount,
+                                             survCap);
             CK(cudaDeviceSynchronize());
             int sc;
             CK(cudaMemcpy(&sc, dSurvCount, 4, cudaMemcpyDeviceToHost));
@@ -982,7 +980,7 @@ int main(int argc, char** argv) {
 
     if (paramPath) {
         // Per-worldline parameters of the final 2+1 packing (two spatial axes).
-        // Phase columns are always present (zero when --phase is off).
+        // Phase columns are always present (zero on odd frequencies).
         // --terms 2 keeps the legacy column layout so existing dump readers
         // (analysis, viewer import) are untouched; the multi-term layout leads
         // with the sin1 amplitudes and then one ax_j,bx_j,fx_j,ay_j,by_j,fy_j

@@ -47,10 +47,6 @@ class Job:
     max_attempts: float
     #: L2-ball exclusion (--euclid-collision) instead of Chebyshev cube.
     euclid: bool = False
-    #: Phase schema (--phase): free phase on the wiggle term for even
-    #: frequencies. (The symmetric z grid that used to ride along with this
-    #: flag is unconditional in the engines since 2026-07-09.)
-    phase: bool = False
     #: Sparse collision grid (--sparse, 3+1 engine): sorted-key lookup +
     #: float32 points; VRAM ~ N*T instead of ~T^4, for T beyond the dense cap.
     sparse: bool = False
@@ -79,8 +75,12 @@ class Job:
         base = f"d{self.dim}_{self.band}_T{self.t}_s{self.seed}"
         if self.euclid:
             base += "_eu"
-        if self.phase:
-            base += "_ph"
+        # The phase schema is always on (2026-07-09), so every job carries the
+        # _ph suffix. This keeps names identical to the opt-in era's phase runs
+        # (in-flight campaigns resume cleanly) and distinct from any stale
+        # phase-OFF leftovers of the same (dim, band, T, seed) in a shared
+        # remote workspace.
+        base += "_ph"
         if self.sparse:
             base += "_sp"
         if self.terms != 2:
@@ -110,8 +110,6 @@ class Campaign:
     dump: bool = False
     #: Use the L2-ball exclusion instead of the Chebyshev cube.
     euclid: bool = False
-    #: Use the phase schema: free even-frequency phases (see Job.phase).
-    phase: bool = False
     #: Use the sparse collision grid (3+1): VRAM ~ N*T, for T beyond dense cap.
     sparse: bool = False
     #: Sinusoid term counts per axis to sweep (--terms; 2 = legacy model).
@@ -140,7 +138,6 @@ class Campaign:
                 accept_rate=self.accept_rate,
                 max_attempts=self.max_attempts,
                 euclid=self.euclid,
-                phase=self.phase,
                 sparse=self.sparse,
                 terms=k,
                 tag=self.tag,

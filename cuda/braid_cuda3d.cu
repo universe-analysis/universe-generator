@@ -64,11 +64,12 @@
 // is the only geometry since 2026-07-09. The orchestrator still passes the
 // flag as a guard against stale wall-default binaries.
 //
-// --phase switches to the phase schema: the wiggle term gains a free phase
-// f ~ U[0, pi) on even frequencies (odd ones must stay phase-free for the loop
-// to close), each component offset by a*sin(f) so it still starts at zero.
-// (The symmetric z grid that used to ride along with this flag is now
-// unconditional -- see the z-table comment in main.)
+// The phase schema is always on (since 2026-07-09; previously opt-in via
+// --phase): the wiggle term gains a free phase f ~ U[0, pi) on even
+// frequencies (odd ones must stay phase-free for the loop to close), each
+// component offset by a*sin(f) so it still starts at zero. --phase is an
+// accepted no-op; the orchestrator still passes it as a guard against stale
+// opt-in binaries, which would silently run phase-free without it.
 //
 // --terms K generalizes each axis to K sinusoid terms: the sin1 term plus
 // K-1 wiggle terms (K=2 is the legacy model, bit-identical RNG stream). Each
@@ -222,7 +223,7 @@ constexpr int kMaxWiggle = 9;
 struct Path {
     double ax[kMaxWiggle], ay[kMaxWiggle], aw[kMaxWiggle];  // wiggle amplitudes
     double bx[kMaxWiggle], by[kMaxWiggle], bw[kMaxWiggle];  // wiggle frequencies (integer)
-    double fx[kMaxWiggle], fy[kMaxWiggle], fw[kMaxWiggle];  // phases (0 unless --phase + even)
+    double fx[kMaxWiggle], fy[kMaxWiggle], fw[kMaxWiggle];  // phases (0 on odd frequencies)
     double ax2, ay2, aw2;                                   // sin1 amplitudes
 };
 
@@ -334,12 +335,12 @@ __device__ inline int find_key(const int* keys, int lo, int hi, int key) {
 //     sum |a_j*b_j| = 1 exactly;
 //   * sin1 amplitude (the comoving offset): uniform in [0, 1);
 //   * signs: an independent random flip on every amplitude;
-//   * phases (--phase): even-frequency terms get f ~ U[0, pi), odd ones stay
+//   * phases: even-frequency terms get f ~ U[0, pi), odd ones stay
 //     phase-free (the loop only closes for even b when a phase is added).
 // The exact draw ORDER is a compatibility contract: it fixes the RNG stream,
 // which keeps candidate generation bit-identical across engine generations
 // (the nw == 1 branch is the frozen legacy sequence).
-__host__ __device__ inline Path propose(Rng& r, uint32_t modmax, bool phase, int nw) {
+__host__ __device__ inline Path propose(Rng& r, uint32_t modmax, int nw) {
     Path p = {};
     if (nw == 1) {
         // Legacy single-wiggle model: draw order preserved verbatim so the RNG
@@ -383,16 +384,14 @@ __host__ __device__ inline Path propose(Rng& r, uint32_t modmax, bool phase, int
         // frequencies -- the loop closes at z=pi only where sin(b*pi + f)
         // equals sin(f), so odd frequencies stay phase-free. The a*sin(f)
         // offset applied at evaluation time re-pins the component to zero at
-        // the endpoints. Drawn last so the baseline (phase off) RNG stream is
-        // untouched.
-        if (phase) {
-            if (bx % 2 == 0)
-                p.fx[0] = rng_f64(r) * kPi;
-            if (by % 2 == 0)
-                p.fy[0] = rng_f64(r) * kPi;
-            if (bw % 2 == 0)
-                p.fw[0] = rng_f64(r) * kPi;
-        }
+        // the endpoints. Drawn last so the prefix of the RNG stream stays
+        // bit-identical to the pre-phase engines.
+        if (bx % 2 == 0)
+            p.fx[0] = rng_f64(r) * kPi;
+        if (by % 2 == 0)
+            p.fy[0] = rng_f64(r) * kPi;
+        if (bw % 2 == 0)
+            p.fw[0] = rng_f64(r) * kPi;
         return p;
     }
     // Generalized multi-term model.
@@ -436,17 +435,15 @@ __host__ __device__ inline Path propose(Rng& r, uint32_t modmax, bool phase, int
         p.aw2 = -p.aw2;
     // Per-term phases, same rule as the single-wiggle model: even frequencies
     // only, and each term is re-pinned to zero by its own a*sin(f) offset.
-    if (phase) {
-        for (int j = 0; j < nw; j++)
-            if (bxa[j] % 2 == 0)
-                p.fx[j] = rng_f64(r) * kPi;
-        for (int j = 0; j < nw; j++)
-            if (bya[j] % 2 == 0)
-                p.fy[j] = rng_f64(r) * kPi;
-        for (int j = 0; j < nw; j++)
-            if (bwa[j] % 2 == 0)
-                p.fw[j] = rng_f64(r) * kPi;
-    }
+    for (int j = 0; j < nw; j++)
+        if (bxa[j] % 2 == 0)
+            p.fx[j] = rng_f64(r) * kPi;
+    for (int j = 0; j < nw; j++)
+        if (bya[j] % 2 == 0)
+            p.fy[j] = rng_f64(r) * kPi;
+    for (int j = 0; j < nw; j++)
+        if (bwa[j] % 2 == 0)
+            p.fw[j] = rng_f64(r) * kPi;
     return p;
 }
 
@@ -589,9 +586,12 @@ __device__ bool collides_sparse_dev(const Path& p,
                                     const float* ptsYf,
                                     const float* ptsWf,
                                     const int* order,
-                                    bool euclid,
-                                    bool phase) {
+                                    bool euclid) {
     const float ax2 = (float)p.ax2, ay2 = (float)p.ay2, aw2 = (float)p.aw2;
+    // Same rule as collides_dev: paths whose drawn phases are all zero (every
+    // frequency odd) take the phase-free expressions -- bit-identical to the
+    // pre-phase tables and one table read fewer per term.
+    const bool phased = (p.fx[0] != 0.0) || (p.fy[0] != 0.0) || (p.fw[0] != 0.0);
     // Per-term amplitudes, table offsets, and phase factors (once, not per
     // timestep). With the a*sin(f) offset folded in,
     // sin(b*z + f) - sin(f) = sinb*cos(f) + (cosb - 1)*sin(f).
@@ -622,7 +622,7 @@ __device__ bool collides_sparse_dev(const Path& p,
         if (nw == 1) {
             // Single-wiggle fast path: same expressions as the pre---terms
             // engine (no per-term loop overhead in the legacy configuration).
-            if (phase) {
+            if (phased) {
                 X = (axF[0] * (sinbT[obx[0] + i] * cfx[0] + cosbm1T[obx[0] + i] * sfx[0]) +
                      ax2 * sinzF[i]) *
                     invzF[i];
@@ -639,7 +639,7 @@ __device__ bool collides_sparse_dev(const Path& p,
             }
         } else {
             float xx = ax2 * sinzF[i], yy = ay2 * sinzF[i], wwv = aw2 * sinzF[i];
-            if (phase) {
+            if (phased) {
                 for (int j = 0; j < nw; j++) {
                     xx += axF[j] * (sinbT[obx[j] + i] * cfx[j] + cosbm1T[obx[j] + i] * sfx[j]);
                     yy += ayF[j] * (sinbT[oby[j] + i] * cfy[j] + cosbm1T[oby[j] + i] * sfy[j]);
@@ -712,7 +712,6 @@ __global__ void test_kernel(uint64_t baseSeed,
                             int batch,
                             uint32_t modmax,
                             bool euclid,
-                            bool phase,
                             int nw,
                             int T,
                             const double* z,
@@ -736,7 +735,7 @@ __global__ void test_kernel(uint64_t baseSeed,
     Rng r;
     rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
-    Path p = propose(r, modmax, phase, nw);
+    Path p = propose(r, modmax, nw);
     if (!collides_dev(p, nw, T, z, sinz, invz, cell, gw, gw2, gw3, cellStart, ptsX, ptsY, ptsW,
                       order, euclid)) {
         int slot = atomicAdd(survCount, 1);
@@ -751,7 +750,6 @@ __global__ void test_kernel_sparse(uint64_t baseSeed,
                                    int batch,
                                    uint32_t modmax,
                                    bool euclid,
-                                   bool phase,
                                    int nw,
                                    int T,
                                    const float* sinbT,
@@ -778,10 +776,9 @@ __global__ void test_kernel_sparse(uint64_t baseSeed,
     Rng r;
     rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
-    Path p = propose(r, modmax, phase, nw);
+    Path p = propose(r, modmax, nw);
     if (!collides_sparse_dev(p, nw, T, sinbT, cosbm1T, sinzF, invzF, cellF, cellTightF, gw, gw2,
-                             keys, keyStart, cellOff, ptsXf, ptsYf, ptsWf, order, euclid,
-                             phase)) {
+                             keys, keyStart, cellOff, ptsXf, ptsYf, ptsWf, order, euclid)) {
         int slot = atomicAdd(survCount, 1);
         if (slot < survCap)
             survOut[slot] = p;
@@ -796,7 +793,6 @@ int main(int argc, char** argv) {
     int maxfreq = 0;          // 0 = default modulation cap T/2
     double acceptThresh = 0;  // 0 = run to --attempts; >0 = stop when accept-rate < thresh
     bool euclid = false;      // L2-ball exclusion (vs the default Chebyshev cube)
-    bool phase = false;       // phase schema: free even-frequency phases
     bool sparse = false;      // sparse grid (sorted keys + float32 points): VRAM ~ N*T
     int terms = 2;            // total sinusoid terms per axis, incl. sin1 (2 = legacy)
     const char* diagPrefix = nullptr;  // if set, write occupancy + probe diagnostics
@@ -836,9 +832,12 @@ int main(int argc, char** argv) {
             // The torus is the only geometry; the flag is kept as a no-op so
             // existing command lines (and the orchestrator's argv, which
             // passes it as a guard against stale wall-default binaries) run.
-        } else if (!strcmp(argv[i], "--phase"))
-            phase = true;
-        else if (!strcmp(argv[i], "--sparse"))
+        } else if (!strcmp(argv[i], "--phase")) {
+            // The phase schema is always on (since 2026-07-09); the flag is
+            // kept as a no-op, and the orchestrator passes it as a guard
+            // against stale opt-in binaries (which would run phase-free
+            // without it).
+        } else if (!strcmp(argv[i], "--sparse"))
             sparse = true;
         else if (!strcmp(argv[i], "--terms"))
             terms = atoi(argv[++i]);
@@ -935,12 +934,11 @@ int main(int argc, char** argv) {
     float *dSinbT = nullptr, *dCosbm1T = nullptr, *dSinzF = nullptr, *dInvzF = nullptr;
     if (sparse) {
         std::vector<float> sinbT((size_t)modmax * T), sinzF(T), invzF(T);
-        std::vector<float> cosbm1T(phase ? (size_t)modmax * T : 0);
+        std::vector<float> cosbm1T((size_t)modmax * T);
         for (uint32_t b = 2; b <= modmax + 1; b++)
             for (int i = 0; i < T; i++) {
                 sinbT[(size_t)(b - 2) * T + i] = (float)sin((double)b * z[i]);
-                if (phase)
-                    cosbm1T[(size_t)(b - 2) * T + i] = (float)(cos((double)b * z[i]) - 1.0);
+                cosbm1T[(size_t)(b - 2) * T + i] = (float)(cos((double)b * z[i]) - 1.0);
             }
         for (int i = 0; i < T; i++) {
             sinzF[i] = (float)sinz[i];
@@ -948,11 +946,8 @@ int main(int argc, char** argv) {
         }
         CK(cudaMalloc(&dSinbT, sinbT.size() * 4));
         CK(cudaMemcpy(dSinbT, sinbT.data(), sinbT.size() * 4, cudaMemcpyHostToDevice));
-        if (phase) {
-            CK(cudaMalloc(&dCosbm1T, cosbm1T.size() * 4));
-            CK(cudaMemcpy(dCosbm1T, cosbm1T.data(), cosbm1T.size() * 4,
-                          cudaMemcpyHostToDevice));
-        }
+        CK(cudaMalloc(&dCosbm1T, cosbm1T.size() * 4));
+        CK(cudaMemcpy(dCosbm1T, cosbm1T.data(), cosbm1T.size() * 4, cudaMemcpyHostToDevice));
         CK(cudaMalloc(&dSinzF, T * 4));
         CK(cudaMalloc(&dInvzF, T * 4));
         CK(cudaMemcpy(dSinzF, sinzF.data(), T * 4, cudaMemcpyHostToDevice));
@@ -962,15 +957,14 @@ int main(int argc, char** argv) {
     size_t ncell = (size_t)T * gw3;
     if (sparse)
         fprintf(stderr,
-                "3+1 (torus)%s (sparse): T=%d  modmax=%u (maxfreq=%u)  terms=%d  grid VRAM ~ "
-                "N*T\n",
-                phase ? " (phase)" : "", T, modmax, modmax + 1, terms);
+                "3+1 (torus, phase) (sparse): T=%d  modmax=%u (maxfreq=%u)  terms=%d  grid "
+                "VRAM ~ N*T\n",
+                T, modmax, modmax + 1, terms);
     else
         fprintf(stderr,
-                "3+1 (torus)%s: T=%d  modmax=%u (maxfreq=%u)  terms=%d  grid cells=%.2e  "
+                "3+1 (torus, phase): T=%d  modmax=%u (maxfreq=%u)  terms=%d  grid cells=%.2e  "
                 "(~%.1f GB)\n",
-                phase ? " (phase)" : "", T, modmax, modmax + 1, terms, (double)ncell,
-                (ncell + 1) * 4.0 / 1e9);
+                T, modmax, modmax + 1, terms, (double)ncell, (ncell + 1) * 4.0 / 1e9);
     // Dense grid: cellStart holds cumulative point offsets (< N*T, well within
     // int32 even at T=300), so a 32-bit grid index halves device memory vs a
     // 64-bit one. One sentinel entry (cellStart[ncell] = npts) makes lengths
@@ -1344,14 +1338,13 @@ int main(int argc, char** argv) {
         int threads = 256, blocks = (int)((batch + threads - 1) / threads);
         if (sparse)
             test_kernel_sparse<<<blocks, threads, 0, st>>>(
-                seed, round, (int)batch, modmax, euclid, phase, nw, T, dSinbT, dCosbm1T, dSinzF,
+                seed, round, (int)batch, modmax, euclid, nw, T, dSinbT, dCosbm1T, dSinzF,
                 dInvzF, (float)cell, (float)cellTight, gw, gw2, dKeys, dKeyStart, dCellOff,
                 dPtsXf, dPtsYf, dPtsWf, dorder, dSurv[b], dSurvCount[b], survCap);
         else
-            test_kernel<<<blocks, threads, 0, st>>>(seed, round, (int)batch, modmax, euclid,
-                                                    phase, nw, T, dz, dsinz, dinvz, cell, gw,
-                                                    gw2, gw3, dCellStart, dPtsX, dPtsY, dPtsW,
-                                                    dorder, dSurv[b], dSurvCount[b], survCap);
+            test_kernel<<<blocks, threads, 0, st>>>(
+                seed, round, (int)batch, modmax, euclid, nw, T, dz, dsinz, dinvz, cell, gw, gw2,
+                gw3, dCellStart, dPtsX, dPtsY, dPtsW, dorder, dSurv[b], dSurvCount[b], survCap);
         CK(cudaMemcpyAsync(hCount[b], dSurvCount[b], 4, cudaMemcpyDeviceToHost, st));
         CK(cudaMemcpyAsync(hSurvPin[b], dSurv[b], copyCap * sizeof(Path),
                            cudaMemcpyDeviceToHost, st));
@@ -1503,7 +1496,7 @@ int main(int argc, char** argv) {
     if (paramPath) {
         // Per-worldline parameters of the final packing, so the full phase space
         // can be reconstructed analytically at any z (e.g. the turnaround z=pi/2).
-        // Phase columns are always present (zero when --phase is off).
+        // Phase columns are always present (zero on odd frequencies).
         // --terms 2 keeps the legacy column layout so existing dump readers are
         // untouched; the multi-term layout leads with the sin1 amplitudes and
         // then one ax_j,bx_j,fx_j,ay_j,by_j,fy_j,aw_j,bw_j,fw_j group per
@@ -1574,7 +1567,7 @@ int main(int argc, char** argv) {
         rng_seed(pr, seed ^ 0xABCDEF1234567890ULL);
         std::vector<double> X(T), Y(T), W(T);
         for (long long t = 0; t < probeN; t++) {
-            Path p = propose(pr, modmax, phase, nw);
+            Path p = propose(pr, modmax, nw);
             eval_path(p, X.data(), Y.data(), W.data());
             int b = bin_of(p.ax2);  // bin by the X-centre of the proposal
             prop[b]++;

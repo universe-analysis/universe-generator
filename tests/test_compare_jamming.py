@@ -129,6 +129,6 @@ def test_sparse_job_name_and_command() -> None:
         max_attempts=3e12,
         sparse=True,
     )
-    assert j.name == "d3_nyq_T60_s1_sp"
+    assert j.name == "d3_nyq_T60_s1_ph_sp"
     cmd = build_command(j, "braid_cuda3d", "curves/x.csv")
     assert "--sparse" in cmd

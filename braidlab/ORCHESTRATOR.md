@@ -263,8 +263,8 @@ removal 2026-07-09; passed explicitly so a stale smart-default binary fails
 loudly) · `--seed <s>` ·
 `--until-accept-rate <r>` (the fixed-convergence stop) · `--maxfreq <m>` (band) ·
 `--torus` (no-op since 2026-07-09 — the torus is the only geometry; passed as
-a stale-binary guard, like `--uniform`) · `--phase`
-(free even-frequency phases; adds fx/fy/fw dump columns — the symmetric z grid
-is unconditional in the engines since 2026-07-09) ·
+a stale-binary guard, like `--uniform`) · `--phase` (no-op since 2026-07-09 —
+the phase schema, free even-frequency phases, is always on; passed so a stale
+opt-in binary still runs with phases instead of silently without) ·
 `--curve <path>` · `--dump-params <path>`.
 (`--smart` and `--angle-sample` were removed 2026-07-09 and are fatal errors.)

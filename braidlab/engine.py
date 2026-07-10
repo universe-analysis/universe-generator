@@ -36,12 +36,14 @@ def build_command(job: Job, binary: str, curve_path: str) -> list[str]:
         str(job.t),
         "--attempts",
         repr(job.max_attempts),
-        # Uniform is the engine's only sampler and the torus its only
-        # geometry (both since 2026-07-09); passed explicitly so a stale
-        # binary with the old defaults (smart sampler, hard wall) fails
-        # loudly instead of silently running the wrong model.
+        # Uniform is the engine's only sampler, the torus its only geometry,
+        # and the phase schema always on (all since 2026-07-09); passed
+        # explicitly so a stale binary with the old defaults (smart sampler,
+        # hard wall, opt-in phase) fails loudly or runs the right model
+        # instead of silently running the wrong one.
         "--uniform",
         "--torus",
+        "--phase",
         "--seed",
         str(job.seed),
         "--until-accept-rate",
@@ -49,8 +51,6 @@ def build_command(job: Job, binary: str, curve_path: str) -> list[str]:
     ]
     if job.euclid:
         cmd += ["--euclid-collision"]
-    if job.phase:
-        cmd += ["--phase"]
     if job.sparse:
         cmd += ["--sparse"]
     if job.terms != 2:
