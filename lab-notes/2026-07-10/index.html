@@ -125,6 +125,52 @@
       </p>
     </article>
 
+    <article class="entry" id="log-approach-3d">
+      <h2>3+1 approaches its jam logarithmically &mdash; there is no Feder ceiling to extrapolate</h2>
+      <p class="meta">
+        <code>converge3d_e9small</code> (T &isin; {20, 40, 60} &times; 3 seeds
+        at 1e-9, mother+kitt) analyzed with
+        <code>analysis/analyze_approach_law.py</code> &middot; analysis code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/218f9ca"><code>218f9ca</code></a>
+      </p>
+      <p>
+        The 3+1 companion to the 2+1 Feder extrapolation, on curves five
+        decades deeper than anything prior. Verdict: the fit rails at
+        p &rarr; 0 on all nine curves &mdash; and the p &rarr; 0 limit is the
+        logarithm. Every tail is an excellent fit to
+        <strong>N = a + b&middot;ln(attempts)</strong> over &ge; 4 decades:
+        constant absolute growth per decade (T = 20: 106.7/106.9/106.7 across
+        seeds), no ceiling curvature anywhere.
+      </p>
+      <ul>
+        <li><strong>The approach law is dimension-dependent.</strong> 2+1
+            approaches its jam as a Feder power law (p = 0.120 &rarr;
+            D<sub>&infin;</sub> = 1.434 extrapolable, this morning's entry);
+            3+1 grows logarithmically as deep as we can see &mdash;
+            activated, glassy-like kinetics. Any Feder ceiling would need
+            p &lt; 0.01, i.e. N<sub>&infin;</sub> far above the data; within
+            observable depth the 3+1 jam ceiling is unreachable <em>and
+            unextrapolable</em>.</li>
+        <li><strong>The log slope carries the packing exponent</strong>:
+            b&middot;ln 10 = 107 / 533 / 1330 per decade at T = 20/40/60 —
+            ratios 5.0 and 12.4 vs T<sup>2.32</sup> predictions 5.0 and 12.8.
+            N(T, t) &asymp; b(T)&middot;[const + ln t] with b ~ T<sup>D</sup>:
+            this is <em>why</em> the 3+1 exponent is depth-robust while
+            absolute N is cutoff-conditional forever.</li>
+        <li>Consequence for the 7/3 question: it cannot be settled by kinetic
+            extrapolation. It rests on the converged-window cutoff shift
+            (<code>converge3d_e7</code>, running) and, ideally, an analytic
+            argument.</li>
+      </ul>
+      <p>
+        Takeaway: &ldquo;the jam&rdquo; means different things in the two
+        dimensions &mdash; 2+1 has a reachable-in-principle ceiling; 3+1 has
+        a log-slow densification whose <em>rate</em>, not ceiling, carries
+        the physics. The analysis tool now reports the log-law diagnosis
+        instead of failing when every Feder fit rails.
+      </p>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
