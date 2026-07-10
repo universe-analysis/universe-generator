@@ -292,6 +292,18 @@ CAMPAIGNS: dict[str, Campaign] = {
         dump=True,
         tag="cv2e8",
     ),
+    # Deep small-T 3+1 curves: the Feder p-vote electorate for the 3+1
+    # jamming-limit extrapolation (all 3+1 curves through 1e-8 rail).
+    "converge3d_e9small": Campaign(
+        name="converge3d_e9small",
+        dim=3,
+        t_values=(20, 40, 60),
+        seeds=(1, 2, 3),
+        accept_rate=1e-9,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        tag="cv3e9s",
+    ),
     "converge2d_e9": Campaign(
         name="converge2d_e9",
         dim=2,
