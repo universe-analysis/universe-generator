@@ -72,6 +72,59 @@
       </p>
     </article>
 
+    <article class="entry" id="approach-law">
+      <h2>Feder-law extrapolation: the 2+1 jamming-limit exponent is 1.434 &plusmn; 0.021</h2>
+      <p class="meta">
+        Kinetic curves of <code>converge2d_e8</code> + <code>converge2d_e9</code>
+        (46 runs), fitted with <code>analysis/analyze_approach_law.py</code>
+        &middot; analysis code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/654a5d5"><code>654a5d5</code></a>
+      </p>
+      <p>
+        The morning's verdict was that brute-force depth has no limit in
+        reach; this is the other road. Each run's N-vs-attempts tail is fitted
+        with Feder's approach law N(t) = N<sub>&infin;</sub> &minus; c&middot;t<sup>&minus;p</sup>:
+        the runs whose tails genuinely constrain p (interior optimum &mdash;
+        the small-T runs, which sit near true jamming) vote on a shared
+        p = 0.120 (d<sub>eff</sub> &asymp; 8.3), and every curve is then
+        refitted with p fixed to extrapolate its jam ceiling.
+      </p>
+      <figure class="plot">
+        <img src="approach_law_2d.png"
+             alt="Log-log plot of extrapolated jam ceilings N-infinity versus T for 2+1, eight points from T=20 to 300 lying on a power law with fitted exponent 1.434." />
+        <figcaption>
+          Extrapolated ceilings N<sub>&infin;</sub>(T): a clean power law with
+          D<sub>&infin;</sub> = 1.434 &plusmn; 0.021.
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>D<sub>&infin;</sub>(2+1) = 1.434 &plusmn; 0.021 (stat)</strong>,
+            and the p systematic cancels in the ladder ratio: forcing p to
+            either end of the interior-fit IQR (0.105&ndash;0.165) moves
+            D<sub>&infin;</sub> by &lt; 0.001. The ceilings sit ~26% above the
+            deepest (1e-9) measured N at T = 300.</li>
+        <li>The cutoff ladder read 1.393 &rarr; 1.407 &rarr; 1.440 across
+            e6&ndash;e8; the limit value 1.434 says the e8 rung was already
+            exponent-converged and the 1e-9 two-point 1.473 was small-sample
+            noise. D/d = 0.717 in 2+1 vs 0.774 in 3+1 &mdash; the ratio is
+            not dimension-universal.</li>
+        <li><strong>3+1 cannot be extrapolated yet</strong>: every 3+1 curve
+            through 1e-8 rails (no detectable curvature toward a ceiling
+            &mdash; consistent with the decay ladders' no-plateau verdict),
+            so the fitter refuses rather than fabricating ceilings. Deep
+            small-T 3+1 runs (T = 20&ndash;60 at 1e-9, cheap) would give the
+            p vote a 3+1 electorate.</li>
+      </ul>
+      <p>
+        Takeaway: the 2+1 exponent story closes &mdash; quote
+        D<sub>&infin;</sub> = 1.434 &plusmn; 0.021 as the jamming-limit value,
+        with finite-cutoff numbers as approximations to it. The same
+        extrapolation in 3+1 (and whether it carries 2.321 to 7/3) is the
+        follow-up, pending deeper small-T curves and the running
+        <code>converge3d_e7</code>.
+      </p>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
