@@ -114,12 +114,13 @@ dimension:
   rules out D/d = 3/4 (2.25) by ~9σ and lands just below 7/3 ≈ 2.333 — with
   the +0.016/decade cutoff shift, the jamming-limit value plausibly reaches
   7/3 (open question 4).
-- **2+1: D ≈ 1.39–1.47 and still climbing with depth — no converged value
-  yet.** Full-ladder fits (T ≥ 100): 1.393 / 1.407 / 1.440 at 1e-6/1e-7/1e-8;
-  the 1e-9 two-point anchor (T = 140→300) reads 1.473 ± 0.011. The drift does
-  not decelerate across four decades, so 2+1 values must be quoted with
-  their cutoff, and the jamming-limit exponent needs an approach-law fit to
-  the kinetic curves rather than deeper cutoffs. D/d ≈ 0.70–0.74.
+- **2+1: jamming-limit D∞ = 1.434 ± 0.021** (Feder-law extrapolation of the
+  kinetic curves: shared approach exponent p = 0.120 voted by the
+  depth-constrained small-T tails; the p systematic moves D∞ by < 0.001).
+  Finite-cutoff ladders approach it from below — full-ladder fits 1.393 /
+  1.407 / 1.440 at 1e-6/1e-7/1e-8 — so quote cutoff values as
+  approximations to D∞. D/d = 0.717, distinctly below 3+1's 0.774: the
+  ratio is not dimension-universal.
 - **The exponent is terms-invariant.** Enriching the dictionary from 2 to 10
   terms per axis leaves D flat in 3+1 (2.231(3), 2.240(2), 2.226(2) for
   terms = 2, 3, 10 — `frequni3d_e6`); the packing exponent is a property of
@@ -283,10 +284,11 @@ does not.
 
 ## Open questions / next steps
 
-1. **2+1 jamming-limit exponent via the approach law** — brute-force depth
-   failed to converge (the drift persists through 1e-9); fit the
-   approach-to-jamming power law directly to the stored kinetic curves (a
-   Feder-law analog) to extrapolate the limit exponent.
+1. **3+1 jamming-limit exponent via the approach law** — the 2+1 version is
+   done (D∞ = 1.434 ± 0.021, section 2); in 3+1 every stored curve through
+   1e-8 rails (no detectable ceiling curvature), so the p vote needs deep
+   small-T 3+1 runs (T = 20–60 at 1e-9, cheap). Does the extrapolation
+   carry 2.321 to 7/3?
 2. **Constant-fraction terms ladder** — terms tied to T at fixed pool
    fraction (needs a kMaxWiggle bump and a terms-per-T campaign knob), to
    close the pool-fraction question of section 3.
