@@ -13,12 +13,15 @@ A packing model of the cosmos. Parametric sinusoidal worldlines
 frequency `b`, unit-rapidity budget `|a·b| = 1`, free comoving coordinate
 `a1`, free phase `f` on even frequencies) are threaded into a closed
 conformal-time loop `z ∈ (0, π)` on a comoving torus and packed by random
-sequential adsorption (RSA). Headline: the jam count scales as **N ~ T^2.33
-(3+1)** / **T^1.38 (2+1)** — a packing-number exponent with no geometric
-carrier; matter slices are *exactly* uniform (wrapped D2 = 3.01/2.03); mover
-speeds follow a phase-selected arcsine law; turnaround equation of state
-**w = 0.070**, dictionary-robust. Full story in `PHYSICS_FINDINGS.md` and
-`paper/main.tex`.
+sequential adsorption (RSA). Headline: the jam count scales as **N ~ T^2.2
+(3+1)** / **T^1.4 (2+1, cutoff-conditional)** — a packing-number exponent
+with no geometric carrier, invariant under cutoff depth and dictionary size;
+matter slices are *exactly* uniform (wrapped D2 = 3.01/2.02); mover speeds
+follow a phase-selected arcsine law; turnaround equation of state **w = 0.145
+(Chebyshev) / 0.193 (Euclidean)**, with jamming cooling w 20–24% below the
+proposal ensemble in both metrics. Full story in `PHYSICS_FINDINGS.md`
+(current knowledge; the paper `paper/main.tex` predates the uniform re-anchor
+and needs revision).
 
 ## Layout
 
