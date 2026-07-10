@@ -385,22 +385,39 @@ def run_campaign(
             while done_count / total >= next_progress:
                 next_progress += PROGRESS_STEP
 
-        # Host-stall detection: a host whose runner has died while it still owns
-        # unfinished jobs is stuck. Require two consecutive polls to avoid a
-        # false alarm in the gap between a job finishing and being collected.
+        # Host-stall self-healing: a host whose runner has died while it still
+        # owns unfinished jobs is stuck — its queue never ran (a previous
+        # campaign's runner was alive at launch time, so ours was skipped) or
+        # died partway. Require two consecutive polls to avoid a false alarm
+        # in the gap between a job finishing and being collected, then push a
+        # fresh queue of the host's still-remaining jobs. Unreachable hosts
+        # (launch raises) get the old warning instead; their jobs need a
+        # re-run against a healthy host list.
         for host in hosts:
             host_remaining = host_keys.get(host, set()) & remaining
             if host_remaining and not fleet.runner_alive(host):
                 stalled_polls[host] += 1
             else:
                 stalled_polls[host] = 0
-            if stalled_polls[host] >= STALL_POLLS and host not in warned:
-                warned.add(host)
-                notifier.campaign_failed(
-                    campaign_name,
-                    f"host **{host}** looks stalled — its runner is gone with "
-                    f"{len(host_remaining)} job(s) unfinished. Re-run to resume.",
-                )
+            if stalled_polls[host] >= STALL_POLLS:
+                stalled_polls[host] = 0
+                todo = [j for j in assignment.get(host, []) if j.key in remaining]
+                try:
+                    fleet.launch(host, todo, dump=dump)
+                    notifier.campaign_failed(
+                        campaign_name,
+                        f"host **{host}** stalled with {len(todo)} job(s) "
+                        "unfinished — relaunched its queue (self-heal).",
+                    )
+                except Exception:
+                    if host not in warned:
+                        warned.add(host)
+                        notifier.campaign_failed(
+                            campaign_name,
+                            f"host **{host}** is stalled and unreachable with "
+                            f"{len(host_remaining)} job(s) unfinished — re-run "
+                            "against a healthy host list to migrate them.",
+                        )
 
     notifier.campaign_done(
         campaign_name,

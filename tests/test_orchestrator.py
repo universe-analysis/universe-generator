@@ -110,3 +110,53 @@ def test_scp_from_timeout_reads_as_failed_fetch(
     monkeypatch.setattr(subprocess, "run", fake_run)
     fleet = Fleet("/tmp/src")
     assert fleet._scp_from("vast:1", "~/x.csv", tmp_path / "x.csv") is False
+
+
+def test_stalled_host_queue_is_relaunched(tmp_path: Path, monkeypatch) -> None:
+    """A dead runner with unfinished jobs gets its queue pushed again
+    (self-heal), instead of only a warning — the 2026-07-10 deep-thought
+    stall, where a previous campaign's live runner suppressed the launch and
+    the host went idle with its queue never run."""
+    import braidlab.orchestrator as orch
+    from braidlab.store import Store
+
+    monkeypatch.setattr(orch.time, "sleep", lambda s: None)
+
+    jobs = _jobs(2)
+
+    class StubFleet:
+        def __init__(self) -> None:
+            self.launches: list[int] = []
+
+        def deploy(self, host: str, dims: set) -> None:
+            pass
+
+        def runner_alive(self, host: str) -> bool:
+            return False  # dead from the start: launch, then stall-heal
+
+        def launch(self, host: str, hjobs: list, dump: bool = False) -> None:
+            self.launches.append(len(hjobs))
+
+        def poll(self, host: str, dest_dir: Path) -> list:
+            # Results appear only after the self-heal relaunch.
+            if len(self.launches) >= 2:
+                return [(j.name, 10, 1000) for j in jobs]
+            return []
+
+        def fetch_curve(self, host: str, name: str, dest: Path) -> bool:
+            return True
+
+        def fetch_dump(self, host: str, name: str, dest: Path) -> bool:
+            return True
+
+    fleet = StubFleet()
+    orch.run_campaign(
+        jobs,
+        Store(tmp_path / "t.db"),
+        fleet,  # type: ignore[arg-type]
+        ["hostx"],
+        poll_seconds=0,
+        deploy=False,
+    )
+    assert len(fleet.launches) >= 2  # initial + self-heal
+    assert fleet.launches[-1] == 2  # the heal re-pushed both remaining jobs
