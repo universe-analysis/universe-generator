@@ -107,21 +107,24 @@ carrier** (section 4) — a *packing-number* exponent measuring the dynamical
 capacity of the joint all-times exclusion, strictly below the spatial
 dimension:
 
-- **3+1: D ≈ 2.2** at the 1e-6 cutoff. Full-ladder fits over T = 20–160 give
-  2.20–2.23 across independent campaigns (`pack3d_e6` 2.201, the terms-sweep
-  arms 2.226–2.240); the local slope steepens with T (T = 80→160 two-point:
-  2.27), so a quoted D needs its T window. D/d ≈ 0.73–0.76, consistent with
-  3/4.
-- **2+1: D ≈ 1.36–1.40, cutoff-conditional.** Full ladder T = 20–300: 1.363
-  at 1e-6, 1.397 at 1e-7; the 2+1 exponent drifts upward ~0.03–0.05 per
-  cutoff decade with no sign of saturating, so 2+1 values must always be
-  quoted with their cutoff, and a depth extrapolation is needed before any
-  2+1 headline. D/d ≈ 0.68–0.70.
+- **3+1: D = 2.321 ± 0.001 (stat), converged** at the 1e-6 cutoff. The local
+  slope rises from ~2.15 at the ladder bottom (low-T curvature) and sits flat
+  across five consecutive rungs from T = 160 through 360 (CONVERGE sparse
+  ladder, 5 seeds; 2.316–2.328 with ±0.01 errors). D/d = 0.774: the plateau
+  rules out D/d = 3/4 (2.25) by ~9σ and lands just below 7/3 ≈ 2.333 — with
+  the +0.016/decade cutoff shift, the jamming-limit value plausibly reaches
+  7/3 (open question 4).
+- **2+1: D ≈ 1.39–1.47 and still climbing with depth — no converged value
+  yet.** Full-ladder fits (T ≥ 100): 1.393 / 1.407 / 1.440 at 1e-6/1e-7/1e-8;
+  the 1e-9 two-point anchor (T = 140→300) reads 1.473 ± 0.011. The drift does
+  not decelerate across four decades, so 2+1 values must be quoted with
+  their cutoff, and the jamming-limit exponent needs an approach-law fit to
+  the kinetic curves rather than deeper cutoffs. D/d ≈ 0.70–0.74.
 - **The exponent is terms-invariant.** Enriching the dictionary from 2 to 10
   terms per axis leaves D flat in 3+1 (2.231(3), 2.240(2), 2.226(2) for
   terms = 2, 3, 10 — `frequni3d_e6`); the packing exponent is a property of
   the budget and the torus, not of the dictionary size.
-- Ladder tops (1e-6): ⟨N_sat⟩ ≈ 7.0×10⁴ (3+1, T=160), 3.2×10³ (2+1, T=300).
+- Ladder tops (1e-6): ⟨N_sat⟩ ≈ 4.6×10⁵ (3+1, T=360), 3.2×10³ (2+1, T=300).
 
 ## 3. The packing number is knob-robust (PACK campaigns)
 
@@ -280,17 +283,21 @@ does not.
 
 ## Open questions / next steps
 
-1. **2+1 depth extrapolation** — the 2+1 exponent is cutoff-limited;
-   extrapolate the decay ladders to quote a jamming-limit value.
+1. **2+1 jamming-limit exponent via the approach law** — brute-force depth
+   failed to converge (the drift persists through 1e-9); fit the
+   approach-to-jamming power law directly to the stored kinetic curves (a
+   Feder-law analog) to extrapolate the limit exponent.
 2. **Constant-fraction terms ladder** — terms tied to T at fixed pool
    fraction (needs a kMaxWiggle bump and a terms-per-T campaign knob), to
    close the pool-fraction question of section 3.
 3. **w(z) history** of the current model — does a stiff → matter bathtub
    shape appear away from the turnaround? Needs careful treatment of
    peculiar velocities away from sin z = 1.
-4. **Is D/d → 3/4 exact in 3+1?** Extend the ladder past T = 200 with the
-   sparse engine (no VRAM ceiling); an analytic 1+1 reduction might settle
-   the mechanism.
+4. **Is the jamming-limit 3+1 exponent exactly 7/3?** The converged 1e-6
+   plateau (2.321) sits one cutoff-shift below 7/3; a converged-window
+   ladder at 1e-7 (and T = 400+ rungs, cheap on the sparse engine) would
+   test whether the limit lands on 2.333. An analytic 1+1 reduction might
+   settle the mechanism.
 5. **Subpaths / unique groups** — post-jam filling by paths that join
    existing groups (engine `--subpaths`). How much subpath capacity does a
    jam retain, and what is a multi-place group, physically?
