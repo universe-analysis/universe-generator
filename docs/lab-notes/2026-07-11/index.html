@@ -70,6 +70,50 @@
       </p>
     </article>
 
+    <article class="entry" id="symmetric-grid">
+      <h2>Dimension-symmetric view &mdash; and the two dimensions fail in opposite directions</h2>
+      <p class="meta">
+        Same stores as this morning, resliced into a 2&times;2 grid (Kevin's
+        suggestion: every chart should exist for both dimensions) &middot;
+        chart
+        <a href="https://github.com/universe-analysis/universe-generator/commit/7d3a4f4"><code>7d3a4f4</code></a>
+      </p>
+      <p>
+        <code>plot_converge</code> is now a symmetric grid: per dimension,
+        the local exponent between adjacent rungs at the geometric-mean T
+        (one series per cutoff), and the fitted exponent vs cutoff depth.
+        Giving 2+1 the local-slope panel it never had makes the contrast
+        between the dimensions jump out:
+      </p>
+      <figure class="plot">
+        <img src="converge_grid.png"
+             alt="Two-by-two grid. Top left: 3+1 local exponent versus T at 1e-6 and 1e-7, rising from 2.15 and flattening onto the same plateau at 2.321. Top right: 3+1 exponent versus cutoff, flat. Bottom left: 2+1 local exponent versus T at three cutoffs, each series flat in T but the whole band shifting upward with depth. Bottom right: 2+1 exponent versus cutoff, rising through 1e-9." />
+        <figcaption>
+          Left column: local exponent vs resolution. Right column: exponent
+          vs depth. Top: 3+1. Bottom: 2+1.
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>The dimensions are non-converged in opposite
+            variables.</strong> 3+1's local slope climbs with T and then
+            plateaus, and the plateau is depth-invariant (2.3208 vs 2.3216):
+            resolution was the hard direction, depth is free. 2+1's local
+            slope is <em>flat in T at every cutoff</em> &mdash; no
+            resolution transient at all &mdash; but the whole band shifts
+            upward with each decade of depth (1.393 &rarr; 1.407 &rarr;
+            1.440): depth is the hard direction, resolution is free.</li>
+        <li>That inversion lines up exactly with the approach-law split:
+            2+1's power-law (Feder) approach makes its cutoff states
+            systematically shallow (depth matters), while 3+1's logarithmic
+            densification makes every cutoff state equally
+            &ldquo;deep&rdquo; in rate terms (depth cancels, resolution
+            rules).</li>
+        <li>Convention adopted: analysis charts come in dimension-symmetric
+            pairs from now on &mdash; a surplus of comparable graphs beats
+            a minimum of unique ones.</li>
+      </ul>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
