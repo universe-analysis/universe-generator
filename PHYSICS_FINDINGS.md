@@ -107,13 +107,15 @@ carrier** (section 4) — a *packing-number* exponent measuring the dynamical
 capacity of the joint all-times exclusion, strictly below the spatial
 dimension:
 
-- **3+1: D = 2.321 ± 0.001 (stat), converged** at the 1e-6 cutoff. The local
+- **3+1: D = 2.321 ± 0.001, converged AND cutoff-invariant.** The local
   slope rises from ~2.15 at the ladder bottom (low-T curvature) and sits flat
-  across five consecutive rungs from T = 160 through 360 (CONVERGE sparse
-  ladder, 5 seeds; 2.316–2.328 with ±0.01 errors). D/d = 0.774: the plateau
-  rules out D/d = 3/4 (2.25) by ~9σ and lands just below 7/3 ≈ 2.333 — with
-  the +0.016/decade cutoff shift, the jamming-limit value plausibly reaches
-  7/3 (open question 4).
+  from T = 160 through 360; the converged-window fits at 1e-6 and 1e-7 agree
+  exactly (2.3208 ± 0.0008 vs 2.3216 ± 0.0035 — the +0.016/decade drift of
+  full-ladder fits was itself a low-T artifact). D/d = 0.774. Both nearby
+  rational candidates are ruled out: D/d = 3/4 (2.25) by ~9σ and 7/3
+  (2.3333) by 15σ with no depth drift left to close the gap. Because the
+  3+1 approach is logarithmic (section 3), the converged finite-cutoff
+  plateau is the definitive number.
 - **2+1: jamming-limit D∞ = 1.434 ± 0.021** (Feder-law extrapolation of the
   kinetic curves: shared approach exponent p = 0.120 voted by the
   depth-constrained small-T tails; the p systematic moves D∞ by < 0.001).
@@ -289,13 +291,13 @@ does not.
 
 ## Open questions / next steps
 
-1. **Is the jamming-limit 3+1 exponent 7/3? (kinetic route closed)** — the
-   2+1 extrapolation is done (D∞ = 1.434 ± 0.021, section 2), but 3+1's
-   logarithmic approach (section 3) has no ceiling to extrapolate: deep
-   1e-9 small-T runs confirmed pure log growth. The question now rests on
-   the converged-window cutoff shift (converge3d_e7) and an analytic
-   argument. Also open: *why* is the approach law dimension-dependent
-   (Feder power law in 2+1, activated/log in 3+1)?
+1. **What sets D = 2.321 and D∞ = 1.434?** Both exponents are now settled
+   numbers (converged + cutoff-invariant in 3+1; Feder-extrapolated in
+   2+1), 7/3 and 3/4·d are ruled out, and D/d is not dimension-universal
+   (0.774 vs 0.717). An analytic handle — a 1+1 reduction, a mean-field
+   packing argument — is the only route left. Closely coupled: *why* is
+   the approach law dimension-dependent (Feder power law in 2+1,
+   activated/log in 3+1)?
 2. **Constant-fraction terms ladder** — terms tied to T at fixed pool
    fraction (needs a kMaxWiggle bump and a terms-per-T campaign knob), to
    close the pool-fraction question of section 3.
