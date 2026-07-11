@@ -1,19 +1,24 @@
-"""CONVERGE campaign chart: where each headline exponent actually lands.
+"""CONVERGE chart: the same two views of the exponent, per dimension.
 
-Left panel (3+1): the local two-point slope of N(T) between adjacent ladder
-rungs, stitched across the PACK (T = 20-160) and CONVERGE (T = 200-360)
-1e-6 stores. The question the campaign asked: does the rising slope flatten
-onto D/d = 3/4 (D = 2.25)? The converged plateau (weighted fit over
-T >= 160) is drawn with its value; the 3/4 and 7/3 references frame it.
+A symmetric 2x2 grid so the dimensions can be compared panel-for-panel
+(one-off asymmetric charts made the story hard to follow):
 
-Right panel (2+1): the exponent per cutoff decade — full-ladder weighted
-fits (T >= 100) for 1e-6/1e-7/1e-8 and the two-point T = 140 -> 300 slope
-for all four decades including the 1e-9 anchor. A converging exponent would
-decelerate toward a plateau; the data show the drift persisting.
+  row = dimension (3+1 top, 2+1 bottom)
+  left column  = local two-point slope between adjacent ladder rungs,
+                 plotted at the geometric-mean T of the pair, one series
+                 per cutoff. Shows where (whether) the exponent converges
+                 in resolution, and whether the plateau moves with depth.
+  right column = the fitted exponent vs cutoff depth: converged-window
+                 weighted fit plus a fixed high-T two-point slope. Shows
+                 the depth (in)dependence at a glance.
+
+3+1 arms stitch the PACK (T <= 160) and CONVERGE (T = 200-360) stores;
+2+1 uses the full T = 20-300 ladders at each cutoff (the 1e-9 anchor arm
+has only two T values, so it appears in the right column only).
 
 Usage::
 
-    uv run python -m plots.plot_converge --out converge.png
+    uv run python -m plots.plot_converge --out converge_grid.png
 """
 
 from __future__ import annotations
@@ -24,45 +29,49 @@ from pathlib import Path
 
 import numpy as np
 
-#: (label, db path) per cutoff decade, 2+1. The e6/e7 rungs are PACK stores.
-LADDERS_2D = (
-    (6, "data/pack/pack2d_e6.db"),
-    (7, "data/pack/pack2d_e7.db"),
-    (8, "data/converge/converge2d_e8.db"),
-    (9, "data/converge/converge2d_e9.db"),
-)
-#: (cutoff label, stores to stitch, color) per 3+1 arm.
-LADDERS_3D = (
-    (
-        "1e-6",
-        ("data/pack/pack3d_e6.db", "data/converge/converge3d_e6.db"),
-        "tab:blue",
+#: Per dimension: (cutoff label, stores to stitch, color).
+LADDERS: dict[int, tuple[tuple[str, tuple[str, ...], str], ...]] = {
+    3: (
+        (
+            "1e-6",
+            ("data/pack/pack3d_e6.db", "data/converge/converge3d_e6.db"),
+            "tab:blue",
+        ),
+        (
+            "1e-7",
+            ("data/pack/pack3d_e7.db", "data/converge/converge3d_e7.db"),
+            "tab:red",
+        ),
     ),
-    (
-        "1e-7",
-        ("data/pack/pack3d_e7.db", "data/converge/converge3d_e7.db"),
-        "tab:red",
+    2: (
+        ("1e-6", ("data/pack/pack2d_e6.db",), "tab:blue"),
+        ("1e-7", ("data/pack/pack2d_e7.db",), "tab:red"),
+        ("1e-8", ("data/converge/converge2d_e8.db",), "tab:purple"),
+        ("1e-9", ("data/converge/converge2d_e9.db",), "tab:orange"),
     ),
-)
-#: Converged-window start (3+1) and fit-window start (2+1).
-WINDOW_3D = 160
-WINDOW_2D = 100
-TWO_POINT_2D = (140, 300)
+}
+#: Converged/fit window start and the fixed high-T two-point pair, per dim.
+WINDOW = {3: 160, 2: 100}
+TWO_POINT = {3: (80, 160), 2: (140, 300)}
+#: Reference lines drawn on the local-slope panel, per dim.
+REFERENCES = {3: ((2.25, "D/d = 3/4"), (7 / 3, "7/3")), 2: ((1.5, "3/2"),)}
 
 
-def cells(db: str | Path) -> dict[int, tuple[float, float]]:
-    """Per-T seed mean and SEM of the jam count (2-term rows)."""
-    rows = (
-        sqlite3.connect(db)
-        .execute("select t, n_final from runs where status='done' and terms=2")
-        .fetchall()
-    )
+def cells(dbs: tuple[str, ...]) -> dict[int, tuple[float, float]]:
+    """Per-T seed mean and SEM of the jam count (2-term rows), stitched."""
     by_t: dict[int, list[int]] = {}
-    for t, n in rows:
-        by_t.setdefault(t, []).append(n)
+    for db in dbs:
+        rows = (
+            sqlite3.connect(db)
+            .execute("select t, n_final from runs where status='done' and terms=2")
+            .fetchall()
+        )
+        for t, n in rows:
+            by_t.setdefault(t, []).append(n)
     return {
         t: (float(np.mean(v)), float(np.std(v, ddof=1) / np.sqrt(len(v))))
         for t, v in sorted(by_t.items())
+        if len(v) > 1
     }
 
 
@@ -90,100 +99,117 @@ def ladder_fit(c: dict[int, tuple[float, float]], tmin: int) -> tuple[float, flo
     return float(p[0]), float(np.sqrt(cov[0][0]))
 
 
+def two_point(
+    c: dict[int, tuple[float, float]], pair: tuple[int, int]
+) -> tuple[float, float] | None:
+    """Slope between the fixed high-T pair, if both rungs exist."""
+    lo, hi = pair
+    if lo not in c or hi not in c:
+        return None
+    (n1, e1), (n2, e2) = c[lo], c[hi]
+    lr = np.log(hi / lo)
+    return np.log(n2 / n1) / lr, float(np.hypot(e1 / n1, e2 / n2) / lr)
+
+
 def plot(out_path: Path) -> None:
     import matplotlib.pyplot as plt
 
-    fig, (ax3, ax2) = plt.subplots(1, 2, figsize=(12.5, 5.4))
+    fig, axes = plt.subplots(2, 2, figsize=(13.5, 10.2))
+    summary: list[str] = []
 
-    # -- 3+1: local slope vs T, one series per cutoff ----------------------
-    d_convs: list[tuple[str, float, float]] = []
-    for label, dbs, color in LADDERS_3D:
-        c3 = cells(dbs[0])
-        for db in dbs[1:]:
-            c3.update(cells(db))
-        mid, slope, err = local_slopes(c3)
-        d_conv, d_err = ladder_fit(c3, WINDOW_3D)
-        d_convs.append((label, d_conv, d_err))
-        ax3.errorbar(
-            mid,
-            slope,
-            yerr=err,
-            fmt="o",
-            color=color,
+    for row, dim in enumerate((3, 2)):
+        ax_slope, ax_depth = axes[row]
+        window, pair = WINDOW[dim], TWO_POINT[dim]
+        depth_x: list[float] = []
+        depth_fit: list[tuple[float, float] | None] = []
+        depth_two: list[tuple[float, float] | None] = []
+
+        for label, dbs, color in LADDERS[dim]:
+            c = cells(dbs)
+            decade = -float(label.split("-")[1])
+            depth_x.append(-decade)
+            depth_two.append(two_point(c, pair))
+            if len(c) > 2:
+                d, e = ladder_fit(c, window)
+                depth_fit.append((d, e))
+                mid, slope, err = local_slopes(c)
+                ax_slope.errorbar(
+                    mid,
+                    slope,
+                    yerr=err,
+                    fmt="o",
+                    color=color,
+                    ms=4.5,
+                    capsize=2,
+                    alpha=0.85,
+                    label=f"{label}: fit T>={window} D = {d:.4f} ± {e:.4f}",
+                )
+                ax_slope.axhline(d, ls="--", color=color, lw=1.0, alpha=0.55)
+                summary.append(f"{dim}+1 @{label}: window fit {d:.4f} +/- {e:.4f}")
+            else:
+                depth_fit.append(None)
+
+        for ref, name in REFERENCES[dim]:
+            ax_slope.axhline(ref, ls=":", color="gray", lw=1.2)
+            ax_slope.annotate(
+                name,
+                (0.02, ref),
+                xycoords=("axes fraction", "data"),
+                fontsize=8.5,
+                color="gray",
+                va="bottom",
+            )
+        ax_slope.set_xscale("log")
+        ax_slope.set_xlabel("T (geometric mean of the rung pair)")
+        ax_slope.set_ylabel("local slope d log N / d log T")
+        ax_slope.set_title(f"{dim}+1: local exponent vs resolution, per cutoff")
+        ax_slope.grid(True, which="both", alpha=0.3)
+        ax_slope.legend(fontsize=8.5, loc="lower right")
+
+        fit_x = [x for x, f in zip(depth_x, depth_fit) if f]
+        fit_y = [f[0] for f in depth_fit if f]
+        fit_e = [f[1] for f in depth_fit if f]
+        ax_depth.errorbar(
+            fit_x,
+            fit_y,
+            yerr=fit_e,
+            fmt="s-",
+            color="tab:blue",
+            ms=6,
+            capsize=2,
+            label=f"window fit (T>={window})",
+        )
+        two_x = [x for x, f in zip(depth_x, depth_two) if f]
+        two_y = [f[0] for f in depth_two if f]
+        two_e = [f[1] for f in depth_two if f]
+        ax_depth.errorbar(
+            two_x,
+            two_y,
+            yerr=two_e,
+            fmt="o--",
+            color="tab:orange",
             ms=5,
             capsize=2,
-            alpha=0.85,
-            label=f"{label}: converged D = {d_conv:.4f} ± {d_err:.4f}",
+            label=f"two-point {pair[0]}->{pair[1]}",
         )
-        ax3.axhline(d_conv, ls="--", color=color, lw=1.2, alpha=0.7)
-    ax3.axhline(2.25, ls=":", color="darkgreen", lw=1.2)
-    ax3.text(21, 2.253, "D/d = 3/4", color="darkgreen", fontsize=9)
-    ax3.axhline(7 / 3, ls=":", color="gray", lw=1.2)
-    ax3.text(21, 7 / 3 + 0.003, "7/3", color="gray", fontsize=9)
-    ax3.legend(fontsize=9, loc="lower right")
-    ax3.set_xscale("log")
-    ax3.set_xlabel("T (geometric mean of the rung pair)")
-    ax3.set_ylabel("local slope d log N / d log T")
-    ax3.set_title("3+1: local packing exponent vs resolution, per cutoff")
-    ax3.grid(True, which="both", alpha=0.3)
-
-    # -- 2+1: exponent vs cutoff depth ------------------------------------
-    decades, fits, fit_errs, twops, twop_errs = [], [], [], [], []
-    for dec, db in LADDERS_2D:
-        c2 = cells(db)
-        decades.append(dec)
-        lo, hi = TWO_POINT_2D
-        (n1, e1), (n2, e2) = c2[lo], c2[hi]
-        lr = np.log(hi / lo)
-        twops.append(np.log(n2 / n1) / lr)
-        twop_errs.append(np.hypot(e1 / n1, e2 / n2) / lr)
-        if len(c2) > 2:  # full ladder available (not the 2-T anchor arm)
-            d, e = ladder_fit(c2, WINDOW_2D)
-            fits.append(d)
-            fit_errs.append(e)
-    ax2.errorbar(
-        decades[: len(fits)],
-        fits,
-        yerr=fit_errs,
-        fmt="s-",
-        color="tab:blue",
-        ms=6,
-        capsize=2,
-        label=f"full-ladder fit (T>={WINDOW_2D})",
-    )
-    ax2.errorbar(
-        decades,
-        twops,
-        yerr=twop_errs,
-        fmt="o--",
-        color="tab:orange",
-        ms=5,
-        capsize=2,
-        label=f"two-point {TWO_POINT_2D[0]}->{TWO_POINT_2D[1]}",
-    )
-    ax2.set_xticks(decades)
-    ax2.set_xticklabels([f"1e-{d}" for d in decades])
-    ax2.set_xlabel("acceptance-rate cutoff")
-    ax2.set_ylabel("packing exponent D")
-    ax2.set_title("2+1: exponent vs cutoff depth (no plateau)")
-    ax2.grid(True, alpha=0.3)
-    ax2.legend(fontsize=9)
+        ax_depth.set_xticks(depth_x)
+        ax_depth.set_xticklabels([f"1e-{int(x)}" for x in depth_x])
+        ax_depth.set_xlabel("acceptance-rate cutoff")
+        ax_depth.set_ylabel("packing exponent D")
+        ax_depth.set_title(f"{dim}+1: exponent vs cutoff depth")
+        ax_depth.grid(True, alpha=0.3)
+        ax_depth.legend(fontsize=8.5)
 
     fig.tight_layout()
     fig.savefig(out_path, dpi=160)
     print(f"wrote {out_path}")
-    for label, d_conv, d_err in d_convs:
-        print(
-            f"  3+1 converged (T>={WINDOW_3D}) @{label}: "
-            f"D = {d_conv:.4f} +/- {d_err:.4f}"
-        )
-    for dec, d, e in zip(decades, twops, twop_errs):
-        print(f"  2+1 two-point @1e-{dec}: {d:.4f} +/- {e:.4f}")
+    for line in summary:
+        print(f"  {line}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=Path, default=Path("converge.png"))
+    parser.add_argument("--out", type=Path, default=Path("converge_grid.png"))
     args = parser.parse_args()
     plot(args.out)
 
