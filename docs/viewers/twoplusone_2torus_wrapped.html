@@ -233,7 +233,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v18';
+    const VIEWER_VERSION = 'v19';
 
     let functions = [];
     let Z_cache = [];
@@ -305,7 +305,8 @@
             const z = Z_cache[i];
             const [cx, cy] = comovXY(f, z);
             if (i > 0){
-                const v = Math.hypot(cx - pcx, cy - pcy) / (z - Z_cache[i-1]);
+                // Chebyshev norm — matches the packing metric (square cells)
+                const v = Math.max(Math.abs(cx - pcx), Math.abs(cy - pcy)) / (z - Z_cache[i-1]);
                 if (v < pecMin) pecMin = v;
                 if (v > pecMax) pecMax = v;
             }
@@ -880,7 +881,8 @@
             }
             else {
                 float zN = (uSliceMode==1) ? z+uStep : (i < uT-1.0 ? z+uStep : z-uStep);
-                float v = length(comovRaw(zN)-cmR) / abs(uStep);   // unwrapped difference
+                vec2 dcm = abs(comovRaw(zN)-cmR);                  // unwrapped difference
+                float v = max(dcm.x, dcm.y) / abs(uStep);          // Chebyshev, matches packing metric
                 float lo = (uPecGlobal==1)? uGMin : aPec.x;
                 float hi = (uPecGlobal==1)? uGMax : aPec.y;
                 float t = (uLog==1)
@@ -1451,7 +1453,7 @@
         if(!instPec) return [0.78,0.85,1.0];       // speed ranges not baked yet (mid-generation)
         const [cx, cy]   = comovXY(f, z);
         const [cxN, cyN] = comovXY(f, zN);
-        const v=Math.hypot(cxN-cx,cyN-cy)/Math.abs(zN-z);
+        const v=Math.max(Math.abs(cxN-cx),Math.abs(cyN-cy))/Math.abs(zN-z);   // Chebyshev, matches packing metric
         const lo=pecGlobal?U.uGMin.value:instPec[p*2], hi=pecGlobal?U.uGMax.value:instPec[p*2+1];
         const t = logColor ? (Math.log(v+1e-6)-Math.log(lo+1e-6))/Math.max(1e-6,Math.log(hi+1e-6)-Math.log(lo+1e-6))
                            : (v-lo)/Math.max(1e-6,hi-lo);
