@@ -255,6 +255,21 @@ CAMPAIGNS: dict[str, Campaign] = {
     "pack2d_e7": _pack(2, 1e-7, "e7"),
     "packterms3d_e6": _pack_terms(3),
     "packterms2d_e6": _pack_terms(2),
+    # SUBPATH: post-jam filling by paths that join existing groups (engine
+    # --subpaths, 2+1 only). Mirrors pack2d_e6 exactly (same ladder, seeds,
+    # cutoff) so the subpath capacity of a jam reads off as an A/B against
+    # that store: how much extra threading does a jammed universe retain?
+    "subpath2d_e6": Campaign(
+        name="subpath2d_e6",
+        dim=2,
+        t_values=PACK2D_T,
+        seeds=PACK_SEEDS,
+        accept_rate=1e-6,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        subpaths=True,
+        tag="sub2e6",
+    ),
     # CONVERGE: exponent convergence (see the CONVERGE_* constants above).
     "converge3d_e6": Campaign(
         name="converge3d_e6",
