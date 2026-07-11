@@ -19,7 +19,7 @@ from pathlib import Path
 
 from braidlab.config import Job
 from braidlab.engine import binary_name, build_command
-from braidlab.notify import DiscordNotifier
+from braidlab.notify import COLORS, DiscordNotifier
 from braidlab.store import Store
 
 REMOTE_DIR = "~/braidlab_run"
@@ -404,10 +404,14 @@ def run_campaign(
                 todo = [j for j in assignment.get(host, []) if j.key in remaining]
                 try:
                     fleet.launch(host, todo, dump=dump)
-                    notifier.campaign_failed(
-                        campaign_name,
-                        f"host **{host}** stalled with {len(todo)} job(s) "
-                        "unfinished — relaunched its queue (self-heal).",
+                    # Routine maintenance, not a failure: queue handoffs after
+                    # a re-plan land here by design. Info color, no alarm.
+                    notifier.send_embed(
+                        f"⟳ {campaign_name}: self-heal",
+                        f"host **{host}** had {len(todo)} unfinished job(s) "
+                        "and no runner — queue relaunched.",
+                        None,
+                        COLORS["info"],
                     )
                 except Exception:
                     if host not in warned:
