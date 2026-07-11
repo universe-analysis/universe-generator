@@ -31,7 +31,19 @@ LADDERS_2D = (
     (8, "data/converge/converge2d_e8.db"),
     (9, "data/converge/converge2d_e9.db"),
 )
-LADDERS_3D = ("data/pack/pack3d_e6.db", "data/converge/converge3d_e6.db")
+#: (cutoff label, stores to stitch, color) per 3+1 arm.
+LADDERS_3D = (
+    (
+        "1e-6",
+        ("data/pack/pack3d_e6.db", "data/converge/converge3d_e6.db"),
+        "tab:blue",
+    ),
+    (
+        "1e-7",
+        ("data/pack/pack3d_e7.db", "data/converge/converge3d_e7.db"),
+        "tab:red",
+    ),
+)
 #: Converged-window start (3+1) and fit-window start (2+1).
 WINDOW_3D = 160
 WINDOW_2D = 100
@@ -83,28 +95,36 @@ def plot(out_path: Path) -> None:
 
     fig, (ax3, ax2) = plt.subplots(1, 2, figsize=(12.5, 5.4))
 
-    # -- 3+1: local slope vs T --------------------------------------------
-    c3 = cells(LADDERS_3D[0])
-    c3.update(cells(LADDERS_3D[1]))
-    mid, slope, err = local_slopes(c3)
-    d_conv, d_err = ladder_fit(c3, WINDOW_3D)
-    ax3.errorbar(mid, slope, yerr=err, fmt="o", color="tab:blue", ms=5, capsize=2)
-    ax3.axhline(2.25, ls=":", color="tab:red", lw=1.2)
-    ax3.text(21, 2.253, "D/d = 3/4", color="tab:red", fontsize=9)
+    # -- 3+1: local slope vs T, one series per cutoff ----------------------
+    d_convs: list[tuple[str, float, float]] = []
+    for label, dbs, color in LADDERS_3D:
+        c3 = cells(dbs[0])
+        for db in dbs[1:]:
+            c3.update(cells(db))
+        mid, slope, err = local_slopes(c3)
+        d_conv, d_err = ladder_fit(c3, WINDOW_3D)
+        d_convs.append((label, d_conv, d_err))
+        ax3.errorbar(
+            mid,
+            slope,
+            yerr=err,
+            fmt="o",
+            color=color,
+            ms=5,
+            capsize=2,
+            alpha=0.85,
+            label=f"{label}: converged D = {d_conv:.4f} ± {d_err:.4f}",
+        )
+        ax3.axhline(d_conv, ls="--", color=color, lw=1.2, alpha=0.7)
+    ax3.axhline(2.25, ls=":", color="darkgreen", lw=1.2)
+    ax3.text(21, 2.253, "D/d = 3/4", color="darkgreen", fontsize=9)
     ax3.axhline(7 / 3, ls=":", color="gray", lw=1.2)
     ax3.text(21, 7 / 3 + 0.003, "7/3", color="gray", fontsize=9)
-    ax3.axhline(d_conv, ls="--", color="tab:blue", lw=1.4)
-    ax3.text(
-        21,
-        d_conv + 0.003,
-        f"converged fit T>={WINDOW_3D}: D = {d_conv:.3f}",
-        color="tab:blue",
-        fontsize=9,
-    )
+    ax3.legend(fontsize=9, loc="lower right")
     ax3.set_xscale("log")
     ax3.set_xlabel("T (geometric mean of the rung pair)")
     ax3.set_ylabel("local slope d log N / d log T")
-    ax3.set_title("3+1 (1e-6): local packing exponent vs resolution")
+    ax3.set_title("3+1: local packing exponent vs resolution, per cutoff")
     ax3.grid(True, which="both", alpha=0.3)
 
     # -- 2+1: exponent vs cutoff depth ------------------------------------
@@ -152,7 +172,11 @@ def plot(out_path: Path) -> None:
     fig.tight_layout()
     fig.savefig(out_path, dpi=160)
     print(f"wrote {out_path}")
-    print(f"  3+1 converged (T>={WINDOW_3D}): D = {d_conv:.4f} +/- {d_err:.4f}")
+    for label, d_conv, d_err in d_convs:
+        print(
+            f"  3+1 converged (T>={WINDOW_3D}) @{label}: "
+            f"D = {d_conv:.4f} +/- {d_err:.4f}"
+        )
     for dec, d, e in zip(decades, twops, twop_errs):
         print(f"  2+1 two-point @1e-{dec}: {d:.4f} +/- {e:.4f}")
 
