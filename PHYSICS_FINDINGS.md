@@ -107,15 +107,20 @@ carrier** (section 4) — a *packing-number* exponent measuring the dynamical
 capacity of the joint all-times exclusion, strictly below the spatial
 dimension:
 
-- **3+1: D = 2.321 ± 0.001, converged AND cutoff-invariant.** The local
-  slope rises from ~2.15 at the ladder bottom (low-T curvature) and sits flat
-  from T = 160 through 360; the converged-window fits at 1e-6 and 1e-7 agree
-  exactly (2.3208 ± 0.0008 vs 2.3216 ± 0.0035 — the +0.016/decade drift of
-  full-ladder fits was itself a low-T artifact). D/d = 0.774. Both nearby
-  rational candidates are ruled out: D/d = 3/4 (2.25) by ~9σ and 7/3
-  (2.3333) by 15σ with no depth drift left to close the gap. Because the
-  3+1 approach is logarithmic (section 3), the converged finite-cutoff
-  plateau is the definitive number.
+- **3+1: the state exponent windows at 2.321; the rate exponent says 7/3
+  is still live.** The local slope of the stopped count N(T) rises from
+  ~2.15 (low-T transient) and is flat and cutoff-invariant over
+  T = 160–360 (2.3208 ± 0.0008 at 1e-6, 2.3216 ± 0.0035 at 1e-7); no wave
+  is detectable in the window and the full-range shape is a smooth
+  monotone transient. But the window spans only 0.35 decades and the
+  transient's asymptote is unconstrained by shape — and the process-level
+  **log-growth rate b(T) scales as T^2.336(8) / T^2.329(7)** (1e-6/1e-7),
+  ~4σ above the state window value and consistent with **7/3**. Under log
+  kinetics the state slope approaches the rate exponent from below, so
+  2.321 is a window value, plausibly still crawling toward the rate value.
+  D/d = 3/4 (2.25) stays ruled out; **7/3 is an open candidate again** via
+  the rate route. Discriminator: T = 400+ rungs and rate systematics
+  (open question 4).
 - **2+1: jamming-limit D∞ = 1.434 ± 0.021** (Feder-law extrapolation of the
   kinetic curves: shared approach exponent p = 0.120 voted by the
   depth-constrained small-T tails; the p systematic moves D∞ by < 0.001).
@@ -291,24 +296,26 @@ does not.
 
 ## Open questions / next steps
 
-1. **What sets D = 2.321 and D∞ = 1.434?** Both exponents are now settled
-   numbers (converged + cutoff-invariant in 3+1; Feder-extrapolated in
-   2+1), 7/3 and 3/4·d are ruled out, and D/d is not dimension-universal
-   (0.774 vs 0.717). An analytic handle — a 1+1 reduction, a mean-field
-   packing argument — is the only route left. Closely coupled: *why* is
-   the approach law dimension-dependent (Feder power law in 2+1,
-   activated/log in 3+1)?
+1. **Resolve the 3+1 state-vs-rate discrepancy (is it 7/3 after all?).**
+   The stopped-count window says 2.321; the log-growth rate says
+   2.33 ≈ 7/3, and kinetics argue the state crawls toward the rate. The
+   discriminators are cheap: T = 400–480 rungs (sparse engine, fits a
+   24 GB card) and a systematics pass on the rate estimate (tail-window
+   dependence, per-seed scatter). This is now the sharpest number in the
+   project. The 2+1 limit (D∞ = 1.434 ± 0.021) stands. Closely coupled:
+   *why* is the approach law dimension-dependent (Feder power law in 2+1,
+   activated/log in 3+1), and what analytic argument (1+1 reduction,
+   mean-field packing) produces either exponent?
 2. **Constant-fraction terms ladder** — terms tied to T at fixed pool
    fraction (needs a kMaxWiggle bump and a terms-per-T campaign knob), to
    close the pool-fraction question of section 3.
 3. **w(z) history** of the current model — does a stiff → matter bathtub
    shape appear away from the turnaround? Needs careful treatment of
    peculiar velocities away from sin z = 1.
-4. **Is the jamming-limit 3+1 exponent exactly 7/3?** The converged 1e-6
-   plateau (2.321) sits one cutoff-shift below 7/3; a converged-window
-   ladder at 1e-7 (and T = 400+ rungs, cheap on the sparse engine) would
-   test whether the limit lands on 2.333. An analytic 1+1 reduction might
-   settle the mechanism.
+4. **Wave exclusion beyond the window** — the wave test bounds oscillations
+   inside the measured range only; periods much longer than the window need
+   the extended ladder of question 1. (Merged into the state-vs-rate
+   program.)
 5. **Subpaths / unique groups** — post-jam filling by paths that join
    existing groups (engine `--subpaths`). How much subpath capacity does a
    jam retain, and what is a multi-place group, physically?

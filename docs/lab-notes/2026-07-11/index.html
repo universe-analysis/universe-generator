@@ -114,6 +114,67 @@
       </ul>
     </article>
 
+    <article class="entry" id="wave-test">
+      <h2>Chris's wave challenge: no wave &mdash; but the plateau is demoted, and 7/3 un-dies</h2>
+      <p class="meta">
+        Wave test over all CONVERGE/PACK stores
+        (<code>analysis/analyze_wave_test.py</code>) &middot; analysis code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/11efd71"><code>11efd71</code></a>
+      </p>
+      <p>
+        Chris asked whether the local-exponent curves are slow waves in
+        log T, with our &ldquo;converged&rdquo; window sitting on a crest.
+        Three tests: a sinusoid-vs-constant comparison restricted to the
+        claimed window; a smooth saturating-transient fit to the full-range
+        shape; and the same analysis on the process-level observables
+        (3+1 log-growth rate b(T), 2+1 Feder ceilings), which carry no
+        stopping transient.
+      </p>
+      <figure class="plot">
+        <img src="wave_test.png"
+             alt="Two-by-two grid: state and process local exponents versus T for both dimensions, with wave-test verdicts in the legends. The 3+1 process panel shows the log-rate exponent flat near 2.33-2.35 at high T, above the state plateau at 2.321." />
+        <figcaption>
+          Left: state N(T) local exponents with window wave tests. Right:
+          process-level observables (log-rate / Feder ceilings).
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>No detectable wave.</strong> In every claimed window the
+            best sinusoid fails significance (&Delta;&chi;&sup2; = 3.7 / 3.6
+            in 3+1; the only marginal case is the five-point 2+1 e8 arm),
+            and the full-range shape is fully explained by a smooth
+            monotone transient (&chi;&sup2;/dof &asymp; 1) &mdash; an
+            oscillation is statistically unnecessary. Waves with period
+            &gg; the observed window can never be excluded by statistics
+            alone; only a longer ladder can.</li>
+        <li><strong>But the plateau is only a window value.</strong> The
+            saturating fit's asymptote is unconstrained by shape (slow-k
+            transients reaching 2.6+ fit as well as ones plateauing at
+            2.32): flatness over the 0.35-decade window T = 160&ndash;360
+            is weak evidence of true convergence. Yesterday's
+            &ldquo;converged, definitive&rdquo; framing was too strong.</li>
+        <li><strong>The rate exponent sits above the state plateau &mdash;
+            at 7/3.</strong> The log-growth rate b(T), which carries no
+            stopping transient, scales with full-range exponent
+            <strong>2.336 &plusmn; 0.008 (1e-6) / 2.329 &plusmn; 0.007
+            (1e-7)</strong> &mdash; consistent with 7/3 &asymp; 2.3333 and
+            ~4&sigma; above the state window value 2.3208. Under log
+            kinetics the state slope should approach the rate exponent from
+            below, so the state &ldquo;plateau&rdquo; is plausibly still
+            crawling upward, toward the rate value. Not Chris's wave
+            (nothing comes back down) &mdash; but his skepticism about the
+            plateau was right, and <strong>7/3 is back in play</strong> via
+            the rate route, one day after being declared dead via the state
+            route.</li>
+      </ul>
+      <p>
+        Decisive next measurement: extend the 3+1 ladder (T = 400&ndash;480
+        fits a 24 GB card on the sparse engine) and harden the rate estimate
+        (tail-window systematics). The state-vs-rate discrepancy is now the
+        sharpest number in the project.
+      </p>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
