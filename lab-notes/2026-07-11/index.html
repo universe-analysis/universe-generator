@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-07-11</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-07-11</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="e7-verdict">
+      <h2>The 7/3 chase ends: the converged 3+1 exponent is cutoff-invariant at 2.321 &mdash; and it is not 7/3</h2>
+      <p class="meta">
+        <code>converge3d_e7</code> (sparse engine, T = 200&ndash;360 &times; 5
+        seeds at 1e-7, stitched with <code>pack3d_e7</code> for T &le; 160)
+        &middot; campaign code
+        <a href="https://github.com/universe-analysis/universe-generator/commit/d62c7ea"><code>d62c7ea</code></a>
+        &middot; chart
+        <a href="https://github.com/universe-analysis/universe-generator/commit/301d8e6"><code>301d8e6</code></a>
+      </p>
+      <p>
+        Yesterday's converged plateau (D = 2.321 at 1e-6) sat one
+        cutoff-shift below 7/3, so the sharp question was whether the
+        +0.016/decade shift seen on the low-T ladders would carry the
+        converged value to 2.333. The answer is no &mdash; because the shift
+        itself vanishes in the converged window:
+      </p>
+      <figure class="plot">
+        <img src="converge_e7_verdict.png"
+             alt="Left: local packing exponent versus T for 3+1 at cutoffs 1e-6 and 1e-7. Both series rise from about 2.15 and flatten onto the same plateau; the fitted converged values 2.3208 and 2.3216 are indistinguishable, sitting clearly below the 7/3 reference line. Right: the 2+1 exponent versus cutoff depth for context." />
+        <figcaption>
+          Both cutoff arms converge onto the same plateau: 2.3208 &plusmn;
+          0.0008 (1e-6) vs 2.3216 &plusmn; 0.0035 (1e-7).
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>D(3+1) = 2.321, cutoff-invariant.</strong> The converged
+            windows at 1e-6 and 1e-7 agree to &Delta; = 0.0008 &plusmn;
+            0.0036. The +0.016/decade drift of the full-ladder fits was a
+            low-T-curvature artifact, exactly like the window dependence
+            itself.</li>
+        <li><strong>7/3 is ruled out</strong>: 2.3333 sits 15&sigma; above
+            the 1e-6 value and 3.3&sigma; above the (looser) 1e-7 value,
+            with no depth drift left to close the gap. Combined with the
+            logarithmic approach (yesterday: the kinetics have no ceiling to
+            extrapolate), the converged finite-cutoff plateau <em>is</em>
+            the number: <strong>D = 2.321 &plusmn; 0.001</strong>, not an
+            obvious rational.</li>
+        <li>Fleet notes: the campaign survived a vast.ai host reboot, a
+            second box's network drop-and-return, and the 3090's mid-run
+            withdrawal (reserved for another project) &mdash; all absorbed
+            by the store + the new self-healing stall relaunch, with only
+            duplicated-job waste. The two drained rentals were destroyed
+            mid-campaign ($75.70 + $15.48 total spend); the last box follows
+            once this note is published.</li>
+      </ul>
+      <p>
+        Takeaway: both headline exponents are now settled numbers &mdash;
+        <strong>2.321 &plusmn; 0.001 (3+1, converged and cutoff-invariant)</strong>
+        and <strong>1.434 &plusmn; 0.021 (2+1, jamming-limit
+        extrapolation)</strong>. D/d = 0.774 vs 0.717: not dimension-universal,
+        and neither an evident rational. The "why" &mdash; including why the
+        approach kinetics differ so sharply by dimension &mdash; is now the
+        deepest open question. Next: the subpaths campaign.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
