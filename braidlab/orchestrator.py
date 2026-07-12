@@ -19,7 +19,7 @@ from pathlib import Path
 
 from braidlab.config import Job
 from braidlab.engine import binary_name, build_command
-from braidlab.notify import COLORS, DiscordNotifier
+from braidlab.notify import DiscordNotifier
 from braidlab.store import Store
 
 REMOTE_DIR = "~/braidlab_run"
@@ -404,23 +404,22 @@ def run_campaign(
                 todo = [j for j in assignment.get(host, []) if j.key in remaining]
                 try:
                     fleet.launch(host, todo, dump=dump)
-                    # Routine maintenance, not a failure: queue handoffs after
-                    # a re-plan land here by design. Info color, no alarm.
-                    notifier.send_embed(
-                        f"⟳ {campaign_name}: self-heal",
-                        f"host **{host}** had {len(todo)} unfinished job(s) "
-                        "and no runner — queue relaunched.",
-                        None,
-                        COLORS["info"],
+                    # Routine maintenance: queue handoffs after a re-plan land
+                    # here by design. Log-only — no Discord (Kevin 2026-07-12:
+                    # stall/self-heal chatter stays out of the channel; the
+                    # chain log is where the driver reads it).
+                    print(
+                        f"self-heal: relaunched {len(todo)} job(s) on {host}",
+                        flush=True,
                     )
                 except Exception:
                     if host not in warned:
                         warned.add(host)
-                        notifier.campaign_failed(
-                            campaign_name,
-                            f"host **{host}** is stalled and unreachable with "
-                            f"{len(host_remaining)} job(s) unfinished — re-run "
+                        print(
+                            f"STALLED+UNREACHABLE: {host} holds "
+                            f"{len(host_remaining)} unfinished job(s) — re-run "
                             "against a healthy host list to migrate them.",
+                            flush=True,
                         )
 
     notifier.campaign_done(
