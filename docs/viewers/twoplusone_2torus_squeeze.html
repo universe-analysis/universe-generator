@@ -1,0 +1,1605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>2+1 Universe — 2-Torus, squeeze deformation (k × 1/k cells)</title>
+    <style>
+        :root { color-scheme: dark; }
+        html,body { margin:0; height:100%; background:#000006; color:#aeb8cc; font-family:sans-serif; overflow:hidden; }
+        canvas { display:block; }
+        button { background:#141c30; color:#dce4f4; border:1px solid #29344f; border-radius:5px; padding:5px 10px; cursor:pointer; font-size:12px; }
+        button:hover { background:#1d2742; }
+        button.on { background:#2f6f4f; border-color:#3f9f6f; }
+        input[type=number]{ width:64px; background:#0c1018; color:#cdd6e4; border:1px solid #232c40; border-radius:4px; padding:3px 5px; }
+        select { background:#0c1018; color:#cdd6e4; border:1px solid #232c40; border-radius:4px; padding:3px 5px; font-size:12px; }
+        input[type=range]{ width:104px; accent-color:#4f7fd0; }
+        input[type=checkbox], input[type=radio]{ accent-color:#4f7fd0; margin:0; }
+        .sep { width:1px; height:20px; background:#222b40; }
+
+        /* top bar: just the essentials — generate + playback */
+        #topbar {
+            position:fixed; top:0; left:0; right:0; z-index:12;
+            display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px;
+            padding:8px 12px; background:rgba(4,5,12,.85);
+            border-bottom:1px solid #161c2c; backdrop-filter:blur(4px);
+        }
+        #topbar label { font-size:12px; display:inline-flex; align-items:center; gap:5px; }
+        #status { font-size:12px; color:#7d8aa6; margin-left:auto; }
+
+        /* collapsible settings side panel */
+        #sidepanel {
+            position:fixed; top:0; left:0; bottom:0; z-index:11;
+            width:280px; box-sizing:border-box; padding:56px 16px 16px;
+            overflow-y:auto; background:rgba(6,8,16,.93);
+            border-right:1px solid #161c2c; backdrop-filter:blur(6px);
+            transform:translateX(-100%); transition:transform .22s ease;
+        }
+        #sidepanel.open { transform:none; }
+        #sidepanel details { border-bottom:1px solid #161c2c; padding-bottom:10px; }
+        #sidepanel summary { cursor:pointer; font-size:11px; font-weight:bold; color:#c8d4ea;
+                             letter-spacing:.6px; text-transform:uppercase; padding:10px 0 6px; }
+        .choices { display:flex; flex-direction:column; gap:4px; padding:2px 0 4px; }
+        .choices label { font-size:12px; display:flex; align-items:center; gap:7px; cursor:pointer; }
+        .group-name { font-size:11px; color:#7d8aa6; padding-top:5px; }
+        .row { display:flex; align-items:center; gap:8px; font-size:12px; padding:4px 0; }
+        .row > span:first-child { flex:0 0 86px; }
+        .row > input[type=range]{ flex:1; min-width:0; width:auto; }
+        .row .val { flex:none; width:26px; text-align:right; color:#9fb0d0; }
+
+        /* minimap: chart + caption bar below it (text never overlays the map) */
+        #hudBox { position:fixed; right:12px; bottom:12px; z-index:9; width:240px;
+                  border:1px solid #222b40; border-radius:6px; overflow:hidden;
+                  background:rgba(2,3,8,0.55); }
+        #hud { width:240px; height:240px; }
+        #hudBar { display:flex; justify-content:space-between; align-items:baseline; gap:8px;
+                  padding:4px 8px; font-size:11px; color:#aab8cc; white-space:nowrap;
+                  background:rgba(6,8,16,.92); border-top:1px solid #161c2c; }
+        #hudMode { color:#7d8aa6; }
+        #hudVer { color:#5a6880; }
+    </style>
+</head>
+<body>
+    <div id="topbar">
+        <button id="menuBtn">☰ Settings</button>
+        <label>Preset <select id="presetSel">
+            <option value="" selected disabled>Custom…</option>
+            <option value="sweep-speed">Sweep · speed paint</option>
+            <option value="cloud-freq-log">Cloud · frequency (log)</option>
+            <option value="minimal">Minimal</option>
+        </select></label>
+        <span class="sep"></span>
+        <label>Time-steps <input type="number" id="timeInput" value="180" min="2"></label>
+        <label title="Sinusoid terms per axis, incl. the sin1 term (2 = legacy model)">Freq terms <input type="number" id="termsInput" value="3" min="2"></label>
+        <label title="Squeeze factor: x wiggle amplitudes ×k, y ×1/k, exclusion cell k×(1/k) — area-preserving anisotropy, 1 = isotropic (applies on Generate)">Squeeze k <input type="number" id="squeezeInput" value="1" min="0.1" step="0.1"></label>
+        <label>Gen time <input type="range" id="genTimeRange" min="1" max="120" step="1" value="10"><span id="genTimeVal" style="width:32px;display:inline-block;color:#9fb0d0">10s</span></label>
+        <label title="Second phase: pack subpaths into the jammed unique groups (0 = off)">Sub time <input type="range" id="subTimeRange" min="0" max="120" step="1" value="10"><span id="subTimeVal" style="width:32px;display:inline-block;color:#9fb0d0">10s</span></label>
+        <button id="generateBtn">Generate</button>
+        <button id="subsBtn" title="Pack another Sub time round of subpaths into the CURRENT packing (works after Import too; Freq terms may differ per round)">+ Subs</button>
+        <button id="skipBtn" title="End the current phase early: uniques → subs → done">Skip ▸</button>
+        <button id="abortBtn">Abort</button>
+        <input type="file" id="importInput" accept=".csv,text/csv" hidden>
+        <button id="importBtn" title="Load a CUDA --dump-params CSV">Import CSV</button>
+        <span class="sep"></span>
+        <button id="playBtn" class="on">Play ▶</button>
+        <label>Speed <input type="range" id="speedRange" min="0.05" max="5" step="0.05" value=".1"><span id="speedVal" style="width:34px;display:inline-block;color:#9fb0d0">1.0×</span></label>
+        <label>Time <input type="range" id="timeScrub" min="0" max="1" step="0.001" value="0"></label>
+        <span id="status">Idle — press Generate</span>
+    </div>
+
+    <div id="sidepanel">
+        <details>
+            <summary>Generation</summary>
+            <div class="choices">
+                <label><input type="checkbox" id="smartFreqChk"> Smart frequencies (coprime, packs denser)</label>
+            </div>
+            <div class="row" title="Stop the unique phase at this many paths (0 = run to time/jam)">
+                <span>Max uniques</span><input type="number" id="maxUniquesInput" value="0" min="0">
+            </div>
+            <div class="row" title="Sub-phase jam: stop after this many consecutive failed candidate rounds (50 candidates each)">
+                <span>Sub jam fails</span><input type="number" id="subFailsInput" value="500" min="10">
+            </div>
+            <div class="row" title="Volume jam: stop after this many consecutive accepted subpaths that claim zero new volume">
+                <span>Vol jam hits</span><input type="number" id="volAcceptsInput" value="200" min="10">
+            </div>
+        </details>
+        <details>
+            <summary>View</summary>
+            <div class="choices">
+                <span class="group-name">Camera</span>
+                <label><input type="radio" name="viewMode" value="ortho" checked> Orthographic (edge-on)</label>
+                <label><input type="radio" name="viewMode" value="persp"> Perspective (3/4 view)</label>
+                <label><input type="checkbox" id="spinChk"> Auto-spin</label>
+                <span class="group-name">Show</span>
+                <label><input type="checkbox" id="sweepChk" checked> Present slice (sweep)</label>
+                <label><input type="checkbox" id="cloudChk"> All-times cloud</label>
+                <label><input type="checkbox" id="gridChk" checked> Torus wireframe</label>
+                <label><input type="checkbox" id="hudChk" checked> 2D slice minimap</label>
+                <label><input type="checkbox" id="seedHlChk"> Highlight seed paths (dim subpaths)</label>
+            </div>
+            <div class="row"><span>Loop R</span><input type="range" id="rRange" min="4" max="24" step="0.5" value="6"></div>
+            <div class="row"><span>Spread</span><input type="range" id="sRange" min="1" max="12" step="0.5" value="5"></div>
+            <div class="row"><span>Sweep glow</span><input type="range" id="sizeRange" min="0.05" max="4" step="0.01" value="0.7"></div>
+            <div class="row"><span>Cloud glow</span><input type="range" id="cloudSizeRange" min="0.05" max="4" step="0.01" value="0.7"></div>
+            <div class="row" title="Max cloud samples per path (time-steps are strided down to this; higher = denser cloud, more draw cost)">
+                <span>Cloud res</span><input type="number" id="cloudResInput" value="100" min="2">
+                <button id="cloudResBtn">Regenerate</button>
+            </div>
+            <div class="group-name">Torus offset — slide the map around the loops</div>
+            <div class="row"><span>X offset</span><input type="range" id="offXRange" min="-1" max="1" step="0.01" value="0"><span class="val" id="offXVal" style="width:34px">0.00</span></div>
+            <div class="row"><span>Y offset</span><input type="range" id="offYRange" min="-1" max="1" step="0.01" value="0"><span class="val" id="offYVal" style="width:34px">0.00</span></div>
+            <div class="choices">
+                <label><input type="checkbox" id="autoXChk"> Auto-drift X</label>
+                <label><input type="checkbox" id="autoYChk"> Auto-drift Y</label>
+            </div>
+            <div class="row"><span>X drift speed</span><input type="range" id="driftXRange" min="0.005" max="0.5" step="0.005" value="0.05"></div>
+            <div class="row"><span>Y drift speed</span><input type="range" id="driftYRange" min="0.005" max="0.5" step="0.005" value="0.05"></div>
+        </details>
+        <details>
+            <summary>Coloring</summary>
+            <div class="choices">
+                <span class="group-name">Paint</span>
+                <label><input type="radio" name="paintMode" value="mono"> Mono</label>
+                <label><input type="radio" name="paintMode" value="freq"> Frequency (bx+by) — red low, blue high</label>
+                <label><input type="radio" name="paintMode" value="pec" checked> Peculiar speed (local)</label>
+                <label><input type="radio" name="paintMode" value="group"> Group ID — subpath families</label>
+                <label><input type="radio" name="paintMode" value="role"> Seeds vs subs</label>
+                <span class="group-name">Speed normalisation</span>
+                <label><input type="radio" name="normMode" value="per" checked> Per-particle</label>
+                <label><input type="radio" name="normMode" value="global"> Global</label>
+                <span class="group-name">Options</span>
+                <label><input type="checkbox" id="logChk" checked> Log colour scale</label>
+                <label><input type="checkbox" id="localChk" checked> Local (comoving) geometry</label>
+            </div>
+        </details>
+        <details>
+            <summary>Light cones</summary>
+            <div class="choices">
+                <label><input type="checkbox" id="coneChk"> Show light cones</label>
+                <label><input type="checkbox" id="coneFoldChk"> Fold — refocus at the antipode</label>
+            </div>
+            <div class="row"><span>Rings</span><input type="range" id="coneRingsRange" min="1" max="60" step="1" value="3"><span class="val" id="coneRingsVal">3</span></div>
+            <div class="row"><span>Emit rate</span><input type="range" id="coneRateRange" min="0.5" max="50" step="0.5" value="1.7"></div>
+            <div class="row"><span>Fade</span><input type="range" id="coneFadeRange" min="0" max="0.6" step="0.01" value="0.3"></div>
+            <div class="row"><span>Cone glow</span><input type="range" id="coneSizeRange" min="0.05" max="4" step="0.01" value="0.7"></div>
+            <div class="row"><span>Speed</span><input type="number" id="coneSpeedRange" min="0" step="0.05" value=".2"></div>
+            <div class="row"><span>Emitting paths</span><input type="number" id="coneMaxInput" value="1" min="1"></div>
+            <div class="choices">
+                <span class="group-name">Colour</span>
+                <label><input type="radio" name="coneColor" value="track" checked> Track — hue per emission</label>
+                <label><input type="radio" name="coneColor" value="redshift"> Redshift</label>
+            </div>
+            <div class="row"><span>Redshift gain</span><input type="range" id="redGainRange" min="0.5" max="6" step="0.1" value="2.5"></div>
+            <div class="choices">
+                <span class="group-name">Wavefront shape</span>
+                <label><input type="radio" name="coneShape" value="circle" checked> Circle</label>
+                <label><input type="radio" name="coneShape" value="square"> Square (matches wrapped domain)</label>
+            </div>
+        </details>
+    </div>
+
+    <div id="hudBox">
+        <canvas id="hud" width="240" height="240"></canvas>
+        <div id="hudBar"><span id="hudMode">local (comoving)</span><span id="hudTime">t = —</span><span id="hudVer"></span></div>
+    </div>
+
+    <!-- Three.js classic UMD builds — load from file:// without CORS issues -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+    /* ================================================================
+       PART 1 — PATH GENERATION  (collision-checked "unique groups")
+       WRAPPED / TOROIDAL VARIANT, generalized to NW wiggle terms per axis:
+         x(z) = Σ_j [ax_j·sin(bx_j·z + fx_j) − ax_j·sin(fx_j)] + ax2·sin(z)
+         y(z) = likewise                          z∈(0,π) is time
+       The sin1 amplitude is drawn freely (ax2 ∈ U[-1,1], a free comoving
+       offset on the torus). The NW = freqTerms−1 wiggle terms per axis get
+       unique integer frequencies; the unit slope budget is split uniformly
+       at random across them (sorted-cut simplex split) and each term's
+       amplitude is its share / its frequency, so Σ_j |ax_j·bx_j| = 1
+       exactly — freqTerms = 2 reduces to the old single ±1/bx draw. Each
+       term carries its own phase (even frequencies only, else the loop
+       won't close) and is re-pinned to zero by its own a·sin(f) offset.
+       Total slope can reach 2 and comoving |X| can reach 2. The
+       comoving domain is periodic: coordinates wrap past ±1 by ∓2
+       (real extent -2..2, identified to [-1,1)). Collisions use the
+       minimum-image convention so paths at e.g. +0.999 and -0.999
+       collide across the seam, and the spatial-hash neighbour cells
+       wrap mod NCELL. The test runs in COMOVING coords (÷ sin z),
+       where the threshold sin(z)·2/T collapses to the constant 2/T →
+       one uniform spatial hash per time-step, O(N·T) not O(N²·T).
+       Rendering note: wrapping is defined in comoving space; raw mode
+       shows wrap(comoving)·sin(z), so seam-crossing points visibly
+       jump in the raw projection (points, not lines — no streaks).
+       Only the comoving surface map is exactly seamless.
+
+       SUBPATHS (second phase, "Sub time" > 0): after the unique phase
+       stops (time budget, jam, or Max uniques), candidates keep being
+       generated the same way but the acceptance rule flips: a candidate
+       that touches one or more existing paths ALL sharing one group ID
+       joins that group (self-intersection within a group is allowed);
+       touching two different groups rejects, and touching nothing
+       rejects — so subpaths never add unique counts. Accepted subpaths
+       enter the collision hash with their adopted group ID and can seed
+       further subpaths. Two jam signals are tracked: acceptance decay
+       (500 consecutive failed candidates, as in phase 1) and NEW-VOLUME
+       decay (occupied (t,cx,cy) cells of the collision hash stop
+       growing — "free space filled" approaches its asymptote).
+
+       SQUEEZE FORK (this file): the packing is deformed by the squeeze
+       map S = diag(k, 1/k). Wiggle amplitudes are drawn isotropically
+       then scaled (ax ×k, ay ×1/k — budgets become Σ|ax·bx| = k,
+       Σ|ay·by| = 1/k), and the exclusion cell becomes the squeezed
+       Chebyshev ball |dX| ≤ k·2/T, |dY| ≤ (2/T)/k — the image of the
+       isotropic system under S. The torus wrap stays FIXED at ±1, so
+       k ≠ 1 is a genuine deformation, not a coordinate change: x
+       structure grows relative to its period, y shrinks. The sin1
+       comoving offsets ax2/ay2 are NOT squeezed — they stay U[-1,1]
+       so candidate centers remain torus-uniform (squeezing a uniform
+       draw over a fixed period wraps to a non-uniform one). The
+       spatial hash goes anisotropic (per-axis cell size ≥ per-axis
+       exclusion radius keeps the ±1 neighbour scan exact) and the
+       speed paint uses the unsqueezed norm max(|dx|/k, k·|dy|) — the
+       metric in which the exclusion cell is again a square. k = 1
+       reproduces the parent wrapped viewer exactly.
+    ================================================================ */
+    const timeInput    = document.getElementById('timeInput');
+    const termsInput   = document.getElementById('termsInput');
+    const genTimeRange = document.getElementById('genTimeRange');
+    const subTimeRange = document.getElementById('subTimeRange');
+    const statusEl     = document.getElementById('status');
+
+    // Shown in the lower right of the 2D slice HUD. Bump before every commit
+    // that touches this file (see CLAUDE.md).
+    const VIEWER_VERSION = 'squeeze-v1';   // forked from twoplusone_2torus_wrapped v19
+
+    let functions = [];
+    let Z_cache = [];
+    let time_steps, modulation_Max, freqTerms = 3, groupIDcount = 0, abort_gen = false;
+    let squeezeK = 1;   // squeeze factor k — read on Generate, 1 on Import (isotropic dumps)
+    let genBudgetMs = 10000, genStart = 0, consecFails = 0, lastLiveUpload = 0;
+    // subpath phase state (see the SUBPATHS note above)
+    let genPhase = 'unique', genSubBudgetMs = 10000, subStart = 0, maxUniques = 0;
+    let subCount = 0, subSaturated = false, subReason = '', consecZeroVol = 0;
+    let subJamFails = 500, volJamAccepts = 200;   // sub-phase jam thresholds (Generation panel)
+    let skipPhase = false;                        // Skip button: end the current phase early
+    // Generation epoch: every Generate (or Import) bumps this, and any
+    // make_groups round or finalize callback from an older epoch bails out.
+    // Without it, an import mid-generation would still get its status line and
+    // GPU buffers overwritten by the dying run's already-scheduled timeout.
+    let genEpoch = 0;
+    const maxAttemptsPerFunction = 50;
+
+
+	//	Z-index now doesn't use hardcoded values
+    // Canonical z grid, identical to the CUDA engines: T interior points of
+    // (0, pi), one step in from each end.
+    function bakeZValues() {
+        const zEnd = Math.PI;
+        const step = zEnd / (time_steps + 1);
+        Z_cache = Array.from({ length: time_steps }, (_, i) => step + i * step);
+    }
+
+    // ---- per-time-step uniform spatial hash (comoving, cell = 2/T) ----
+    // Domain is periodic [-1,1): width 2, per-axis cell counts NCELLX/NCELLY
+    // (anisotropic under squeeze); neighbour lookups wrap mod the axis count.
+    // Exclusion half-widths RX/RY (the squeezed Chebyshev ball) and an
+    // ANISOTROPIC hash: per-axis cell size ≥ per-axis exclusion radius, so the
+    // ±1 neighbour scan still sees every possible contact. k = 1 collapses to
+    // RX = RY = CELLX = CELLY = 2/T, NCELLX = NCELLY = T — the parent grid.
+    let RX = 1, RY = 1, CELLX = 1, CELLY = 1, NCELLX = 1, NCELLY = 1;
+    let gridByT = [], saturated = false;
+    // occupied-volume tracker: an occupied cell is one (timestep, cx, cy)
+    // bucket of the collision hash holding ≥1 path point — the discrete
+    // "space filled" measure the subpath phase watches for its asymptote
+    let fillCells = 0, totalCells = 1;
+    function cellKey(cx, cy){ return cx * NCELLY + cy; }  // injective: indices pre-wrapped ≥ 0
+    const wrapCellX = c => ((c % NCELLX) + NCELLX) % NCELLX;  // double-mod: JS % is signed
+    const wrapCellY = c => ((c % NCELLY) + NCELLY) % NCELLY;
+    // the wraps also guard the float edge where (v+1)/CELL rounds up to NCELL at v→1
+    function cellOfX(v){ return wrapCellX(Math.floor((v + 1) / CELLX)); }
+    function cellOfY(v){ return wrapCellY(Math.floor((v + 1) / CELLY)); }
+    // periodic wrap to [-1,1); +1 maps to -1 (same identified point)
+    const wrapComov = v => (((v + 1) % 2) + 2) % 2 - 1;
+    function resetGrid(){
+        const r = 2 / time_steps;                 // isotropic exclusion radius
+        RX = r * squeezeK; RY = r / squeezeK;     // squeezed Chebyshev ball
+        NCELLX = Math.max(1, Math.floor(2 / RX)); CELLX = 2 / NCELLX;
+        NCELLY = Math.max(1, Math.floor(2 / RY)); CELLY = 2 / NCELLY;
+        gridByT = Array.from({ length: Z_cache.length }, () => new Map());
+        fillCells = 0; totalCells = Z_cache.length * NCELLX * NCELLY;
+    }
+    function fillPct(){ return 100 * fillCells / totalCells; }
+    // Worldline evaluation, shared by packing, HUD and colouring: the sin1
+    // term plus every wiggle term, each re-pinned to zero at the endpoints by
+    // its own a·sin(f) offset. Returns UNWRAPPED comoving coords.
+    function comovXY(f, z) {
+        const s = Math.sin(z);
+        let x = f.ax2 * s, y = f.ay2 * s;
+        for (let j = 0; j < f.terms.length; j++) {
+            const t = f.terms[j];
+            x += t.ax * (Math.sin(t.bx * z + t.fx) - Math.sin(t.fx));
+            y += t.ay * (Math.sin(t.by * z + t.fy) - Math.sin(t.fy));
+        }
+        return [x / s, y / s];
+    }
+    function comovingTraj(f) {
+        const n = Z_cache.length, X = new Float32Array(n), Y = new Float32Array(n);
+        // The comoving speed range is measured in this same pass, on UNWRAPPED
+        // coords — peculiar speed must never difference across a wrap (that
+        // would inject period-sized jumps). Accepted paths keep the result, so
+        // buildBuffers never has to rescan trajectories.
+        let pecMin = Infinity, pecMax = -Infinity, pcx = 0, pcy = 0;
+        for (let i = 0; i < n; i++) {
+            const z = Z_cache[i];
+            const [cx, cy] = comovXY(f, z);
+            if (i > 0){
+                // squeezed Chebyshev norm max(|dx|/k, k·|dy|) — the metric in
+                // which the k×(1/k) exclusion cell is again a square
+                const v = Math.max(Math.abs(cx - pcx) / squeezeK,
+                                   Math.abs(cy - pcy) * squeezeK) / (z - Z_cache[i-1]);
+                if (v < pecMin) pecMin = v;
+                if (v > pecMax) pecMax = v;
+            }
+            pcx = cx; pcy = cy;
+            X[i] = wrapComov(cx);
+            Y[i] = wrapComov(cy);
+        }
+        return { X, Y, pecMin, pecMax };
+    }
+    function collides(traj) {
+        const n = Z_cache.length;
+        for (let i = 0; i < n; i++) {
+            const Xi = traj.X[i], Yi = traj.Y[i], m = gridByT[i];
+            const cx = cellOfX(Xi), cy = cellOfY(Yi);
+            for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+                const arr = m.get(cellKey(wrapCellX(cx + dx), wrapCellY(cy + dy)));
+                if (!arr) continue;
+                for (let j = 0; j < arr.length; j += 3) {
+                    // minimum-image: coords are pre-wrapped, so one ±2 correction is exact
+                    let dX = Xi - arr[j];   if (dX > 1) dX -= 2; else if (dX < -1) dX += 2;
+                    let dY = Yi - arr[j+1]; if (dY > 1) dY -= 2; else if (dY < -1) dY += 2;
+                    if (Math.abs(dX) <= RX && Math.abs(dY) <= RY) return true;
+                }
+            }
+        }
+        return false;
+    }
+    // Subpath acceptance test: same geometry as collides(), opposite rule.
+    // Scans EVERY contact (no early exit on the first hit): returns the group
+    // ID the candidate joins if all touched paths share one group, or -1 if
+    // it touches two different groups OR touches nothing at all.
+    function subGroupOf(traj) {
+        const n = Z_cache.length;
+        let gid = -1;
+        for (let i = 0; i < n; i++) {
+            const Xi = traj.X[i], Yi = traj.Y[i], m = gridByT[i];
+            const cx = cellOfX(Xi), cy = cellOfY(Yi);
+            for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+                const arr = m.get(cellKey(wrapCellX(cx + dx), wrapCellY(cy + dy)));
+                if (!arr) continue;
+                for (let j = 0; j < arr.length; j += 3) {
+                    let dX = Xi - arr[j];   if (dX > 1) dX -= 2; else if (dX < -1) dX += 2;
+                    let dY = Yi - arr[j+1]; if (dY > 1) dY -= 2; else if (dY < -1) dY += 2;
+                    if (Math.abs(dX) <= RX && Math.abs(dY) <= RY) {
+                        const g = arr[j+2];
+                        if (gid < 0) gid = g;
+                        else if (g !== gid) return -1;   // spans two groups
+                    }
+                }
+            }
+        }
+        return gid;                                      // -1 when it touched nothing
+    }
+    // Insert a trajectory tagged with its group ID; returns how many collision
+    // cells it occupied that were previously empty (its NEW volume).
+    function insertTraj(traj, gid) {
+        const n = Z_cache.length;
+        let newCells = 0;
+        for (let i = 0; i < n; i++) {
+            const Xi = traj.X[i], Yi = traj.Y[i], m = gridByT[i];
+            const k = cellKey(cellOfX(Xi), cellOfY(Yi));
+            let arr = m.get(k); if (!arr) { arr = []; m.set(k, arr); newCells++; }
+            arr.push(Xi, Yi, gid);
+        }
+        fillCells += newCells;
+        return newCells;
+    }
+
+    // ---- frequency selection (Smart = high-frequency bias → ~40% denser packing;
+    //      the legacy two-term model additionally keeps bx,by coprime) ----
+    let smartFreq = false;
+    function gcd(a, b){ while (b){ const t = a % b; a = b; b = t; } return a; }
+    function drawOneFreq(){
+        if (!smartFreq) return Math.floor(Math.random()*modulation_Max) + 2;
+        // high-frequency bias: max of two uniform draws favours finer, nearly
+        // stationary paths that pack more orderly
+        return Math.max(Math.floor(Math.random()*modulation_Max),
+                        Math.floor(Math.random()*modulation_Max)) + 2;
+    }
+    function drawUniqueFreqs(count){
+        // each wiggle term needs its own integer frequency; duplicates re-draw
+        // (bounded), then the smallest unused frequencies fill any leftovers
+        const out = [];
+        let guard = 0;
+        while (out.length < count && guard < 400){
+            const b = drawOneFreq();
+            if (out.includes(b)) { guard++; continue; }
+            out.push(b);
+        }
+        for (let b = 2; out.length < count; b++)
+            if (!out.includes(b)) out.push(b);
+        return out;
+    }
+    function splitUnit(count){
+        // split 1 into `count` parts, uniform on the simplex: sorted cuts of
+        // [0,1], the parts are the gaps between consecutive cuts
+        if (count === 1) return [1];
+        const cuts = Array.from({ length: count - 1 }, Math.random).sort((a, b) => a - b);
+        const w = [cuts[0]];
+        for (let j = 1; j < count - 1; j++) w.push(cuts[j] - cuts[j-1]);
+        w.push(1 - cuts[count - 2]);
+        return w;
+    }
+    function makeAxisTerms(freqs){
+        // amplitude = (unit-budget share) / frequency, so Σ|a·b| = 1 exactly;
+        // phases only on even frequencies (odd ones must stay phase-free for
+        // the loop to close at z = π)
+        const w = splitUnit(freqs.length);
+        return freqs.map((b, j) => ({
+            a: (Math.random() > 0.5 ? 1 : -1) * w[j] / b,
+            b,
+            f: (b % 2 === 0) ? Math.random()*Math.PI : 0
+        }));
+    }
+
+    // One candidate path (parameters only — no collision test yet). Uniques
+    // and subpaths draw from exactly the same model.
+    function makeCandidate() {
+        const NW = freqTerms - 1;                             // wiggle terms per axis
+        let fqx, fqy;
+        if (NW === 1 && smartFreq){                           // legacy coprime pair rule
+            let guard = 0;
+            do { fqx = drawUniqueFreqs(1); fqy = drawUniqueFreqs(1); }
+            while (gcd(fqx[0], fqy[0]) !== 1 && ++guard < 24);
+        } else {
+            fqx = drawUniqueFreqs(NW); fqy = drawUniqueFreqs(NW);
+        }
+        const tx = makeAxisTerms(fqx), ty = makeAxisTerms(fqy);
+        // squeeze: wiggle amplitudes ×k in x, ×1/k in y (budgets Σ|ax·bx| = k,
+        // Σ|ay·by| = 1/k); the sin1 offsets below stay U[-1,1] so candidate
+        // centers remain torus-uniform under the fixed ±1 wrap
+        const terms = tx.map((t, j) => ({ ax: t.a * squeezeK, bx: t.b, fx: t.f,
+                                          ay: ty[j].a / squeezeK, by: ty[j].b, fy: ty[j].f }));
+        return { ax2: Math.random()*2 - 1,                    // sin(1·z) amp: free draw in [-1,1]
+                 ay2: Math.random()*2 - 1,
+                 terms, fsum: freqSum(terms) };
+    }
+
+    function generateFunction() {
+        for (let attempt = 0; attempt < maxAttemptsPerFunction; attempt++) {
+            const f = makeCandidate();
+            const traj = comovingTraj(f);
+            if (!collides(traj)) {
+                insertTraj(traj, groupIDcount);
+                f.pecMin = traj.pecMin; f.pecMax = traj.pecMax;
+                f.groupID = groupIDcount; f.isSub = false;
+                return f;
+            }
+        }
+        return null;
+    }
+
+    // Subpath variant: accepted only by ADOPTION — it must touch exactly one
+    // existing group (see subGroupOf). newCells records how much previously
+    // free volume it claimed (0 = it hides entirely inside already-filled
+    // space, the signature of the volume jam).
+    function generateSubFunction() {
+        for (let attempt = 0; attempt < maxAttemptsPerFunction; attempt++) {
+            const f = makeCandidate();
+            const traj = comovingTraj(f);
+            const gid = subGroupOf(traj);
+            if (gid >= 0) {
+                f.newCells = insertTraj(traj, gid);
+                f.pecMin = traj.pecMin; f.pecMax = traj.pecMax;
+                f.groupID = gid; f.isSub = true;
+                return f;
+            }
+        }
+        return null;
+    }
+
+    // Frequency-paint scalar: per axis the amplitude-weighted mean wiggle
+    // frequency (weights |a·b| — each term's share of the unit slope budget,
+    // so they sum to 1 by construction), summed over both axes. For the
+    // two-term model this is exactly the old bx+by.
+    function freqSum(terms){
+        let sx = 0, sy = 0, wx = 0, wy = 0;
+        for (const t of terms){
+            sx += Math.abs(t.ax * t.bx) * t.bx;  wx += Math.abs(t.ax * t.bx);
+            sy += Math.abs(t.ay * t.by) * t.by;  wy += Math.abs(t.ay * t.by);
+        }
+        return sx / (wx || 1) + sy / (wy || 1);
+    }
+
+    // Generation runs against wall-clock budgets rather than target counts.
+    // Phase 1 (uniques): paths accumulate until Gen time runs out, the space
+    // saturates (500 consecutive collision failures), Max uniques is reached,
+    // or Abort is pressed. Phase 2 (subpaths, when Sub time > 0): same
+    // candidates, adoption rule (see SUBPATHS above), until Sub time runs out
+    // or a jam signal fires — 500 consecutive failed candidates ("sub jam"),
+    // or 200 consecutive accepted subpaths that claim zero new volume
+    // ("volume jam"). Partial results are uploaded to the GPU every ~0.8 s so
+    // the torus fills in live while packing continues.
+    function uniquePhaseOver() {
+        return saturated || skipPhase || performance.now() - genStart >= genBudgetMs ||
+               (maxUniques > 0 && groupIDcount >= maxUniques);
+    }
+    // Rebuild the collision hash from the paths already loaded — it is freed
+    // after every run to save memory, and "+ Subs" (or a sub round on an
+    // imported dump) needs it back. fillCells is recomputed by the inserts.
+    function rebuildPackingHash() {
+        resetGrid();
+        for (const f of functions) insertTraj(comovingTraj(f), f.groupID);
+    }
+    function make_groups(epoch) {
+        if (epoch !== genEpoch) return;                      // superseded by a newer Generate/Import
+        const t0 = performance.now();
+        let finished = false;
+        while (!abort_gen && !finished && performance.now() - t0 <= 12) {   // 12 ms then yield
+            if (genPhase === 'unique') {
+                if (uniquePhaseOver()) {
+                    skipPhase = false;                       // Skip consumes one phase
+                    if (genSubBudgetMs > 0) {                // hand the jammed uniques to phase 2
+                        genPhase = 'sub'; consecFails = 0; subStart = performance.now();
+                    } else finished = true;
+                    continue;
+                }
+                const nf = generateFunction();
+                if (nf) { functions.push(nf); groupIDcount++; consecFails = 0; }
+                else if (++consecFails > 500) saturated = true;
+            } else {
+                if (subSaturated || skipPhase || performance.now() - subStart >= genSubBudgetMs) {
+                    skipPhase = false;
+                    finished = true;
+                    continue;
+                }
+                const nf = generateSubFunction();
+                if (nf) {
+                    functions.push(nf); subCount++; consecFails = 0;
+                    if (nf.newCells === 0) {
+                        if (++consecZeroVol > volJamAccepts) { subSaturated = true; subReason = 'volume jam'; }
+                    } else consecZeroVol = 0;
+                } else if (++consecFails > subJamFails) { subSaturated = true; subReason = 'sub jam'; }
+            }
+        }
+        const done = abort_gen || finished;
+        if (!done) {
+            if (genPhase === 'unique') {
+                const secsLeft = Math.ceil((genBudgetMs - (performance.now() - genStart)) / 1000);
+                statusEl.textContent = `Generating… ${functions.length} paths · fill ${fillPct().toFixed(1)}% · ${secsLeft}s left`;
+            } else {
+                const secsLeft = Math.ceil((genSubBudgetMs - (performance.now() - subStart)) / 1000);
+                statusEl.textContent = `Subpaths… ${groupIDcount} uniques + ${subCount} subs · fill ${fillPct().toFixed(1)}% · ${secsLeft}s left`;
+            }
+            if (performance.now() - lastLiveUpload > 800) {
+                lastLiveUpload = performance.now();
+                buildBuffers(); rebuildGPU(); hudDirty = true;
+            }
+            setTimeout(() => make_groups(epoch), 0);
+        } else {
+            const notes = [];
+            if (saturated) notes.push('space saturated');
+            if (subReason) notes.push(subReason);
+            const note = notes.length ? ` (${notes.join(', ')})` : '';
+            statusEl.textContent = `Generated ${functions.length} paths${note} — uploading…`;
+            setTimeout(() => {
+                if (epoch !== genEpoch) return;              // superseded while uploading
+                buildBuffers(); rebuildGPU();
+                // free the packing hash — the page's only O(N·T) storage; it is
+                // only needed while inserting, and Generate rebuilds it anyway
+                gridByT = [];
+                hudDirty = true;          // refresh the 2D slice even while paused
+                const cloudPts = functions.length * cloudSamples(Z_cache.length).count;
+                const subTxt = subCount ? `${groupIDcount} uniques + ${subCount} subs` : `${functions.length} paths`;
+                statusEl.textContent = `${subTxt} · k=${squeezeK} · fill ${fillPct().toFixed(1)}%${note} · ${time_steps} steps · ${cloudPts.toLocaleString()} cloud points`;
+            }, 0);
+        }
+    }
+
+    /* ---- CSV import: load a CUDA engine --dump-params file ----
+       The packing engines dump accepted worldline PARAMETERS (one CSV row per
+       path), which is everything the renderer needs — positions are analytic.
+       Two layouts: legacy single-wiggle ax,ay,bx,by,ax2,ay2[,fx,fy] (older
+       dumps lack the phase columns; they read as 0), and the multi-term
+       --terms dump ax2,ay2,ax_1,bx_1,fx_1,ay_1,by_1,fy_1,ax_2,… The
+       time-step count is not in the file: it is parsed from the braidlab
+       _T###_ filename token, falling back to the Time-steps input box.
+       pecMin/pecMax are recomputed here with the same comovingTraj pass the
+       generator uses at acceptance. */
+    function tFromFilename(name) {
+        const m = name.match(/_T(\d+)_/);
+        return m ? parseInt(m[1]) : null;
+    }
+    function parseDumpCSV(text) {
+        const lines = text.split(/\r?\n/).map(s => s.trim()).filter(s => s.length);
+        if (lines.length < 2) throw new Error('no data rows');
+        const cols = lines[0].split(',').map(s => s.trim());
+        if (cols.includes('aw')) throw new Error('3+1 dump — not supported in this viewer');
+        const idx = {};
+        cols.forEach((c, i) => { idx[c] = i; });
+        const multi = 'ax_1' in idx;
+        let nw = 1;
+        if (multi) {
+            nw = 0;
+            while (('ax_' + (nw+1)) in idx) nw++;
+            for (let j = 1; j <= nw; j++)
+                for (const c of ['ax_','bx_','fx_','ay_','by_','fy_'])
+                    if (!((c + j) in idx))
+                        throw new Error(`missing column "${c}${j}" — truncated multi-term dump?`);
+            if (!('ax2' in idx) || !('ay2' in idx))
+                throw new Error('missing sin1 columns ax2/ay2');
+        } else {
+            const required = ['ax', 'ay', 'bx', 'by', 'ax2', 'ay2'];
+            for (const c of required) {
+                if (!cols.includes(c)) throw new Error(`missing column "${c}" — not an engine dump?`);
+            }
+        }
+        const hasPhase = 'fx' in idx && 'fy' in idx;
+        const rows = [];
+        let skipped = 0;
+        for (let li = 1; li < lines.length; li++) {
+            const parts = lines[li].split(',');
+            const row = { ax2: parseFloat(parts[idx.ax2]), ay2: parseFloat(parts[idx.ay2]),
+                          terms: [] };
+            if (multi) {
+                for (let j = 1; j <= nw; j++)
+                    row.terms.push({
+                        ax: parseFloat(parts[idx['ax_'+j]]), bx: parseFloat(parts[idx['bx_'+j]]),
+                        fx: parseFloat(parts[idx['fx_'+j]]), ay: parseFloat(parts[idx['ay_'+j]]),
+                        by: parseFloat(parts[idx['by_'+j]]), fy: parseFloat(parts[idx['fy_'+j]])
+                    });
+            } else {
+                row.terms.push({
+                    ax: parseFloat(parts[idx.ax]), bx: parseFloat(parts[idx.bx]),
+                    fx: hasPhase ? parseFloat(parts[idx.fx]) : 0,
+                    ay: parseFloat(parts[idx.ay]), by: parseFloat(parts[idx.by]),
+                    fy: hasPhase ? parseFloat(parts[idx.fy]) : 0
+                });
+            }
+            row.gid = ('gid' in idx) ? parseInt(parts[idx.gid]) : null;
+            if (Number.isNaN(row.gid)) row.gid = null;
+            const bad = Number.isNaN(row.ax2) || Number.isNaN(row.ay2) ||
+                        row.terms.some(t => Object.values(t).some(v => Number.isNaN(v)));
+            if (bad) { skipped++; continue; }
+            rows.push(row);
+        }
+        if (!rows.length) throw new Error('no valid rows');
+        return { rows, skipped, nw };
+    }
+    function applyImportedDump(rows, skipped, nw, name) {
+        genEpoch++; abort_gen = true;                 // kill any in-flight generation
+        saturated = false; consecFails = 0; framePos = 0; groupIDcount = 0;
+        subCount = 0; subSaturated = false; subReason = ''; consecZeroVol = 0;
+        genPhase = 'unique';
+        // engine dumps are isotropic (k = 1) — reset the squeeze so the speed
+        // paint and any later "+ Subs" hash rebuild match the imported packing
+        squeezeK = 1; U.uSqueeze.value = 1;
+        document.getElementById('squeezeInput').value = 1;
+        const tFile = tFromFilename(name);
+        time_steps = tFile || parseInt(timeInput.value);
+        if (tFile) timeInput.value = tFile;           // keep the UI honest
+        freqTerms = nw + 1;
+        termsInput.value = freqTerms;                 // keep the UI honest here too
+        bakeZValues();                                // no resetGrid(): the collision
+        gridByT = [];                                 // hash is packing-only
+        functions = [];
+        // gid column (subpath dumps): repeated gids are that group's subpaths;
+        // dumps without it are all-unique (gid = row index)
+        const seenGids = new Set();
+        let rowIdx = 0;
+        for (const r of rows) {
+            const f = { ax2: r.ax2, ay2: r.ay2, terms: r.terms, fsum: freqSum(r.terms) };
+            const traj = comovingTraj(f);
+            f.pecMin = traj.pecMin; f.pecMax = traj.pecMax;
+            f.groupID = (r.gid != null) ? r.gid : rowIdx;
+            f.isSub = seenGids.has(f.groupID);
+            if (f.isSub) subCount++; else groupIDcount++;
+            seenGids.add(f.groupID);
+            rowIdx++;
+            functions.push(f);
+        }
+        // frequency paint spans the data actually loaded (buildBuffers scans
+        // fsum); modulation_Max only matters if Generate runs later
+        modulation_Max = Math.max(2, Math.floor(time_steps / 2));
+        buildBuffers(); rebuildGPU(); hudDirty = true;
+        const cloudPts = functions.length * cloudSamples(Z_cache.length).count;
+        const tSrc = tFile ? 'T from filename' : 'T from Time-steps box';
+        const skipNote = skipped ? ` · ${skipped} rows skipped` : '';
+        const grpNote = subCount ? ` (${groupIDcount} groups + ${subCount} subs)` : '';
+        statusEl.textContent = `Imported ${functions.length} paths${grpNote} · ${time_steps} steps (${tSrc}) · `
+                             + `${cloudPts.toLocaleString()} cloud points${skipNote} — ${name}`;
+    }
+    function importDumpFile(file) {
+        statusEl.textContent = `Importing ${file.name}…`;
+        file.text().then(text => {
+            const parsed = parseDumpCSV(text);        // parse fully BEFORE touching
+            applyImportedDump(parsed.rows, parsed.skipped, parsed.nw, file.name);  // any global state
+        }).catch(err => {
+            statusEl.textContent = `Import failed: ${err.message}`;
+        });
+    }
+
+    /* ================================================================
+       PART 2 — GPU RENDERING
+       Per-path scalars (sin1 amps, freq-paint sum, speed range, index)
+       ride as INSTANCED attributes; the variable-length wiggle-term
+       table lives in a float DataTexture (2 texels per term), sampled
+       in the vertex shader with the term count baked in as a constant
+       (materials rebuild when it changes). The shader expands
+       instance×time-step into points analytically and embeds them on
+       the 2-torus surface. Time, geometry mode, colour mode, R/S, glow
+       — all uniforms, so nothing rebuilds except on Generate.
+         u = π·x,  v = π·y,  P = ((R+S·cos v)·cos u, (R+S·cos v)·sin u, S·sin v)
+    ================================================================ */
+    let R = 6, S = 5, geoLocal = true;        // R≈S → loops near-equal circumference
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000006);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(devicePixelRatio);
+    renderer.setSize(innerWidth, innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // ---- swappable camera: 55° perspective (3/4 view) ↔ orthographic (edge-on) ----
+    let viewMode = 'ortho', autoRotateOn = false;
+    let camera, controls;
+    function makeCamera(){
+        const aspect = innerWidth/innerHeight;
+        if (viewMode === 'ortho'){
+            const h = R*1.9;                                   // half-height of the ortho frustum
+            const c = new THREE.OrthographicCamera(-h*aspect, h*aspect, h, -h, -2000, 4000);
+            c.position.set(R*2.6, 0, 0.001);                   // in the donut's plane, looking across
+            c.up.set(0,0,1);                                   // hole axis → screen-vertical
+            return c;
+        }
+        const c = new THREE.PerspectiveCamera(55, aspect, 0.1, 4000);
+        c.position.set(0.2*R, -1.55*R, 1.85*R); c.up.set(0,1,0);
+        return c;
+    }
+    function rebuildControls(){
+        const tgt = controls ? controls.target.clone() : new THREE.Vector3();
+        if (controls) controls.dispose();
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; controls.autoRotate = autoRotateOn; controls.autoRotateSpeed = 0.6;
+        controls.target.copy(tgt); controls.update();
+    }
+    function setView(mode){ viewMode = mode; camera = makeCamera(); rebuildControls(); }
+    camera = makeCamera(); rebuildControls();
+
+    function makeGlow() {
+        const c = document.createElement('canvas'); c.width = c.height = 64;
+        const g = c.getContext('2d');
+        const grd = g.createRadialGradient(32,32,0, 32,32,32);
+        grd.addColorStop(0.0,'rgba(255,255,255,1)');
+        grd.addColorStop(0.16,'rgba(255,255,255,0.85)');
+        grd.addColorStop(0.45,'rgba(255,255,255,0.18)');
+        grd.addColorStop(1.0,'rgba(255,255,255,0)');
+        g.fillStyle = grd; g.fillRect(0,0,64,64);
+        const t = new THREE.Texture(c); t.needsUpdate = true; return t;
+    }
+    const glowTex = makeGlow();
+
+    /* ---- shared uniforms (one object; cloud & sweep reference these) ---- */
+    const U = {
+        uZ0:{value:0}, uStep:{value:1}, uT:{value:1},
+        uR:{value:R}, uS:{value:S}, uGeoLocal:{value:1},
+        uMode:{value:2}, uLog:{value:1}, uPecGlobal:{value:0}, uAngK:{value:Math.PI},
+        uGMin:{value:0}, uGMax:{value:1}, uFreqMin:{value:4}, uFreqMax:{value:8},
+        uTerms:{value:null}, uTexH:{value:1}, uSeedHl:{value:0},
+        uOffX:{value:0}, uOffY:{value:0}, uSqueeze:{value:1},
+        uConeRate:{value:0.6}, uConeBase:{value:0.0}, uConeRings:{value:3}, uRedNorm:{value:1.2}, uConeColor:{value:1}, uConeSpeed:{value:1.0},
+        uConeFadeW:{value:0.3}, uConeFold:{value:0}, uConeSquare:{value:0},
+        uConeOn:{value:1}, uConeMax:{value:1},
+        uSize:{value:parseFloat(sizeRange().value)}, uCloudSize:{value:0.7}, uConeSize:{value:0.7}, uOpacity:{value:0.6}, uTex:{value:glowTex},
+        // ortho cameras have no perspective attenuation: point size must come from
+        // camera.zoom, never from view depth (-mv.z), which goes through 0 at the
+        // camera plane (size blow-up in front, 1px collapse behind). 0 = perspective.
+        uOrthoScale:{value:0}
+    };
+    function sizeRange(){ return document.getElementById('sizeRange'); }
+
+    /* ---- wiggle-term texture + the shared worldline evaluator (GLSL) ----
+       The term count NW is a compile-time shader constant (WebGL1 loops need
+       constant bounds), so vertSrc/ringSrc are source GENERATORS and the
+       materials are rebuilt whenever the term count changes. Per-term data
+       lives in a float texture, two texels per term, flat-indexed:
+         texel 2j   = (ax_j, ay_j, bx_j, by_j)
+         texel 2j+1 = (fx_j, fy_j, 0, 0)                                  */
+    const TERMTEX_W = 2048;      // fixed texture width; rows grow with N·NW
+    function comovGLSL(nw){
+        return `
+        uniform sampler2D uTerms;
+        uniform float uTexH;
+        vec4 termTexel(float k){
+            float fi = aIndex * float(${2*nw}) + k;
+            float u = (mod(fi, ${TERMTEX_W}.0) + 0.5) / ${TERMTEX_W}.0;
+            float v = (floor(fi / ${TERMTEX_W}.0) + 0.5) / uTexH;
+            return texture2D(uTerms, vec2(u, v));
+        }
+        vec2 comovRaw(float z){
+            float s = sin(z);
+            vec2 xy = aSin1 * s;
+            for (int j = 0; j < ${nw}; j++){
+                vec4 t0 = termTexel(float(2*j));
+                vec4 t1 = termTexel(float(2*j+1));
+                xy.x += t0.x * (sin(t0.z*z + t1.x) - sin(t1.x));
+                xy.y += t0.y * (sin(t0.w*z + t1.y) - sin(t1.y));
+            }
+            return xy / s;
+        }`;
+    }
+
+    function vertSrc(nw){
+        return `
+        precision highp float;
+        uniform mat4 modelViewMatrix, projectionMatrix;
+        attribute vec3 position;     // position.x = time-step index i
+        attribute vec2 aSin1;        // ax2, ay2 — the sin(1·z) amplitudes
+        attribute float aFsum;       // amplitude-weighted mean wiggle freq, x+y
+        attribute vec2 aPec;         // per-particle comoving speed min, max
+        attribute float aGroup;      // unique-group ID (subpaths share their group's)
+        attribute float aIsSub;      // 0 = seed (unique), 1 = subpath
+        attribute float aIndex;      // instance index 0..N-1 (term texture row + emitter highlight)
+        uniform float uZ0, uStep, uT, uR, uS, uFreqMin, uFreqMax, uSize, uCloudSize, uGMin, uGMax, uTime, uAngK, uConeMax, uOrthoScale, uOffX, uOffY, uSqueeze;
+        uniform int uGeoLocal, uMode, uLog, uPecGlobal, uSliceMode, uConeOn, uSeedHl;
+        varying vec3 vColor;
+        ${comovGLSL(nw)}
+        vec3 hsv2rgb(float h, float s, float v){
+            vec3 p = abs(fract(h + vec3(0.0,2.0/3.0,1.0/3.0))*6.0 - 3.0);
+            return v * mix(vec3(1.0), clamp(p-1.0, 0.0, 1.0), s);
+        }
+        // period-2 wrap to [-1,1); positions wrap, velocities never do.
+        // Float noise near the seam can flip a point between -1 and ~+1, but with
+        // uAngK = pi both embed to the same torus point, so it is invisible there.
+        vec2 wrap2(vec2 c){ return fract((c + 1.0)*0.5)*2.0 - 1.0; }
+        vec3 ramp(float t){
+            t = clamp(t,0.0,1.0);
+            vec3 c0=vec3(0.10,0.18,0.55), c1=vec3(0.30,0.55,0.95),
+                 c2=vec3(0.55,0.85,0.75), c3=vec3(1.0,0.82,0.35), c4=vec3(1.0,0.97,0.92);
+            if(t<0.35) return mix(c0,c1, t/0.35);
+            if(t<0.6 ) return mix(c1,c2,(t-0.35)/0.25);
+            if(t<0.8 ) return mix(c2,c3,(t-0.6)/0.2);
+            return mix(c3,c4,(t-0.8)/0.2);
+        }
+        void main(){
+            float i = position.x;
+            float z = (uSliceMode==1) ? uTime : (uZ0 + i*uStep);
+            float s = sin(z);
+            vec2 cmR = comovRaw(z);                     // unwrapped: for velocities
+            vec2 cm = wrap2(cmR);                       // wrapped: for positions
+            vec2 pos2 = (uGeoLocal==1) ? cm : cm*s;     // local = comoving, global = raw
+            // surface map: both space dims → torus angles; the offset slides the
+            // whole map around the loops (periodic, so no wrap needed here)
+            float u = uAngK*(pos2.x + uOffX), v = uAngK*(pos2.y + uOffY);
+            float radial = uR + uS*cos(v);
+            vec3 P = vec3(radial*cos(u), radial*sin(u), uS*sin(v));
+            float hl = (uConeOn==1 && aIndex < uConeMax) ? 1.0 : 0.0;   // emitting particle?
+            vec4 mv = modelViewMatrix * vec4(P,1.0);
+            gl_Position = projectionMatrix * mv;
+            // sweep (present slice) and cloud have independent glow sliders
+            float glow = (uSliceMode==1) ? uSize * 1.7 : uCloudSize;
+            float sz = glow * (1.0 + 1.6*hl);
+            if (uSeedHl==1 && aIsSub < 0.5) sz *= 1.6;   // seed highlight: bigger seeds
+            float depth = (uOrthoScale > 0.0) ? uOrthoScale : max(-mv.z, 0.1);
+            gl_PointSize = clamp(sz * 300.0 / depth, 1.0, 90.0);
+            if(uMode==0){ vColor = vec3(0.78,0.85,1.0); }
+            else if(uMode==1){
+                // weighted frequency sum over the range the data spans
+                // [uFreqMin, uFreqMax]: hot (red) = slow low-frequency paths,
+                // cold (blue) = high. Log colour scale on = log-compressed
+                // ramp: only the lowest few sums stay red, the upper half is
+                // nearly one blue.
+                float fsum = aFsum - uFreqMin;
+                float span = max(1.0, uFreqMax - uFreqMin);
+                float t = (uLog==1) ? log(1.0 + fsum) / log(1.0 + span)
+                                    : fsum / span;
+                t = clamp(t, 0.0, 1.0);
+                vColor = (t < 0.5) ? mix(vec3(1.0,0.10,0.04), vec3(1.0,0.96,0.90), t*2.0)
+                                   : mix(vec3(1.0,0.96,0.90), vec3(0.10,0.35,1.0), t*2.0-1.0);
+            }
+            else if(uMode==3){
+                // one stable hue per unique group (golden-ratio spread), so a
+                // group and all its subpaths share a colour
+                vColor = hsv2rgb(fract(aGroup*0.61803399), 0.7, 1.0);
+            }
+            else if(uMode==4){
+                // role paint: seeds cool blue-white, subpaths warm orange
+                vColor = (aIsSub < 0.5) ? vec3(0.55,0.75,1.0) : vec3(1.0,0.55,0.25);
+            }
+            else {
+                float zN = (uSliceMode==1) ? z+uStep : (i < uT-1.0 ? z+uStep : z-uStep);
+                vec2 dcm = abs(comovRaw(zN)-cmR);                  // unwrapped difference
+                float v = max(dcm.x/uSqueeze, dcm.y*uSqueeze) / abs(uStep);   // squeezed norm, matches cells
+                float lo = (uPecGlobal==1)? uGMin : aPec.x;
+                float hi = (uPecGlobal==1)? uGMax : aPec.y;
+                float t = (uLog==1)
+                    ? (log(v+1e-6)-log(lo+1e-6)) / max(1e-6, log(hi+1e-6)-log(lo+1e-6))
+                    : (v-lo) / max(1e-6, hi-lo);
+                vColor = ramp(t);
+            }
+            if(uSliceMode==1) vColor = min(vColor*1.25, vec3(1.0));
+            vColor = mix(vColor, min(vColor*2.4 + vec3(0.30), vec3(1.0)), hl);   // emitters glow
+            if (uSeedHl==1){                                 // seed highlight: dim the subpaths
+                vColor = (aIsSub < 0.5) ? min(vColor*1.4 + vec3(0.10), vec3(1.0))
+                                        : vColor * 0.45;
+            }
+        }`;
+    }
+    const FRAG = `
+        precision highp float;
+        uniform sampler2D uTex; uniform float uOpacity;
+        varying vec3 vColor;
+        void main(){
+            float a = texture2D(uTex, gl_PointCoord).a;
+            if(a < 0.01) discard;
+            gl_FragColor = vec4(vColor, a*uOpacity);
+        }`;
+
+    function makeMat(nw, sliceMode, time){
+        return new THREE.RawShaderMaterial({
+            uniforms: Object.assign({}, U, { uSliceMode:{value:sliceMode}, uTime:{value:time} }),
+            vertexShader: vertSrc(nw), fragmentShader: FRAG,
+            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+        });
+    }
+    // materials are (re)built by buildMaterials() once the term count is known
+    let cloudMat = null, sweepMat = null, coneMat = null, matNW = 0;
+
+    /* ---- LIGHT CONES: comoving causal wavefronts (rings) on the surface ----
+       χ travels at dχ/dz = 1/sin z, accumulating to conformal time η=ln(tan z/2).
+       dη/dz is minimal at z=π/2, so rings expand slowest mid-time, fastest at the
+       Bang/Crunch. A new wavefront is emitted every Δz of cosmic time; ring m was
+       emitted at z_emit=(⌊z/Δz⌋−m)·Δz and has comoving radius η(z)−η(z_emit) — born at
+       the centre, expanding outward, centred on the particle's present position. Each
+       ring is tinted by cosmological redshift: light reaching the observer "now" was
+       emitted when the scale factor was a_emit=sin(z_emit); 1+Z = a_obs/a_emit. Light
+       from when the universe was smaller arrives redshifted (red); during the collapse
+       phase, light from the larger past arrives blueshifted (blue). */
+    function ringSrc(nw){
+        return `
+        precision highp float;
+        uniform mat4 modelViewMatrix, projectionMatrix;
+        attribute vec3 position;     // x = ring angle (rad), y = ring index m
+        attribute vec2 aSin1;        // ax2, ay2 — the sin(1·z) amplitudes
+        attribute float aIndex;      // instance index 0..N-1 (term texture row)
+        uniform float uTime, uR, uS, uSize, uConeSize, uAngK, uConeRate, uConeBase, uConeRings, uRedNorm, uConeSpeed, uConeFadeW, uOrthoScale, uOffX, uOffY;
+        uniform int uGeoLocal, uConeColor, uConeFold, uConeSquare;
+        varying vec3 vColor; varying float vFade;
+        ${comovGLSL(nw)}
+        vec2 wrap2(vec2 c){ return fract((c + 1.0)*0.5)*2.0 - 1.0; }  // period-2 wrap to [-1,1)
+        vec3 hsv2rgb(float h, float s, float v){
+            vec3 p = abs(fract(h + vec3(0.0,2.0/3.0,1.0/3.0))*6.0 - 3.0);
+            return v * mix(vec3(1.0), clamp(p-1.0, 0.0, 1.0), s);
+        }
+        void main(){
+            float alpha = position.x, m = position.y;
+            float z = uTime, s = sin(z);
+            float eta = log(tan(z*0.5));                 // conformal time; slow near π/2
+            // wrap only the cone CENTER; ring sample points stay unwrapped — the
+            // surface map u = π·x is periodic, so rings close across the seam
+            vec2 cm = wrap2(comovRaw(z));
+            float k = floor(z/uConeRate) - m;            // emission index (rings per unit z), stable id
+            float zEmit = k * uConeRate;                 // cosmic time of this wavefront's emission
+            float travel = eta - log(tan(max(zEmit,1e-4)*0.5));  // comoving radius = conformal gap
+            float r = uConeBase + uConeSpeed*travel;             // uConeSpeed = tunable expansion scalar
+            float rmax = 3.14159265 / max(uAngK,1e-6);           // antipode = half-way round the loop
+            float coneFade;
+            if (uConeFold==1){                                   // refocus: bounce off the antipode and re-converge
+                float per = 2.0*rmax, q = mod(r, per);
+                r = (q <= rmax) ? q : per - q;
+                coneFade = 1.0;
+            } else {                                             // fade out near the far side (window = uConeFadeW)
+                coneFade = clamp((rmax - r)/(max(uConeFadeW,1e-3)*rmax), 0.0, 1.0);
+            }
+            // ring direction: unit circle, or stretched onto the unit square
+            // perimeter (Chebyshev ball — matches the square wrapped domain)
+            vec2 dir = vec2(cos(alpha), sin(alpha));
+            if (uConeSquare==1){
+                dir /= max(abs(dir.x), abs(dir.y));
+            }
+            // surface map: ring in the chosen space, slid by the torus offset
+            vec2 center = (uGeoLocal==1) ? cm : cm*s;
+            vec2 p2 = center + r*dir;
+            float u = uAngK*(p2.x + uOffX), v = uAngK*(p2.y + uOffY);
+            float radial = uR + uS*cos(v);
+            vec3 P = vec3(radial*cos(u), radial*sin(u), uS*sin(v));
+            vec4 mv = modelViewMatrix * vec4(P,1.0);
+            gl_Position = projectionMatrix * mv;
+            float depth = (uOrthoScale > 0.0) ? uOrthoScale : max(-mv.z, 0.1);
+            gl_PointSize = clamp(uConeSize*1.2 * 300.0 / depth, 1.0, 40.0);
+            float age = m / max(1.0, uConeRings-1.0);
+            if (uConeColor==1){                          // TRACK: stable hue keyed to emission event
+                vColor = hsv2rgb(fract(k*0.61803399), 0.7, 1.0);   // golden-ratio hue spread
+            } else {                                     // REDSHIFT: 1+Z = sin(z)/sin(z_emit)
+                float f = log(s + 1e-6) - log(sin(zEmit) + 1e-6); // >0 redshift, <0 blueshift
+                float t = clamp(f / uRedNorm, -1.0, 1.0);
+                t = sign(t)*pow(abs(t), 0.6);             // boost: small shifts still colour strongly
+                vec3 rest = vec3(1.0,1.0,1.0);            // unshifted = white
+                vColor = (t >= 0.0) ? mix(rest, vec3(1.0,0.05,0.02), t)    // white→deep red (redshift)
+                                    : mix(rest, vec3(0.06,0.32,1.0), -t);  // white→deep blue (blueshift)
+            }
+            vFade = (zEmit <= 0.0) ? 0.0 : (1.0 - 0.35*age);//*coneFade;  // hide pre-Bang; fade out at antipode
+        }`;
+    }
+    const FRAG_RING = `
+        precision highp float;
+        uniform sampler2D uTex; uniform float uOpacity;
+        varying vec3 vColor; varying float vFade;
+        void main(){
+            float a = texture2D(uTex, gl_PointCoord).a;
+            if(a < 0.01) discard;
+            gl_FragColor = vec4(vColor, a*uOpacity*vFade);
+        }`;
+    // (Re)build all three materials for a given wiggle-term count. The cone
+    // material shares the sweep's uTime uniform object, so playback keeps
+    // driving both; the current time survives the rebuild.
+    function buildMaterials(nw){
+        const t = sweepMat ? sweepMat.uniforms.uTime.value : 0;
+        if (cloudMat) cloudMat.dispose();
+        if (sweepMat) sweepMat.dispose();
+        if (coneMat)  coneMat.dispose();
+        cloudMat = makeMat(nw, 0, 0);
+        sweepMat = makeMat(nw, 1, t);
+        coneMat = new THREE.RawShaderMaterial({
+            uniforms: Object.assign({}, U, { uTime: sweepMat.uniforms.uTime }),
+            vertexShader: ringSrc(nw), fragmentShader: FRAG_RING,
+            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+        });
+        matNW = nw;
+    }
+    buildMaterials(Math.max(1, freqTerms - 1));
+
+    /* ---- instance param buffers + term texture (built once per Generate) ---- */
+    let instSin1=null, instFsum=null, instPec=null, instGroup=null, instSub=null, termTex=null;
+    const maxRaw=1, maxComov=1;        // wrapped domain is exactly [-1,1] — extent is fixed
+    // domain = exactly one period: a comoving wrap of 2 is 2π of tube angle,
+    // the identical torus point, so the seam is exactly seamless on the surface
+    function setAngK(){ U.uAngK.value = Math.PI; }
+    function buildBuffers(){
+        const N = functions.length, n = Z_cache.length;
+        // widest path decides the texture layout — sub rounds may use a
+        // different Freq terms than the seeds, and zero-amplitude padding
+        // terms contribute nothing in the shader
+        let nw = N ? 1 : Math.max(1, freqTerms - 1);
+        for (let p=0;p<N;p++) if (functions[p].terms.length > nw) nw = functions[p].terms.length;
+        if (nw !== matNW) buildMaterials(nw);          // term count is a shader constant
+        instSin1 = new Float32Array(N*2); instFsum = new Float32Array(N); instPec = new Float32Array(N*2);
+        instGroup = new Float32Array(N); instSub = new Float32Array(N);
+        const tpi = 2*nw;                              // texels per instance
+        const texH = Math.max(1, Math.ceil(N*tpi / TERMTEX_W));
+        const tdata = new Float32Array(TERMTEX_W*texH*4);
+        let gmn = Infinity, gmx = -Infinity, fmn = Infinity, fmx = -Infinity;
+        for (let p=0;p<N;p++){
+            const f = functions[p];
+            instSin1[p*2]=f.ax2; instSin1[p*2+1]=f.ay2;
+            instFsum[p]=f.fsum;
+            instGroup[p]=f.groupID;
+            instSub[p]=f.isSub ? 1 : 0;
+            for (let j=0;j<f.terms.length;j++){
+                const t = f.terms[j], base = (p*tpi + 2*j)*4;
+                tdata[base]=t.ax;   tdata[base+1]=t.ay; tdata[base+2]=t.bx; tdata[base+3]=t.by;
+                tdata[base+4]=t.fx; tdata[base+5]=t.fy;
+            }
+            // speed range was measured at acceptance (comovingTraj) — just copy,
+            // so this loop is O(N) instead of O(N·T·terms)
+            instPec[p*2]=f.pecMin; instPec[p*2+1]=f.pecMax;
+            if(f.pecMin<gmn)gmn=f.pecMin; if(f.pecMax>gmx)gmx=f.pecMax;
+            if(f.fsum<fmn)fmn=f.fsum;    if(f.fsum>fmx)fmx=f.fsum;
+        }
+        if (termTex) termTex.dispose();
+        termTex = new THREE.DataTexture(tdata, TERMTEX_W, texH, THREE.RGBAFormat, THREE.FloatType);
+        termTex.magFilter = termTex.minFilter = THREE.NearestFilter;
+        termTex.wrapS = termTex.wrapT = THREE.ClampToEdgeWrapping;
+        termTex.needsUpdate = true;
+        U.uTerms.value = termTex; U.uTexH.value = texH;
+        if (N){
+            U.uGMin.value=gmn; U.uGMax.value=gmx;
+            U.uFreqMin.value=fmn; U.uFreqMax.value=Math.max(fmx, fmn+1e-6);
+        }
+        setAngK();
+        U.uZ0.value=Z_cache[0]; U.uStep.value=(Z_cache[n-1]-Z_cache[0])/(n-1); U.uT.value=n;
+    }
+
+    // Cloud resolution cap: the all-times cloud draws at most cloudRes samples
+    // per path, strided evenly across the loop (T=200 → every 2nd step,
+    // T=1000 → every 10th). Positions are analytic in the shader, so this
+    // bounds per-frame draw cost only — no stored data changes. The sweep
+    // slice and the packing itself always use the full time-step grid.
+    // Adjustable via the View panel's "Cloud res" + Regenerate button.
+    let cloudRes = 100;
+    function cloudSamples(n){
+        const stride = Math.max(1, Math.ceil(n / cloudRes));
+        return { stride, count: Math.ceil(n / stride) };
+    }
+
+    let cloud=null, sweep=null, showCloud=false, showSweep=true;   // start in Surface (one instant)
+    let cones=null, showCones=false, coneRings=3, coneMax=1;
+    function disposeObj(o){ if(o){ scene.remove(o); o.geometry.dispose(); } }
+    function rebuildGPU(){
+        disposeObj(cloud); disposeObj(sweep); cloud=sweep=null;
+        if (!functions.length) { disposeObj(cones); cones=null; return; }
+        const N = functions.length, n = Z_cache.length;
+        const sin1A = new THREE.InstancedBufferAttribute(instSin1,2);
+        const fsumA = new THREE.InstancedBufferAttribute(instFsum,1);
+        const pecA  = new THREE.InstancedBufferAttribute(instPec,2);
+        const grpA  = new THREE.InstancedBufferAttribute(instGroup,1);
+        const subA  = new THREE.InstancedBufferAttribute(instSub,1);
+        const idx = new Float32Array(N); for (let p=0;p<N;p++) idx[p]=p;
+        const idxA = new THREE.InstancedBufferAttribute(idx,1);
+
+        const cs = cloudSamples(n);                     // strided time-step indices (see CLOUD_RES)
+        const baseC = new Float32Array(cs.count*3);
+        for (let k=0;k<cs.count;k++) baseC[k*3] = k*cs.stride;
+        const gc = new THREE.InstancedBufferGeometry();
+        gc.setAttribute('position', new THREE.Float32BufferAttribute(baseC,3));
+        gc.setAttribute('aSin1', sin1A); gc.setAttribute('aFsum', fsumA); gc.setAttribute('aPec', pecA);
+        gc.setAttribute('aGroup', grpA); gc.setAttribute('aIsSub', subA); gc.setAttribute('aIndex', idxA);
+        gc.instanceCount = N;
+        cloud = new THREE.Points(gc, cloudMat); cloud.frustumCulled=false; cloud.visible=showCloud; scene.add(cloud);
+
+        const gs = new THREE.InstancedBufferGeometry();  // sweep = one vertex (the present moment)
+        gs.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(3),3));
+        gs.setAttribute('aSin1', sin1A); gs.setAttribute('aFsum', fsumA); gs.setAttribute('aPec', pecA);
+        gs.setAttribute('aGroup', grpA); gs.setAttribute('aIsSub', subA); gs.setAttribute('aIndex', idxA);
+        gs.instanceCount = N;
+        sweep = new THREE.Points(gs, sweepMat); sweep.frustumCulled=false; sweep.visible=showSweep; scene.add(sweep);
+
+        rebuildCones();
+    }
+
+    /* ---- light-cone rings: K points per ring × coneRings rings, instanced per path ---- */
+    function rebuildCones(){
+        disposeObj(cones); cones=null;
+        if (!functions.length) return;
+        const N = functions.length, M = coneRings;
+        const KBASE = 140, KPER = 44;                          // points/ring; outer rings get more
+        const counts = []; let total = 0;
+        for (let m=0;m<M;m++){ const Km = KBASE + KPER*m; counts.push(Km); total += Km; }
+        const base = new Float32Array(total*3);
+        for (let m=0, o=0; m<M; m++){ const Km = counts[m];
+            for (let j=0; j<Km; j++, o+=3){ base[o] = (j/Km)*Math.PI*2; base[o+1] = m; }  // angle, ring index
+        }
+        const gc = new THREE.InstancedBufferGeometry();
+        gc.setAttribute('position', new THREE.Float32BufferAttribute(base,3));
+        gc.setAttribute('aSin1', new THREE.InstancedBufferAttribute(instSin1,2));
+        const idx = new Float32Array(N); for (let p=0;p<N;p++) idx[p]=p;
+        gc.setAttribute('aIndex', new THREE.InstancedBufferAttribute(idx,1));
+        gc.instanceCount = Math.min(N, coneMax);           // follow one path or many
+        cones = new THREE.Points(gc, coneMat); cones.frustumCulled=false; cones.visible=showCones; scene.add(cones);
+    }
+
+    /* ---- faint torus wireframe guide (CPU; tiny) ---- */
+    let grid=null, showGrid=true;
+    function torusPt(u,v,r,out){ const rad=R+r*Math.cos(v); out[0]=rad*Math.cos(u); out[1]=rad*Math.sin(u); out[2]=r*Math.sin(v); }
+    function rebuildGrid(){
+        disposeObj(grid); grid=null;
+        const segs=[], addSeg=(p,q)=>segs.push(p[0],p[1],p[2],q[0],q[1],q[2]);
+        const r=S, out=[0,0,0]; let prev;                 // plain donut (space is the surface)
+        for (let j=0;j<12;j++){ const u=(j/12)*Math.PI*2; prev=null;     // tube rings (const u)
+            for (let i=0;i<=48;i++){ const v=(i/48)*Math.PI*2; torusPt(u,v,r,out); if(prev)addSeg(prev,out); prev=out.slice(); } }
+        for (let j=0;j<10;j++){ const v=(j/10)*Math.PI*2; prev=null;     // major rings (const v)
+            for (let i=0;i<=96;i++){ const u=(i/96)*Math.PI*2; torusPt(u,v,r,out); if(prev)addSeg(prev,out); prev=out.slice(); } }
+        const geo=new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(segs,3));
+        grid=new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color:0x2a3450, transparent:true, opacity:0.4 }));
+        grid.visible=showGrid; scene.add(grid);
+    }
+
+    /* ================================================================
+       PART 3 — UI + RENDER LOOP
+    ================================================================ */
+    let framePos = 0, playSpeed = 1, playing = true;   // framePos = fractional time index
+
+    // Continuous z along the baked (uniform) grid — worldlines are analytic in z,
+    // so playback isn't quantized to the packing timestep: the speed control sets
+    // how far z advances per tick, and fractional positions render exactly.
+    function zAt(pos){
+        const n = Z_cache.length;
+        if (n < 2) return Z_cache[0];
+        const step = (Z_cache[n-1] - Z_cache[0]) / (n - 1);
+        return Z_cache[0] + pos * step;
+    }
+
+    document.getElementById('generateBtn').addEventListener('click', () => {
+        genEpoch++;                                   // invalidate older runs/imports
+        abort_gen = false; saturated = false; groupIDcount = 0; framePos = 0;
+        consecFails = 0;
+        genPhase = 'unique'; subCount = 0; subSaturated = false; subReason = '';
+        consecZeroVol = 0; skipPhase = false;
+        maxUniques = Math.max(0, parseInt(document.getElementById('maxUniquesInput').value) || 0);
+        readSubConfig();
+        genSubBudgetMs = parseFloat(subTimeRange.value) * 1000;
+        time_steps = parseInt(timeInput.value);
+        const sqIn = document.getElementById('squeezeInput');
+        squeezeK = Math.min(10, Math.max(0.1, parseFloat(sqIn.value) || 1));
+        sqIn.value = squeezeK;                        // keep the UI honest
+        U.uSqueeze.value = squeezeK;                  // speed paint follows the packing metric
+        modulation_Max = Math.max(2, Math.floor(time_steps/2));
+        // total sinusoid terms per axis, incl. sin1; the NW = freqTerms-1
+        // wiggle frequencies must be unique integers in [2, modulation_Max+1]
+        freqTerms = Math.min(Math.max(2, parseInt(termsInput.value) || 2), modulation_Max + 1);
+        termsInput.value = freqTerms;
+        functions = [];
+        genBudgetMs = parseFloat(genTimeRange.value) * 1000;
+        genStart = performance.now(); lastLiveUpload = genStart;
+        bakeZValues(); resetGrid();
+        make_groups(genEpoch);
+    });
+    document.getElementById('abortBtn').addEventListener('click', () => abort_gen = true);
+    document.getElementById('skipBtn').addEventListener('click', () => skipPhase = true);
+    function readSubConfig(){
+        subJamFails   = Math.max(10, parseInt(document.getElementById('subFailsInput').value)  || 500);
+        volJamAccepts = Math.max(10, parseInt(document.getElementById('volAcceptsInput').value) || 200);
+    }
+    // "+ Subs": pack another Sub time round of subpaths into the CURRENT
+    // packing, without regenerating the uniques. Re-runnable, and works on an
+    // imported dump (the collision hash is rebuilt from the loaded paths).
+    // Freq terms is re-read, so sub rounds may use a different term count
+    // than the seeds — buildBuffers pads the term texture to the widest path.
+    document.getElementById('subsBtn').addEventListener('click', () => {
+        if (!functions.length || !Z_cache.length){
+            statusEl.textContent = 'No packing to extend — Generate or Import first';
+            return;
+        }
+        genSubBudgetMs = parseFloat(subTimeRange.value) * 1000;
+        if (genSubBudgetMs <= 0){
+            statusEl.textContent = 'Sub time is 0 — slide it up first';
+            return;
+        }
+        genEpoch++;                                   // invalidate any in-flight run
+        abort_gen = false; saturated = false; subSaturated = false; subReason = '';
+        consecFails = 0; consecZeroVol = 0; skipPhase = false;
+        genPhase = 'sub';
+        modulation_Max = Math.max(2, Math.floor(time_steps/2));
+        freqTerms = Math.min(Math.max(2, parseInt(termsInput.value) || 2), modulation_Max + 1);
+        termsInput.value = freqTerms;
+        readSubConfig();
+        if (!gridByT.length) rebuildPackingHash();    // freed after the last run / import
+        subStart = performance.now(); lastLiveUpload = subStart;
+        make_groups(genEpoch);
+    });
+    const importInput = document.getElementById('importInput');
+    document.getElementById('importBtn').addEventListener('click', () => importInput.click());
+    importInput.addEventListener('change', () => {
+        if (importInput.files.length) importDumpFile(importInput.files[0]);
+        importInput.value = '';                       // allow re-picking the same file
+    });
+    genTimeRange.addEventListener('input', e=>{
+        document.getElementById('genTimeVal').textContent = e.target.value + 's';
+    });
+    subTimeRange.addEventListener('input', e=>{
+        document.getElementById('subTimeVal').textContent =
+            e.target.value === '0' ? 'off' : e.target.value + 's';
+    });
+
+    /* ---- settings side panel: open/close + checkbox/radio helpers ---- */
+    const sidepanel = document.getElementById('sidepanel');
+    document.getElementById('menuBtn').addEventListener('click', e=>{
+        e.currentTarget.classList.toggle('on', sidepanel.classList.toggle('open'));
+    });
+    function onCheck(id, apply){ const el = document.getElementById(id);
+        el.addEventListener('change', ()=>apply(el.checked)); }
+    function onRadio(name, apply){
+        document.querySelectorAll('input[name=' + name + ']').forEach(el=>
+            el.addEventListener('change', ()=>{ if (el.checked) apply(el.value); })); }
+
+    /* generation */
+    onCheck('smartFreqChk', v=>{ smartFreq = v; });              // applies on next Generate
+
+    /* view */
+    onRadio('viewMode', v=>setView(v));
+    onCheck('spinChk',  v=>{ autoRotateOn = v; controls.autoRotate = v; });
+    onCheck('sweepChk', v=>{ showSweep = v; if (sweep) sweep.visible = v; });
+    onCheck('cloudChk', v=>{ showCloud = v; if (cloud) cloud.visible = v; });
+    onCheck('gridChk',  v=>{ showGrid = v; if (grid) grid.visible = v; });
+    onCheck('hudChk',   v=>{ showHUD = v;
+        document.getElementById('hudBox').style.display = v ? 'block' : 'none'; hudDirty = true; });
+    let seedHl = false;
+    onCheck('seedHlChk', v=>{ seedHl = v; U.uSeedHl.value = v?1:0; hudDirty = true; });
+    document.getElementById('rRange').addEventListener('input', e=>{ R=parseFloat(e.target.value); U.uR.value=R; rebuildGrid(); });
+    document.getElementById('sRange').addEventListener('input', e=>{ S=parseFloat(e.target.value); U.uS.value=S; rebuildGrid(); });
+    sizeRange().addEventListener('input', e=>{ U.uSize.value = parseFloat(e.target.value); });
+    document.getElementById('cloudSizeRange').addEventListener('input', e=>{ U.uCloudSize.value = parseFloat(e.target.value); });
+    // Cloud res applies on Regenerate: rebuilds the point geometries from the
+    // already-baked instance buffers (no re-packing, no re-generation)
+    document.getElementById('cloudResBtn').addEventListener('click', () => {
+        const el = document.getElementById('cloudResInput');
+        cloudRes = Math.max(2, parseInt(el.value) || 100);
+        el.value = cloudRes;
+        if (!functions.length) return;
+        rebuildGPU(); hudDirty = true;
+        const cloudPts = functions.length * cloudSamples(Z_cache.length).count;
+        statusEl.textContent = `${functions.length} paths · cloud res ${cloudRes} · ${cloudPts.toLocaleString()} cloud points`;
+    });
+    function applyOffset(rangeId, valId, uniform, v){
+        v = wrapComov(v);                       // period-2 domain: passing 1 re-enters at -1
+        uniform.value = v;
+        document.getElementById(rangeId).value = v;
+        document.getElementById(valId).textContent = v.toFixed(2);
+    }
+    function wireOffset(id, valId, uniform){
+        document.getElementById(id).addEventListener('input', e=>{
+            applyOffset(id, valId, uniform, parseFloat(e.target.value));
+            hudDirty = true;
+        });
+    }
+    wireOffset('offXRange', 'offXVal', U.uOffX);
+    wireOffset('offYRange', 'offYVal', U.uOffY);
+    let autoOffX = false, autoOffY = false;      // advanced in tick(); speeds in offset units/s
+    let driftX = 0.05, driftY = 0.05;
+    onCheck('autoXChk', v=>{ autoOffX = v; });
+    onCheck('autoYChk', v=>{ autoOffY = v; });
+    document.getElementById('driftXRange').addEventListener('input', e=>{ driftX = parseFloat(e.target.value); });
+    document.getElementById('driftYRange').addEventListener('input', e=>{ driftY = parseFloat(e.target.value); });
+
+    /* coloring */
+    const paintOrder = ['mono','freq','pec','group','role'];
+    let paintMode = 'pec';
+    onRadio('paintMode', v=>{ paintMode = v; U.uMode.value = paintOrder.indexOf(v); hudDirty = true; });
+    let pecGlobal = false;
+    onRadio('normMode', v=>{ pecGlobal = (v==='global'); U.uPecGlobal.value = pecGlobal?1:0; hudDirty = true; });
+    let logColor = true;
+    onCheck('logChk',   v=>{ logColor = v; U.uLog.value = v?1:0; hudDirty = true; });
+    onCheck('localChk', v=>{ geoLocal = v; U.uGeoLocal.value = v?1:0; hudDirty = true; });
+
+    /* ---- presets (stub) — named bundles of control values, applied through
+       the normal handlers so uniforms/state stay in sync. Tune or extend the
+       PRESETS table; radios are keyed by group name, checks/ranges by id.
+       Manual tweaks after applying one do NOT reset the dropdown to Custom. */
+    const PRESETS = {
+        'sweep-speed': {          // present slice painted by peculiar speed
+            radios: { paintMode:'pec', normMode:'per', viewMode:'ortho' },
+            checks: { sweepChk:true, cloudChk:false, logChk:true, localChk:true, coneChk:true }
+        },
+        'cloud-freq-log': {       // all-times cloud painted by frequency, log ramp
+            radios: { paintMode:'freq', viewMode:'persp' },
+            checks: { sweepChk:false, cloudChk:true, logChk:true, gridChk:true, coneChk:false }
+        },
+        'minimal': {              // clean sweep — no cones, grid or cloud
+            radios: { paintMode:'mono' },
+            checks: { sweepChk:true, cloudChk:false, gridChk:false, coneChk:false }
+        }
+    };
+    function applyPreset(name){
+        const p = PRESETS[name];
+        if (!p) return;
+        for (const [group, val] of Object.entries(p.radios || {})){
+            const el = document.querySelector('input[name="'+group+'"][value="'+val+'"]');
+            if (el && !el.checked){ el.checked = true; el.dispatchEvent(new Event('change')); }
+        }
+        for (const [id, val] of Object.entries(p.checks || {})){
+            const el = document.getElementById(id);
+            if (el && el.checked !== val){ el.checked = val; el.dispatchEvent(new Event('change')); }
+        }
+        for (const [id, val] of Object.entries(p.ranges || {})){
+            const el = document.getElementById(id);
+            if (el){ el.value = val; el.dispatchEvent(new Event('input')); }
+        }
+    }
+    document.getElementById('presetSel').addEventListener('change', e=>applyPreset(e.target.value));
+
+    /* light cones */
+    onCheck('coneChk', v=>{ showCones = v; U.uConeOn.value = v?1:0; if (cones) cones.visible = v; hudDirty = true; });
+    onCheck('coneFoldChk', v=>{ U.uConeFold.value = v?1:0; });   // bounce/refocus at the antipode
+    onRadio('coneColor', v=>{ U.uConeColor.value = (v==='track') ? 1 : 0; hudDirty = true; });
+    onRadio('coneShape', v=>{ U.uConeSquare.value = (v==='square') ? 1 : 0; hudDirty = true; });
+    document.getElementById('coneRingsRange').addEventListener('input', e=>{
+        coneRings = parseInt(e.target.value); U.uConeRings.value = coneRings;
+        document.getElementById('coneRingsVal').textContent = coneRings;
+        rebuildCones();
+    });
+    document.getElementById('coneRateRange').addEventListener('input', e=>{
+        U.uConeRate.value = 1 / parseFloat(e.target.value);    // slider = rings per unit z → Δz spacing
+    });
+    document.getElementById('coneSpeedRange').addEventListener('input', e=>{
+        const v = parseFloat(e.target.value);                  // scalar on cone expansion radius
+        if (!isNaN(v)) U.uConeSpeed.value = v;
+    });
+    document.getElementById('coneFadeRange').addEventListener('input', e=>{
+        U.uConeFadeW.value = parseFloat(e.target.value);       // fade window before the antipode (0 = hard meet)
+    });
+    document.getElementById('redGainRange').addEventListener('input', e=>{
+        U.uRedNorm.value = 3.0 / parseFloat(e.target.value);   // higher slider = stronger red/blue
+        hudDirty = true;
+    });
+    document.getElementById('coneMaxInput').addEventListener('input', e=>{
+        coneMax = Math.max(1, parseInt(e.target.value) || 1);
+        U.uConeMax.value = coneMax;
+        if (cones) cones.geometry.instanceCount = Math.min(functions.length, coneMax);
+    });
+    document.getElementById('coneSizeRange').addEventListener('input', e=>{ U.uConeSize.value = parseFloat(e.target.value); });
+
+    /* playback */
+    const playBtn = document.getElementById('playBtn');
+    playBtn.addEventListener('click', ()=>{ playing = !playing;
+        playBtn.classList.toggle('on', playing);
+        playBtn.textContent = playing ? 'Play ▶' : 'Paused'; });
+    const timeScrub = document.getElementById('timeScrub');
+    timeScrub.addEventListener('input', e=>{
+        playing = false; playBtn.classList.remove('on'); playBtn.textContent = 'Paused';
+        if (Z_cache.length){ framePos = parseFloat(e.target.value)*(Z_cache.length-1);
+            sweepMat.uniforms.uTime.value = zAt(framePos); }
+        hudDirty = true;
+    });
+    document.getElementById('speedRange').addEventListener('input', e=>{
+        playSpeed = parseFloat(e.target.value);
+        document.getElementById('speedVal').textContent = playSpeed.toFixed(2).replace(/0$/,'') + '×';
+    });
+
+    addEventListener('resize', ()=>{
+        const aspect=innerWidth/innerHeight;
+        if (camera.isOrthographicCamera){ const h=R*1.9; camera.left=-h*aspect; camera.right=h*aspect; camera.top=h; camera.bottom=-h; }
+        else camera.aspect=aspect;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+    });
+
+    /* ---- 2D slice HUD: the universe at the selected instant ---- */
+    const hud = document.getElementById('hud');
+    const hudDPR = Math.min(2, window.devicePixelRatio || 1);
+    hud.width = 240 * hudDPR; hud.height = 240 * hudDPR;
+    const hudCtx = hud.getContext('2d');
+    let showHUD = true, hudDirty = true;
+
+    function ramp(t){                              // JS twin of the shader colour ramp
+        t = t<0?0:t>1?1:t;
+        const C=[[0.10,0.18,0.55],[0.30,0.55,0.95],[0.55,0.85,0.75],[1.0,0.82,0.35],[1.0,0.97,0.92]];
+        let a,b,f;
+        if(t<0.35){a=C[0];b=C[1];f=t/0.35;}
+        else if(t<0.6){a=C[1];b=C[2];f=(t-0.35)/0.25;}
+        else if(t<0.8){a=C[2];b=C[3];f=(t-0.6)/0.2;}
+        else{a=C[3];b=C[4];f=(t-0.8)/0.2;}
+        return [a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f, a[2]+(b[2]-a[2])*f];
+    }
+    function hotCold(t){                           // JS twin of the shader frequency gradient
+        t = t<0?0:t>1?1:t;
+        const hot=[1.0,0.10,0.04], mid=[1.0,0.96,0.90], cold=[0.10,0.35,1.0];
+        const a = t<0.5?hot:mid, b = t<0.5?mid:cold, f = t<0.5?t*2:t*2-1;
+        return [a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f, a[2]+(b[2]-a[2])*f];
+    }
+    function hsv2rgb(h,s,v){                       // JS twin of the shader hue helper
+        const f=n=>{ let p=Math.abs((((h+n)%1)+1)%1*6-3); p=p<1?0:p>2?1:p-1; return v*(1+(p-1)*s); };
+        return [f(0), f(2/3), f(1/3)];
+    }
+    // light-cone ring colour, matching ringSrc (track = hue per emission, else redshift)
+    function coneColorJS(k, sinz, zEmit){
+        if (U.uConeColor.value === 1) return hsv2rgb((((k*0.61803399)%1)+1)%1, 0.7, 1.0);
+        const f = Math.log(sinz+1e-6) - Math.log(Math.sin(zEmit)+1e-6);
+        let t = Math.max(-1, Math.min(1, f/U.uRedNorm.value));
+        t = Math.sign(t)*Math.pow(Math.abs(t), 0.6);          // match shader boost
+        const tgt = t>=0 ? [1.0,0.05,0.02] : [0.06,0.32,1.0], a=Math.abs(t);
+        return [1+(tgt[0]-1)*a, 1+(tgt[1]-1)*a, 1+(tgt[2]-1)*a];
+    }
+    function sliceColor(f,p,z,zN){                 // matches the GPU paint modes
+        if(paintMode==='mono') return [0.78,0.85,1.0];
+        if(paintMode==='freq'){
+            const fsum = f.fsum - U.uFreqMin.value;
+            const span = Math.max(1, U.uFreqMax.value - U.uFreqMin.value);
+            return hotCold(logColor ? Math.log(1+fsum)/Math.log(1+span) : fsum/span);
+        }
+        if(paintMode==='group')
+            return hsv2rgb((((f.groupID*0.61803399)%1)+1)%1, 0.7, 1.0);
+        if(paintMode==='role')
+            return f.isSub ? [1.0,0.55,0.25] : [0.55,0.75,1.0];
+        if(!instPec) return [0.78,0.85,1.0];       // speed ranges not baked yet (mid-generation)
+        const [cx, cy]   = comovXY(f, z);
+        const [cxN, cyN] = comovXY(f, zN);
+        const v=Math.max(Math.abs(cxN-cx)/squeezeK, Math.abs(cyN-cy)*squeezeK)/Math.abs(zN-z);   // squeezed norm, matches cells
+        const lo=pecGlobal?U.uGMin.value:instPec[p*2], hi=pecGlobal?U.uGMax.value:instPec[p*2+1];
+        const t = logColor ? (Math.log(v+1e-6)-Math.log(lo+1e-6))/Math.max(1e-6,Math.log(hi+1e-6)-Math.log(lo+1e-6))
+                           : (v-lo)/Math.max(1e-6,hi-lo);
+        return ramp(t);
+    }
+    function drawHUD(fr){
+        const W=hud.width, H=hud.height, ctx=hudCtx;
+        ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,W,H);
+        ctx.strokeStyle='rgba(120,140,180,0.14)'; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.moveTo(0,H/2); ctx.lineTo(W,H/2); ctx.stroke();
+        // fr is fractional — sample z continuously, one grid step ahead for the speed color
+        const z=zAt(fr), zN=zAt(fr+1<=Z_cache.length-1?fr+1:fr-1), sinz=Math.sin(z);
+        const range=1;                                 // box = exactly one period [-1,1], edges wrap
+        const sc=(Math.min(W,H)/2 - 8*hudDPR)/range, cx0=W/2, cy0=H/2, r=1.5*hudDPR, d=r*2;
+        ctx.globalCompositeOperation='lighter';
+        for(let p=0;p<functions.length;p++){
+            const f=functions[p];
+            const cm=comovXY(f, z);
+            let x=wrapComov(cm[0]);
+            let y=wrapComov(cm[1]);
+            if(!geoLocal){ x*=sinz; y*=sinz; }         // raw = wrap(comoving)·sin z
+            // torus offset slides the chart too; wrap keeps points in the box
+            x=wrapComov(x+U.uOffX.value); y=wrapComov(y+U.uOffY.value);
+            const c=sliceColor(f,p,z,zN);
+            ctx.fillStyle='rgb('+((c[0]*255)|0)+','+((c[1]*255)|0)+','+((c[2]*255)|0)+')';
+            // seed highlight mirrors the GPU: seeds draw bigger, subs dimmed
+            const rp = (seedHl && !f.isSub) ? r*1.7 : r;
+            if (seedHl && f.isSub) ctx.globalAlpha = 0.45;
+            ctx.fillRect(cx0+x*sc-rp, cy0-y*sc-rp, rp*2, rp*2);
+            if (seedHl && f.isSub) ctx.globalAlpha = 1;
+        }
+        if (showCones && functions.length){           // true (undistorted) light cones in flat 2D
+            const dz=U.uConeRate.value, eta=Math.log(Math.tan(z/2)), spd=U.uConeSpeed.value,
+                  base=U.uConeBase.value, rmax=Math.PI/Math.max(U.uAngK.value,1e-6),
+                  M=coneRings, emit=Math.min(functions.length, coneMax), kz=Math.floor(z/dz);
+            const ext=1, Ppx=2*ext*sc;                // tile pitch = exactly one wrap period
+            ctx.lineWidth=1.3*hudDPR;
+            for(let p=0;p<emit;p++){
+                const f=functions[p];
+                const cm=comovXY(f, z);
+                let cx=wrapComov(cm[0]);
+                let cy=wrapComov(cm[1]);
+                if(!geoLocal){ cx*=sinz; cy*=sinz; }
+                cx=wrapComov(cx+U.uOffX.value); cy=wrapComov(cy+U.uOffY.value);
+                const px=cx0+cx*sc, py=cy0-cy*sc;
+                for(let m=0;m<M;m++){
+                    const k=kz-m, zEmit=k*dz;
+                    if(zEmit<=0) continue;
+                    let rr=base+spd*(eta-Math.log(Math.tan(Math.max(zEmit,1e-4)/2)));
+                    let cf;
+                    if(U.uConeFold.value){ const per=2*rmax, q=((rr%per)+per)%per; rr=(q<=rmax)?q:per-q; cf=1; }
+                    else cf=Math.max(0,Math.min(1,(rmax-rr)/(Math.max(U.uConeFadeW.value,1e-3)*rmax)));
+                    cf=0.8;
+                    if(cf<=0) continue;                       // faded out near the antipode
+                    const col=coneColorJS(k,sinz,zEmit);
+                    ctx.strokeStyle='rgb('+((col[0]*255)|0)+','+((col[1]*255)|0)+','+((col[2]*255)|0)+')';
+                    ctx.globalAlpha=(1.0-0.35*(m/Math.max(1,M-1)))*cf;
+                    const pr=(geoLocal?rr:rr*sinz)*sc;        // ring "radius" on the chart
+                    const square=U.uConeSquare.value===1;
+                    for(let di=-1;di<=1;di++) for(let dj=-1;dj<=1;dj++){
+                        const ax=px+di*Ppx, ay=py+dj*Ppx;
+                        if(ax+pr<0||ax-pr>W||ay+pr<0||ay-pr>H) continue;
+                        if(square){ ctx.strokeRect(ax-pr, ay-pr, pr*2, pr*2); }
+                        else { ctx.beginPath(); ctx.arc(ax,ay,pr,0,Math.PI*2); ctx.stroke(); } }
+                }
+            }
+            ctx.globalAlpha=1;
+        }
+        ctx.globalCompositeOperation='source-over';
+        // caption lives in the DOM bar below the chart — never overlays the map
+        document.getElementById('hudTime').textContent =
+            't = ' + (z/Math.PI).toFixed(3) + 'π · a = ' + sinz.toFixed(3);
+        document.getElementById('hudMode').textContent =
+            (geoLocal ? 'local (comoving)' : 'global (raw)') + (squeezeK !== 1 ? ' · k=' + squeezeK : '');
+    }
+    document.getElementById('hudVer').textContent = VIEWER_VERSION;
+
+    rebuildGrid();
+    setTimeout(() => document.getElementById('generateBtn').click(), 60);   // auto-render on load
+
+    let lastTick = 0;
+    function tick(now){
+        requestAnimationFrame(tick);
+        controls.update();
+        // ortho: constant reference depth (initial camera distance), scaled by zoom;
+        // 0 tells the shaders to fall back to perspective -mv.z attenuation
+        U.uOrthoScale.value = camera.isOrthographicCamera ? (R*2.6)/camera.zoom : 0;
+        // dt in units of a 60 Hz frame, so 1× advances 60 grid steps/s on any display
+        const dt = (now && lastTick) ? Math.min((now - lastTick)/(1000/60), 4) : 1;
+        if (now) lastTick = now;
+        // auto-drift the torus offsets (dt is in 60 Hz frames → speed is units/s)
+        if (autoOffX) applyOffset('offXRange', 'offXVal', U.uOffX, U.uOffX.value + driftX*dt/60);
+        if (autoOffY) applyOffset('offYRange', 'offYVal', U.uOffY, U.uOffY.value + driftY*dt/60);
+        if (autoOffX || autoOffY) hudDirty = true;   // keep the minimap sliding even when paused
+        if (playing && showSweep && Z_cache.length > 1){
+            const span = Z_cache.length - 1;
+            framePos = (framePos + playSpeed*dt) % span;
+            sweepMat.uniforms.uTime.value = zAt(framePos);
+            timeScrub.value = (framePos/span).toFixed(3);
+        }
+        if (showHUD && functions.length && (playing || hudDirty)){ drawHUD(framePos); hudDirty=false; }
+        renderer.render(scene, camera);
+    }
+    tick();
+    </script>
+</body>
+</html>
