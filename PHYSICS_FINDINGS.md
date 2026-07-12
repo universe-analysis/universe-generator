@@ -277,6 +277,27 @@ does not.
 - **Engine A/Bs:** the sparse-grid engine (`--sparse`, VRAM ~ N·T vs T⁴)
   validates against stored dense runs (`analysis/compare_jamming.py`).
 
+## 11. Subpaths: no jam, a growth floor, and a ~1.5× capacity ratio (2+1)
+
+Post-jam subpath packing (paths that join an existing group; 2+1 engine
+only) **does not jam** — phase 2 has no ceiling, so every subpath count is
+conditional on its stop rule; only growth/decay laws are portable:
+
+- **At T = 20 the subpath admission rate never decays**: it floors near
+  7×10⁻⁶ and Nsub grows *linearly* in attempts (tail exponent 0.994) —
+  a steady-state assembly line, 73,600 subpaths over 80 uniques at an
+  arbitrary 1e10-attempt budget stop.
+- **At T ≥ 60 the rate decays through the 1e-6 cutoff**, and the
+  stop-state capacity ratio falls with resolution: Nsub/N = 10.1 (T=60) →
+  2.0 (T=100) → ~1.5 (T=220–300), flattening — at matched convergence
+  depth, a high-resolution jam retains roughly **1.5 subpaths per unique
+  worldline**.
+- Phase 2 does not perturb phase 1: the unique counts reproduce the
+  subpaths-off baseline cell-for-cell.
+
+Open: the functional form of the T ≥ 60 rate decay (needs a deeper arm),
+and whether the ~1.5 ratio is an asymptote.
+
 ## Caveats that bind the current results
 
 - Cutoff states, not literal jamming (section 3: no plateau through 1e-8);

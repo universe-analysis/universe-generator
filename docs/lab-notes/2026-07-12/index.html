@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-07-12</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-07-12</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="subpath-first">
+      <h2>Subpaths: no jam, a linear-growth floor at small T, and a ~1.5&times; capacity ratio at large T</h2>
+      <p class="meta">
+        <code>subpath2d_e6</code> campaign (the pack2d ladder with
+        <code>--subpaths</code>, 5 seeds, 1e-6 rate stop; T = 20
+        budget-stopped at 1e10 phase-2 attempts) &middot; campaign +
+        stop-wiring
+        <a href="https://github.com/universe-analysis/universe-generator/commit/a9be9e8"><code>a9be9e8</code></a>
+        &middot; budget knob
+        <a href="https://github.com/universe-analysis/universe-generator/commit/11ade22"><code>11ade22</code></a>
+        &middot; chart
+        <a href="https://github.com/universe-analysis/universe-generator/commit/e71cbe4"><code>e71cbe4</code></a>
+      </p>
+      <p>
+        First quantitative pass at post-jam subpath packing. Framing rule
+        (Kevin's design point): <strong>subpaths do not jam</strong> —
+        phase 2 has no ceiling, every Nsub is conditional on the stop rule,
+        and the physics lives in growth and decay laws, not capacities.
+        The campaign found that rule enforcing itself:
+      </p>
+      <figure class="plot">
+        <img src="subpath_decay.png"
+             alt="Left: subpath count versus attempts on log-log axes, one curve per T; the T=20 curve is a straight line of slope one reaching 73600 subpaths, while larger-T curves bend over before their rate stop. Right: subpath-to-unique ratio versus T, falling from 10 at T=60 toward about 1.5 at T=300, with the budget-stopped T=20 point drawn hollow at 928." />
+        <figcaption>
+          Left: Nsub growth per T. Right: capacity ratio Nsub/N at the
+          matched 1e-6 rate stop.
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>At T = 20 the admission rate never decays</strong>: it
+            floors near 7&times;10<sup>-6</sup> (above the 1e-6 stop) and
+            Nsub grows <em>linearly</em> in attempts (tail exponent 0.994)
+            to 73,600 subpaths over 80 uniques before the budget cut it
+            off — a steady-state assembly line, the cleanest possible
+            demonstration that subpaths do not jam. Five uncapped jobs
+            ground ~10 h each before the <code>sub_attempts</code> budget
+            knob was added.</li>
+        <li><strong>At T &ge; 60 the rate does decay through 1e-6</strong>,
+            and the stop-state capacity ratio falls with resolution:
+            Nsub/N = 10.1 (T=60) &rarr; 2.0 (T=100) &rarr; ~1.5&ndash;1.6
+            (T=220&ndash;300), flattening — at matched convergence depth, a
+            high-resolution jammed universe retains roughly <strong>1.5
+            subpaths per unique worldline</strong>.</li>
+        <li>Bookkeeping: the store's <code>n_final</code> is the phase-1
+            (unique) N, and it reproduces the subpaths-off
+            <code>pack2d_e6</code> baseline cell-for-cell — phase 2 does
+            not perturb phase 1.</li>
+      </ul>
+      <p>
+        Open next: the functional form of the T &ge; 60 rate decay (the
+        curves bend over but a single decade past onset is too short to
+        classify power-vs-log), whether the capacity ratio's flattening at
+        ~1.5 is an asymptote, and what a subpath-count exponent would even
+        mean given stop-conditionality. A deeper (1e-7) subpath arm on
+        mother+kitt is the obvious follow-up.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
