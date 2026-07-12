@@ -153,7 +153,11 @@ def test_subpaths_knob() -> None:
     )
     (j,) = c.jobs()
     assert j.name == "d2_nyq_T20_s1_ph_sub"
-    assert "--subpaths" in build_command(j, "bin", "curve.csv")
+    argv = build_command(j, "bin", "curve.csv")
+    assert "--subpaths" in argv
+    # Phase 2 must carry its own stop, or it runs to the raw attempts budget
+    # (found the hard way 2026-07-11: 8 h/job instead of minutes).
+    assert argv[argv.index("--sub-until-accept-rate") + 1] == repr(j.accept_rate)
     # Off by default, and rejected outside 2+1.
     plain = Job(dim=2, t=20, seed=1, accept_rate=1e-6, max_attempts=3e12)
     assert "--subpaths" not in build_command(plain, "bin", "curve.csv")

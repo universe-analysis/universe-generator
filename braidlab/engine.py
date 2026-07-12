@@ -56,7 +56,10 @@ def build_command(job: Job, binary: str, curve_path: str) -> list[str]:
     if job.terms != 2:
         cmd += ["--terms", str(job.terms)]
     if job.subpaths:
-        cmd += ["--subpaths"]
+        # Phase 2 has its own windowed stop; without this it runs to the raw
+        # --attempts budget (~3e12, hours per job). Same convergence
+        # criterion as phase 1.
+        cmd += ["--subpaths", "--sub-until-accept-rate", repr(job.accept_rate)]
     # maxfreq = T is hard-coded in the engines (they reject any other value);
     # passing it explicitly makes a stale T/2-default binary run the right
     # band instead of silently narrowing it.
