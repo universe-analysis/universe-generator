@@ -60,6 +60,10 @@ def build_command(job: Job, binary: str, curve_path: str) -> list[str]:
         # --attempts budget (~3e12, hours per job). Same convergence
         # criterion as phase 1.
         cmd += ["--subpaths", "--sub-until-accept-rate", repr(job.accept_rate)]
+        if job.sub_attempts:
+            # Small-T subpath admission never decays below the cutoff
+            # (subpaths do not jam), so those cells need a hard budget.
+            cmd += ["--sub-attempts", repr(job.sub_attempts)]
     # maxfreq = T is hard-coded in the engines (they reject any other value);
     # passing it explicitly makes a stale T/2-default binary run the right
     # band instead of silently narrowing it.

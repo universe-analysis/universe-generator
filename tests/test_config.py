@@ -158,6 +158,21 @@ def test_subpaths_knob() -> None:
     # Phase 2 must carry its own stop, or it runs to the raw attempts budget
     # (found the hard way 2026-07-11: 8 h/job instead of minutes).
     assert argv[argv.index("--sub-until-accept-rate") + 1] == repr(j.accept_rate)
+    assert "--sub-attempts" not in argv  # only with an explicit budget
+    budgeted = Campaign(
+        name="t",
+        dim=2,
+        t_values=(20,),
+        seeds=(1,),
+        accept_rate=1e-6,
+        subpaths=True,
+        sub_attempts=1e10,
+    )
+    (jb,) = budgeted.jobs()
+    argvb = build_command(jb, "bin", "curve.csv")
+    # Small-T subpath admission never decays below the cutoff (subpaths do
+    # not jam), so those cells carry a hard phase-2 budget.
+    assert argvb[argvb.index("--sub-attempts") + 1] == repr(1e10)
     # Off by default, and rejected outside 2+1.
     plain = Job(dim=2, t=20, seed=1, accept_rate=1e-6, max_attempts=3e12)
     assert "--subpaths" not in build_command(plain, "bin", "curve.csv")

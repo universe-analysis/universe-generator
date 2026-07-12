@@ -268,6 +268,9 @@ CAMPAIGNS: dict[str, Campaign] = {
         max_attempts=MAX_ATTEMPTS,
         dump=True,
         subpaths=True,
+        # T=20's subpath admission rate never falls below 1e-6 (steady-state
+        # growth); the budget bounds phase 2 where the rate stop cannot.
+        sub_attempts=1e10,
         tag="sub2e6",
     ),
     # CONVERGE: exponent convergence (see the CONVERGE_* constants above).

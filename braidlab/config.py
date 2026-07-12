@@ -38,6 +38,10 @@ class Job:
     #: unique packing jams, pack candidates that touch exactly one existing
     #: group. Off by default.
     subpaths: bool = False
+    #: Fixed phase-2 attempt budget (--sub-attempts). 0 = rate-stop only.
+    #: Needed where the subpath admission rate never decays below the cutoff
+    #: (small T): subpaths do not jam, so a rate stop cannot terminate there.
+    sub_attempts: float = 0
     #: Free-form variant tag (e.g. "e6" for a different cutoff). Not part of the
     #: key; appended to the name so variant runs do not collide in the shared
     #: remote workspace.
@@ -111,6 +115,8 @@ class Campaign:
     terms_values: tuple[int, ...] = (2,)
     #: Second-phase subpath packing (2+1 only). Off by default.
     subpaths: bool = False
+    #: Fixed phase-2 attempt budget (0 = rate-stop only); see Job.sub_attempts.
+    sub_attempts: float = 0
     #: Variant tag appended to job names (e.g. "e6" for a different cutoff).
     tag: str = ""
 
@@ -137,6 +143,7 @@ class Campaign:
                 sparse=self.sparse,
                 terms=k,
                 subpaths=self.subpaths,
+                sub_attempts=self.sub_attempts,
                 tag=self.tag,
             )
             for t in self.t_values
