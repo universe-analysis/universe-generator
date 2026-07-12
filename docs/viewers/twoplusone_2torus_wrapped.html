@@ -80,9 +80,10 @@
         <button id="importBtn" title="Load a CUDA --dump-params CSV">Import CSV</button>
         <span class="sep"></span>
         <button id="playBtn" class="on">Play ▶</button>
-        <label>Speed <input type="range" id="speedRange" min="0.05" max="5" step="0.05" value=".1"><span id="speedVal" style="width:34px;display:inline-block;color:#9fb0d0">1.0×</span></label>
+        <label>Speed <input type="range" id="speedRange" min="0" max="1" step="0.001" value="0"><span id="speedVal" style="width:34px;display:inline-block;color:#9fb0d0">1.0×</span></label>
         <label>Time <input type="range" id="timeScrub" min="0" max="1" step="0.001" value="0"></label>
         <span id="status">Idle — press Generate</span>
+        <button id="fsBtn" title="Toggle fullscreen (F)">⛶ Fullscreen</button>
     </div>
 
     <div id="sidepanel">
@@ -99,6 +100,19 @@
             </div>
             <div class="row" title="Volume jam: stop after this many consecutive accepted subpaths that claim zero new volume">
                 <span>Vol jam hits</span><input type="number" id="volAcceptsInput" value="200" min="10">
+            </div>
+        </details>
+        <details>
+            <summary>Playback</summary>
+            <div class="row" title="Lower bound of the Speed slider"><span>Speed min</span><input type="number" id="speedMinInput" value="0.05" min="0.001" step="0.05"></div>
+            <div class="row" title="Upper bound of the Speed slider"><span>Speed max</span><input type="number" id="speedMaxInput" value="5" min="0.01" step="1"></div>
+            <div class="choices">
+                <span class="group-name">Speed slider scale</span>
+                <label><input type="radio" name="speedScale" value="linear" checked> Linear</label>
+                <label><input type="radio" name="speedScale" value="log"> Log — finer control at the slow end</label>
+            </div>
+            <div class="row" title="Upper end of the Time scrub, in units of π. 1 = the full Bang→Crunch loop; >1 continues into the next conformal cycle (visual continuation only — packing stops at π)">
+                <span>Time max (×π)</span><input type="number" id="timeMaxInput" value="1" min="0.05" step="0.25">
             </div>
         </details>
         <details>
@@ -233,7 +247,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v19';
+    const VIEWER_VERSION = 'v20';
 
     let functions = [];
     let Z_cache = [];
@@ -762,7 +776,7 @@
         uOffX:{value:0}, uOffY:{value:0},
         uConeRate:{value:0.6}, uConeBase:{value:0.0}, uConeRings:{value:3}, uRedNorm:{value:1.2}, uConeColor:{value:1}, uConeSpeed:{value:1.0},
         uConeFadeW:{value:0.3}, uConeFold:{value:0}, uConeSquare:{value:0},
-        uConeOn:{value:1}, uConeMax:{value:1},
+        uConeOn:{value:document.getElementById('coneChk').checked ? 1 : 0}, uConeMax:{value:1},
         uSize:{value:parseFloat(sizeRange().value)}, uCloudSize:{value:0.7}, uConeSize:{value:0.7}, uOpacity:{value:0.6}, uTex:{value:glowTex},
         // ortho cameras have no perspective attenuation: point size must come from
         // camera.zoom, never from view depth (-mv.z), which goes through 0 at the
@@ -1086,7 +1100,7 @@
     }
 
     let cloud=null, sweep=null, showCloud=false, showSweep=true;   // start in Surface (one instant)
-    let cones=null, showCones=false, coneRings=3, coneMax=1;
+    let cones=null, showCones=document.getElementById('coneChk').checked, coneRings=3, coneMax=1;
     function disposeObj(o){ if(o){ scene.remove(o); o.geometry.dispose(); } }
     function rebuildGPU(){
         disposeObj(cloud); disposeObj(sweep); cloud=sweep=null;
@@ -1162,15 +1176,25 @@
        PART 3 — UI + RENDER LOOP
     ================================================================ */
     let framePos = 0, playSpeed = 1, playing = true;   // framePos = fractional time index
+    let timeMax = Math.PI;                             // scrub's upper end (Playback settings)
 
-    // Continuous z along the baked (uniform) grid — worldlines are analytic in z,
-    // so playback isn't quantized to the packing timestep: the speed control sets
-    // how far z advances per tick, and fractional positions render exactly.
+    // Continuous z for playback — worldlines are analytic in z, so playback
+    // isn't quantized to the packing timestep: the speed control sets how far
+    // z advances per tick, and fractional positions render exactly. The scrub
+    // spans [0, timeMax] — by default the WHOLE conformal loop [0, π] (Bang
+    // to Crunch), not just the interior packing grid; Time max > π keeps
+    // going into the next conformal cycle (analytic continuation, no packing
+    // data there).
     function zAt(pos){
         const n = Z_cache.length;
         if (n < 2) return Z_cache[0];
-        const step = (Z_cache[n-1] - Z_cache[0]) / (n - 1);
-        return Z_cache[0] + pos * step;
+        const eps = 1e-4;
+        let z = Math.max(pos * (timeMax / (n - 1)), eps);
+        // stay an epsilon away from multiples of π, where comoving x/sin z
+        // is 0/0 (the Bang, the Crunch, and each re-bounce beyond π)
+        const k = Math.round(z / Math.PI);
+        if (k > 0 && Math.abs(z - k*Math.PI) < eps) z = k*Math.PI - eps;
+        return z;
     }
 
     document.getElementById('generateBtn').addEventListener('click', () => {
@@ -1246,6 +1270,37 @@
     document.getElementById('menuBtn').addEventListener('click', e=>{
         e.currentTarget.classList.toggle('on', sidepanel.classList.toggle('open'));
     });
+    /* fullscreen toggle — button in the top bar, or the F key. Uses the
+       webkit-prefixed API as a fallback for older Safari. */
+    const fsBtn = document.getElementById('fsBtn');
+    function fsElement(){
+        return document.fullscreenElement || document.webkitFullscreenElement || null;
+    }
+    function toggleFullscreen(){
+        const root = document.documentElement;
+        if (fsElement()) {
+            if (document.exitFullscreen) document.exitFullscreen();
+            else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        } else {
+            if (root.requestFullscreen) root.requestFullscreen();
+            else if (root.webkitRequestFullscreen) root.webkitRequestFullscreen();
+        }
+    }
+    function onFsChange(){
+        const on = !!fsElement();
+        fsBtn.classList.toggle('on', on);
+        fsBtn.textContent = on ? '⛶ Exit full' : '⛶ Fullscreen';
+    }
+    fsBtn.addEventListener('click', toggleFullscreen);
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+    addEventListener('keydown', e=>{
+        // ignore keystrokes aimed at inputs (typing in a number box, etc.)
+        const tag = document.activeElement && document.activeElement.tagName;
+        if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+        if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+    });
+
     function onCheck(id, apply){ const el = document.getElementById(id);
         el.addEventListener('change', ()=>apply(el.checked)); }
     function onRadio(name, apply){
@@ -1390,9 +1445,54 @@
             sweepMat.uniforms.uTime.value = zAt(framePos); }
         hudDirty = true;
     });
-    document.getElementById('speedRange').addEventListener('input', e=>{
-        playSpeed = parseFloat(e.target.value);
-        document.getElementById('speedVal').textContent = playSpeed.toFixed(2).replace(/0$/,'') + '×';
+    /* Speed slider: the range knob is a normalized 0..1 position; the
+       Playback settings map it onto [speedMin, speedMax], linearly or
+       logarithmically (log = finer control at the slow end). */
+    const speedRange = document.getElementById('speedRange');
+    const speedValEl = document.getElementById('speedVal');
+    const speedMinInput = document.getElementById('speedMinInput');
+    const speedMaxInput = document.getElementById('speedMaxInput');
+    let speedMin = 0.05, speedMax = 5, speedLogScale = false;
+    function speedFromPos(p){
+        return speedLogScale ? speedMin * Math.pow(speedMax/speedMin, p)
+                             : speedMin + p*(speedMax - speedMin);
+    }
+    function posFromSpeed(v){
+        return speedLogScale ? Math.log(v/speedMin) / Math.log(speedMax/speedMin)
+                             : (v - speedMin) / (speedMax - speedMin);
+    }
+    function showSpeed(){
+        speedValEl.textContent = playSpeed.toFixed(2).replace(/0$/,'') + '×';
+    }
+    // re-read the bounds, keep the current speed (clamped into the new range)
+    // and move the knob to match it under the new mapping
+    function applySpeedBounds(){
+        speedMin = Math.max(0.001, parseFloat(speedMinInput.value) || 0.05);
+        speedMax = Math.max(speedMin*1.01, parseFloat(speedMaxInput.value) || 5);
+        speedMinInput.value = speedMin; speedMaxInput.value = speedMax;
+        playSpeed = Math.min(Math.max(playSpeed, speedMin), speedMax);
+        speedRange.value = posFromSpeed(playSpeed).toFixed(3);
+        showSpeed();
+    }
+    speedRange.addEventListener('input', e=>{
+        playSpeed = speedFromPos(parseFloat(e.target.value));
+        showSpeed();
+    });
+    speedMinInput.addEventListener('change', applySpeedBounds);
+    speedMaxInput.addEventListener('change', applySpeedBounds);
+    onRadio('speedScale', v=>{ speedLogScale = (v==='log'); applySpeedBounds(); });
+    applySpeedBounds();       // sync knob + label to the initial playSpeed
+
+    /* Time max: the scrub's upper end, in units of π. Values > 1 play past
+       the crunch into the next conformal cycle — a visual continuation only
+       (packing/collisions are defined on (0, π); cones stay within it). */
+    document.getElementById('timeMaxInput').addEventListener('change', e=>{
+        const v = Math.max(0.05, parseFloat(e.target.value) || 1);
+        e.target.value = v;
+        timeMax = v * Math.PI;
+        // the scrub knob keeps its fraction; re-aim the sweep at its new z
+        if (Z_cache.length && sweepMat) sweepMat.uniforms.uTime.value = zAt(framePos);
+        hudDirty = true;
     });
 
     addEventListener('resize', ()=>{
