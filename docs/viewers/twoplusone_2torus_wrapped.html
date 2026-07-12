@@ -111,6 +111,9 @@
                 <label><input type="radio" name="speedScale" value="linear" checked> Linear</label>
                 <label><input type="radio" name="speedScale" value="log"> Log — finer control at the slow end</label>
             </div>
+            <div class="row" title="Lower end of the Time scrub, in units of π. Set min 1, max 2 to watch the second conformal cycle">
+                <span>Time min (×π)</span><input type="number" id="timeMinInput" value="0" min="0" step="0.25">
+            </div>
             <div class="row" title="Upper end of the Time scrub, in units of π. 1 = the full Bang→Crunch loop; >1 continues into the next conformal cycle (visual continuation only — packing stops at π)">
                 <span>Time max (×π)</span><input type="number" id="timeMaxInput" value="1" min="0.05" step="0.25">
             </div>
@@ -247,7 +250,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v20';
+    const VIEWER_VERSION = 'v21';
 
     let functions = [];
     let Z_cache = [];
@@ -1176,20 +1179,20 @@
        PART 3 — UI + RENDER LOOP
     ================================================================ */
     let framePos = 0, playSpeed = 1, playing = true;   // framePos = fractional time index
-    let timeMax = Math.PI;                             // scrub's upper end (Playback settings)
+    let timeMin = 0, timeMax = Math.PI;                // scrub's z range (Playback settings)
 
     // Continuous z for playback — worldlines are analytic in z, so playback
     // isn't quantized to the packing timestep: the speed control sets how far
     // z advances per tick, and fractional positions render exactly. The scrub
-    // spans [0, timeMax] — by default the WHOLE conformal loop [0, π] (Bang
-    // to Crunch), not just the interior packing grid; Time max > π keeps
-    // going into the next conformal cycle (analytic continuation, no packing
-    // data there).
+    // spans [timeMin, timeMax] — by default the WHOLE conformal loop [0, π]
+    // (Bang to Crunch), not just the interior packing grid; bounds beyond π
+    // show later conformal cycles (analytic continuation, no packing data
+    // there).
     function zAt(pos){
         const n = Z_cache.length;
         if (n < 2) return Z_cache[0];
         const eps = 1e-4;
-        let z = Math.max(pos * (timeMax / (n - 1)), eps);
+        let z = Math.max(timeMin + pos * ((timeMax - timeMin) / (n - 1)), eps);
         // stay an epsilon away from multiples of π, where comoving x/sin z
         // is 0/0 (the Bang, the Crunch, and each re-bounce beyond π)
         const k = Math.round(z / Math.PI);
@@ -1483,17 +1486,23 @@
     onRadio('speedScale', v=>{ speedLogScale = (v==='log'); applySpeedBounds(); });
     applySpeedBounds();       // sync knob + label to the initial playSpeed
 
-    /* Time max: the scrub's upper end, in units of π. Values > 1 play past
-       the crunch into the next conformal cycle — a visual continuation only
-       (packing/collisions are defined on (0, π); cones stay within it). */
-    document.getElementById('timeMaxInput').addEventListener('change', e=>{
-        const v = Math.max(0.05, parseFloat(e.target.value) || 1);
-        e.target.value = v;
-        timeMax = v * Math.PI;
+    /* Time min/max: the scrub's z range, in units of π. Defaults 0..1 cover
+       the Bang→Crunch loop; min 1, max 2 shows the second conformal cycle —
+       a visual continuation only (packing/collisions are defined on (0, π);
+       cones stay within it). */
+    const timeMinInput = document.getElementById('timeMinInput');
+    const timeMaxInput = document.getElementById('timeMaxInput');
+    function applyTimeBounds(){
+        const lo = Math.max(0, parseFloat(timeMinInput.value) || 0);
+        const hi = Math.max(lo + 0.05, parseFloat(timeMaxInput.value) || 1);
+        timeMinInput.value = lo; timeMaxInput.value = hi;
+        timeMin = lo * Math.PI; timeMax = hi * Math.PI;
         // the scrub knob keeps its fraction; re-aim the sweep at its new z
         if (Z_cache.length && sweepMat) sweepMat.uniforms.uTime.value = zAt(framePos);
         hudDirty = true;
-    });
+    }
+    timeMinInput.addEventListener('change', applyTimeBounds);
+    timeMaxInput.addEventListener('change', applyTimeBounds);
 
     addEventListener('resize', ()=>{
         const aspect=innerWidth/innerHeight;
