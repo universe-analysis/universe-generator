@@ -297,6 +297,22 @@ CAMPAIGNS: dict[str, Campaign] = {
         sparse=True,
         tag="cv3e7",
     ),
+    # Ladder extension for the state-vs-rate discriminator (2026-07-11):
+    # does the 1e-6 state exponent keep crawling from 2.321 toward the rate
+    # exponent 2.33 ~ 7/3 past T = 360? T = 520 is the 24 GB sparse-VRAM
+    # comfort limit (~17 GB projected). Separate campaign (not appended to
+    # CONVERGE3D_T) so converge3d_e7 resumes can never dispatch these tiers.
+    "converge3d_e6ext": Campaign(
+        name="converge3d_e6ext",
+        dim=3,
+        t_values=(400, 440, 480, 520),
+        seeds=CONVERGE_SEEDS,
+        accept_rate=1e-6,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        sparse=True,
+        tag="cv3e6x",
+    ),
     "converge2d_e8": Campaign(
         name="converge2d_e8",
         dim=2,
