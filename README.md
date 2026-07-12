@@ -1,16 +1,7 @@
 # The Braided Universe
 
-A packing model of the cosmos. Parametric sinusoidal worldlines
-(`x(z) = a·sin(b·z) + a2·sin(z)` per spatial axis, integer frequency `b`, a
-slope-1 "speed of light" constraint) are threaded into a closed conformal-time
-loop `z ∈ (0, π)` and packed to jamming by random sequential addition. We then
-measure the fractal/packing dimension of the result and the physics that emerges
-from the geometry.
+Rewrite in progress
 
-**Headline result:** the jamming-free packing dimension is **D ≈ 2.79 (3+1)** and
-**≈ 1.82 (2+1)** — mildly multifractal, triangulated across correlation
-dimension, the generalized-dimension (Dq) spectrum, and box-counting. See
-[`PHYSICS_FINDINGS.md`](PHYSICS_FINDINGS.md) for the full story.
 
 ## Live site
 
