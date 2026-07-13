@@ -1,5 +1,5 @@
 # Universe Generator
-This project is centered around discrete generation and analysis of a model universe. Our model universe has n spatial dimensions, and one dimension for time, it is flat and contains a torus submanifold, therefore describing generalized Minkowski spacetime. Worldlines are defined within this spacetime, and a discrete analysis with a Random-Sequential-Adsorption (RSA) technique is used to pack the universe according to rules of intersection and non-intersection. This model therefore describes n spatial dimensions on an expanding and collapsing n-torus, allowing a cat-map automorphism. The worldlines are 1D paths through time, raising many similarities to string theory as discussed later.
+This project is centered around discrete generation and analysis of a model universe. Our model universe has n spatial dimensions, and one dimension for time, it is flat and contains a torus submanifold, therefore describing a slightly modified generalized Minkowski spacetime. Worldlines are defined within this spacetime, and a discrete analysis with a Random-Sequential-Adsorption (RSA) technique is used to pack the universe according to rules of intersection and non-intersection. This model therefore describes n spatial dimensions on an expanding and collapsing n-torus, allowing a cat-map automorphism. The worldlines are 1D paths through time, raising many similarities to string theory as discussed later.
 
 ## Worldines
 A worldline in this model is represented per-axis, using parametric form, as expansion of sine terms. The generic `a * sin(b * T+f) - a * sin(f)` where f is allowed to be between 0 and π if b (the frequency) is even - if b is odd then f must be 0 (or π, but a is already allowed to be inverted which accomplishes the same thing.) The critical constraints on these worldlines are as follows:
@@ -45,8 +45,8 @@ Note that this discrete method does not explicitly force that two paths ever per
 
 ## Physics
 
-### Minkowski spacetime
-This model describes generic n+1 dimension universes, with n spatial dimensions. This is known as a generalized Minkowski spacetime.
+### Minkowski spacetime - FLRW spacetime
+This model describes generic n+1 dimension universes, with n spatial dimensions. The space is flat but has a torus submanifold embedded. This is known as a generalized Minkowski spacetime. However, this model embeds expansion and collapse over time, seperating it from standard Minkowski spacetime while still retaining it's properties (we believe.) It cannot be represented by standard FLRW spacetime either, due to being flat, so far as we understand.
 
 ### Quantum Behavior
 A single unique group consists of a potentially infinite number of subpaths - paths which only intersect each other while avoiding intersections with every other path from a different unique group across all of time. This allows for a single unique group [particle] to be represented by many different positions and velocities at once. A goal of this project is to study these subpath behaviors to determine if they follow expected Bell inequalities / other tests for quantum behavior.
