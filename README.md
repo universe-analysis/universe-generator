@@ -54,11 +54,16 @@ This model naturally embeds a expansion and collapse cycle, as well as a measure
 
 ### Speculation
 The following below is loose speculation.
-Small-scale knots: The ability to form a stable knot of n unique paths depends on the dimension, therefore a goal of this project is to analyze the unique path knots and attempt to relate them to standard model particles.
-Gravity: This model follows a string theory approach, gravity arises from closed strings propagating through the larger ambient space.
-Strong force: This may relate to knots, subpaths, and the ability for knots to essentially tangle with each other, as well as knots of knots tangling.
-Weak force: This model allows for paths to enter, and leave, knot groups. The weak force would be the model of these interactions.
-Electromagnetic: This model would relate electromagnetic interaction to the general emergent dynamics, however speculation is more loose here.
+#### Small-scale knots
+The ability to form a stable knot of n unique paths depends on the dimension, therefore a goal of this project is to analyze the unique path knots and attempt to relate them to standard model particles.
+#### Gravity
+This model follows a string theory approach, gravity arises from closed strings propagating through the larger ambient space.
+#### Strong force
+This may relate to knots, subpaths, and the ability for knots to essentially tangle with each other, as well as knots of knots tangling.
+#### Weak force
+This model allows for paths to enter, and leave, knot groups. The weak force would be the model of these interactions.
+#### Electromagnetic 
+This model would relate electromagnetic interaction to the general emergent dynamics, however speculation is more loose here.
 
 #### Super-Speculation:
 If this was a model of our universe, we could expect it to imply that the observable universe is the entire universe. This model allows for a description of the fastest paths between two remote points, and a fastest moving path takes the entire first half of time to close the distance between a point and the furthest possible distance from that point. It would also imply that expansion is not accelerating but instead slowing. These ideas should be able to be examined and potentially tested further.
