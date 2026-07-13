@@ -19,7 +19,7 @@ The rest of a path's axis frequency terms must obey a shared rapidity budget. Th
 ### Phase rules
 As mentioned earlier, due to the closure requirement, odd frequencies can only be inverted, which is already satisfied due to amplitude being absolute value and thus being able to be negative. That means only even frequencies need an explicit phase component, and to ensure closure, a constant term needs to be subtracted. This allows a full range of possible paths, and phase is critical to many behaviors.
 
-### Per-axis rules [technical clarification for euclidian vs Chebyshev]
+### Per-axis rules [technical clarification for Euclidean vs Chebyshev]
 This allows n spatial dimensions, however the rapidity constraint is axis-independent. This means that this space is not directly euclidean, however this is accounted for in square-intersection bounds, and Chebyshev calculations when relevant (Peculiar speed.) A cat-map transformation is the equivalent of 'rotating' this space while preserving it's properties.
 
 ### Unique Path Group / Rules
