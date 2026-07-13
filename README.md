@@ -25,17 +25,6 @@ This allows n spatial dimensions, however the rapidity constraint is axis-indepe
 ### Unique Path Group / Rules
 In this model, a single path does not need to represent only one particle. By defining rules of intersection and non-intersection, we define a unique group to be a group of paths which intersect each other at least once from  `t ∈ (0, π)`, while not intersecting any other path in a different unique group. This allows for a single unique group to consist of many paths. These intersection rules are the building blocks of the generation methods used in this project.
 
-## Physics
-
-### Minkowski spacetime
-This model describes generic n+1 dimension universes, with n spatial dimensions. This is known as a generalized Minkowski spacetime.
-
-### Quantum Behavior
-A single unique group consists of a potentially infinite number of subpaths - paths which only intersect each other while avoiding intersections with every other path from a different unique group across all of time. This allows for a single unique group [particle] to be represented by many different positions and velocities at once. A goal of this project is to study these subpath behaviors to determine if they follow expected Bell inequalities / other tests for quantum behavior.
-
-### Big bang / crunch / inflation / expansion
-This model naturally embeds a expansion and collapse cycle, as well as a measured rapid cooling inflation period at the very start, following by a cold - matter dominated region at time t=π/2, leading to a hot collapse. It is of note that this model is not entirely symmetric across pi/2 due to the inclusion of phase components for even frequency components.
-
 ## Implementation
 ### Discrete timestep / nyquist frequency
 To generate a universe to analyze, we first choose the maximum frequency we will allow. This determines virtually every other parameter used in analysis. The universe is divided into n timesteps, where n is equal to the maxFrequency chosen. This is a nyquist timestep/frequency. This then also determines the maximum number of terms in each path's parametric axis formula. This also determines collision rules below.
@@ -51,6 +40,17 @@ Traditional RSA packs objects in a single space, whereas this packs 1D paths acr
 
 ### Unique generation -> Subpath Generation
 The generation process follows two RSA stages, the first stage generates only unique paths (potential missed intersections aside.) Once the universe is jammed with unique paths, or earlier if one chooses, the next stage can follow through generation of subpaths, using the unique paths essentially as seeds. During the first stage, non-intersection is the only priority, and no self-intersections are explicitly allowed (although it is possible for some to slip in) - the second phase still has the previous non-intersection requirement, but only for paths of a different unique group. When a path intersects another, it inherits it's groupID, and if the path never intersects a path with a different groupID, it is a valid subpath. It is technically possible for subpaths to be created in the first stage. Note that this discrete method does not explicitly force that two subpaths ever perfectly intersect, however as frequency and timestep approach infinity, and the comoving intersection box shrinks, the intersections approach true intersections, therefore this analysis is an approximation that can be measures as the limit of the maxfreq or the timestep resolution (same thing) approaches infinity.
+
+## Physics
+
+### Minkowski spacetime
+This model describes generic n+1 dimension universes, with n spatial dimensions. This is known as a generalized Minkowski spacetime.
+
+### Quantum Behavior
+A single unique group consists of a potentially infinite number of subpaths - paths which only intersect each other while avoiding intersections with every other path from a different unique group across all of time. This allows for a single unique group [particle] to be represented by many different positions and velocities at once. A goal of this project is to study these subpath behaviors to determine if they follow expected Bell inequalities / other tests for quantum behavior.
+
+### Big bang / crunch / inflation / expansion
+This model naturally embeds a expansion and collapse cycle, as well as a measured rapid cooling inflation period at the very start, following by a cold - matter dominated region at time t=π/2, leading to a hot collapse. It is of note that this model is not entirely symmetric across pi/2 due to the inclusion of phase components for even frequency components.
 
 ## Live site
 
