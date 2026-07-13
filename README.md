@@ -11,10 +11,10 @@ All worldlines must be closed conformal-time loops between time(t) `t ∈ (0, π
 All worldlines have a random budget for their sin1 component, different from the other frequencies. Every sin1 component has an independent random amplitude from -1 to 1, independent of the rapidity constraints on the other frequency terms below. The sin1 component is the 'comoving worldline' frequency of this model, and thus freeing sin1 ensures an even distribution across space.
 
 ### Seam wrap
-The bounds of our universe in any axis direction is denoted by sint, therefore any function exceeding sint has 2sint subtracted from it, and it emerges from -sint. Similar, if a function goes below -sint, it has 2sint added to it, making it emerge from sint. By adding this seam to the model along with the free sin1 component, any preferred center is erased.
+The bounds of our universe in any axis direction is denoted by `|sint|`, therefore any function exceeding sint has 2sint subtracted from it, and it emerges from -sint. Similar, if a function goes below -sint, it has 2sint added to it, making it emerge from sint. By adding this seam to the model along with the free sin1 component, any preferred center is erased.
 
 ### Rapidity on rest of frequency terms
-The rest of a path's axis frequency terms must obey a shared rapidity budget. The sum of the absoltue value of every amplitude * frequency term must add to exactly 1 - this ensures a constant speed of light, satisfying relativity. It is of note that as many frequency terms up to a frequency limit as high as one wishes, however a maximum must be chosen for discrete analysis. In each path, per axis, every frequency term must be unique, and an integer above zero.
+The rest of a path's axis frequency terms must obey a shared rapidity budget. The sum of the absolute value of every amplitude * frequency term must add to exactly 1 - this ensures a constant speed of light, satisfying relativity. It is of note that as many frequency terms up to a frequency limit as high as one wishes, however a maximum must be chosen for discrete analysis. In each path, per axis, every frequency term must be unique, and an integer above zero.
 
 ### Phase rules
 As mentioned earlier, due to the closure requirement, odd frequencies can only be inverted, which is already satisfied due to amplitude being absolute value and thus being able to be negative. That means only even frequencies need an explicit phase component, and to ensure closure, a constant term needs to be subtracted. This allows a full range of possible paths, and phase is critical to many behaviors.
@@ -69,6 +69,9 @@ This model would relate electromagnetic interaction to the general emergent dyna
 
 #### Super-Speculation:
 If this was a model of our universe, we could expect it to imply that the observable universe is the entire universe. This model allows for a description of the fastest paths between two remote points, and a fastest moving path takes the entire first half of time to close the distance between a point and the furthest possible distance from that point. It would also imply that expansion is not accelerating but instead slowing. These ideas should be able to be examined and potentially tested further.
+
+## Analysis Methods
+Coming soon, timestep resolution, frequency terms, unique decay rates, subpath decay rates, 2+1 vs 3+1, odd,even, high low analysis, ec.
 
 ## Live site
 
