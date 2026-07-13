@@ -59,7 +59,9 @@ The following below is loose speculation.
 #### Small-scale knots
 The ability to form a stable knot of n unique paths depends on the dimension, therefore a goal of this project is to analyze the unique path knots and attempt to relate them to standard model particles.
 #### Gravity
-This model follows a string theory approach, gravity arises from closed strings propagating through the larger ambient space.
+This model follows a string theory approach, gravity arises from closed strings propagating through the larger ambient space. Specifically, due to the flat nature of space, our model invokes the Celestial holography conjecture:<br>
+`The central conjecture is that this correspondence provides a complete boundary description of the gravitational S-matrix in a flat Minkowski spacetime.` [https://en.wikipedia.org/wiki/Holographic_principle#Celestial_holography](https://en.wikipedia.org/wiki/Holographic_principle#Celestial_holography)<br>
+
 #### Strong force
 This may relate to knots, subpaths, and the ability for knots to essentially tangle with each other, as well as knots of knots tangling.
 #### Weak force
