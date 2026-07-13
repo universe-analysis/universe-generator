@@ -52,7 +52,7 @@ This model describes generic n+1 dimension universes, with n spatial dimensions.
 A single unique group consists of a potentially infinite number of subpaths - paths which only intersect each other while avoiding intersections with every other path from a different unique group across all of time. This allows for a single unique group [particle] to be represented by many different positions and velocities at once. A goal of this project is to study these subpath behaviors to determine if they follow expected Bell inequalities / other tests for quantum behavior.
 
 ### Big bang / crunch / inflation / expansion
-This model naturally embeds a expansion and collapse cycle, as well as a measured rapid cooling inflation period at the very start, following by a cold - matter dominated region at time t=π/2, leading to a hot collapse. It is of note that this model is not entirely symmetric across pi/2 due to the inclusion of phase components for even frequency components.
+This model naturally embeds an expansion and collapse cycle, as well as a measured rapid cooling inflation period at the very start, following by a cold - matter dominated region at time t=π/2, leading to a hot collapse. It is of note that this model is not entirely symmetric across pi/2 due to the inclusion of phase components for even frequency components.
 
 ### Speculation
 The following below is loose speculation.
