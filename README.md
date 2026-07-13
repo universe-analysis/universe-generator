@@ -2,7 +2,7 @@
 This project is centered around discrete generation and analysis of a model universe. Our model universe has n spatial dimensions, and one dimension for time, it is flat and contains a torus submanifold, therefore describing generalized Minkowski spacetime. Worldlines are defined within this spacetime, and a discrete analysis with a Random-Sequential-Adsorption (RSA) technique is uses to pack the universe according to rules of intersection and non-intersection. This model therefore describes n spatial dimensions on an expanding and collapsing n-torus, allowing a cat-map automorphism.
 
 ## Worldines
-A worldline in this model is represented per-axis, using parametric form, as expansion of sine terms. The generic `a * sin(b * T+f) - a * sin(f)` where f is allowed to be between 0 and pi if b (the frequency) is even - if b is odd then f must be 0 (or pi, but a is already allowed to be inverted which accomplishes the same thing.) The critcal constraints on these worldlines are as follows:
+A worldline in this model is represented per-axis, using parametric form, as expansion of sine terms. The generic `a * sin(b * T+f) - a * sin(f)` where f is allowed to be between 0 and pi if b (the frequency) is even - if b is odd then f must be 0 (or pi, but a is already allowed to be inverted which accomplishes the same thing.) The critical constraints on these worldlines are as follows:
 
 ### Closure
 All worldlines must be closed conformal-time loops between time(t) `t ∈ (0, π)`
