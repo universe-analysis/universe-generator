@@ -24,8 +24,9 @@ the ladder ends. Three attacks, one dimension-symmetric figure:
    analyze_approach_law. Same window test applied there.
 
 What this cannot do: exclude waves with period much longer than the
-observed window. Only more T can (T = 400+ rungs are cheap on the sparse
-engine when rentals return).
+observed window. The T = 400-520 extension (converge3d_e6ext, stitched
+into the 1e-6 arm) widened the 3+1 window to half a decade; beyond that,
+only more T can.
 
 Usage::
 
@@ -47,7 +48,11 @@ LADDERS: dict[int, tuple[tuple[str, tuple[str, ...], str], ...]] = {
     3: (
         (
             "1e-6",
-            ("data/pack/pack3d_e6.db", "data/converge/converge3d_e6.db"),
+            (
+                "data/pack/pack3d_e6.db",
+                "data/converge/converge3d_e6.db",
+                "data/converge/converge3d_e6ext.db",
+            ),
             "tab:blue",
         ),
         (
@@ -75,6 +80,8 @@ PROCESS_2D = (
 )
 #: Converged/claimed-plateau window start per dimension.
 WINDOW = {3: 160, 2: 100}
+#: Readable T ticks for the (log-x) panels, matching plots.plot_converge.
+T_TICKS = {3: (20, 40, 80, 160, 240, 360, 520), 2: (20, 40, 80, 140, 220, 300)}
 #: Tail window (decades of attempts) for the 3+1 log-rate estimate.
 RATE_TAIL_DECADES = 2.0
 #: Scanned wave periods, in decades of T.
@@ -194,6 +201,7 @@ def main() -> None:
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    import matplotlib.ticker as mticker
 
     fig, axes = plt.subplots(2, 2, figsize=(13.5, 10.2))
 
@@ -237,6 +245,9 @@ def main() -> None:
             va="bottom",
         )
         ax_state.set_xscale("log")
+        ax_state.xaxis.set_major_locator(mticker.FixedLocator(T_TICKS[dim]))
+        ax_state.xaxis.set_major_formatter(mticker.ScalarFormatter())
+        ax_state.xaxis.set_minor_formatter(mticker.NullFormatter())
         ax_state.set_xlabel("T (geometric mean of the rung pair)")
         ax_state.set_ylabel("local exponent")
         ax_state.set_title(f"{dim}+1: STATE N(T) — window wave test")
@@ -263,6 +274,9 @@ def main() -> None:
             f"|A|={amp_f:.4f} dchi2={dchi_f:.1f} ({verdict})"
         )
         ax_proc.set_xscale("log")
+        ax_proc.xaxis.set_major_locator(mticker.FixedLocator(T_TICKS[dim]))
+        ax_proc.xaxis.set_major_formatter(mticker.ScalarFormatter())
+        ax_proc.xaxis.set_minor_formatter(mticker.NullFormatter())
         ax_proc.set_xlabel("T (geometric mean of the rung pair)")
         ax_proc.set_ylabel("local exponent")
         ax_proc.set_title(

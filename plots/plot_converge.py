@@ -55,6 +55,10 @@ LADDERS: dict[int, tuple[tuple[str, tuple[str, ...], str], ...]] = {
         ("1e-9", ("data/converge/converge2d_e9.db",), "tab:orange"),
     ),
 }
+#: Readable T ticks for the (log-x) local-slope panels, per dim — the
+#: default log locator only labels powers of ten, which reads terribly
+#: when the whole ladder spans 20-520.
+SLOPE_TICKS = {3: (20, 40, 80, 160, 240, 360, 520), 2: (20, 40, 80, 140, 220, 300)}
 #: Converged/fit window start and the fixed high-T two-point pair, per dim.
 WINDOW = {3: 160, 2: 100}
 TWO_POINT = {3: (80, 160), 2: (140, 300)}
@@ -118,6 +122,7 @@ def two_point(
 
 def plot(out_path: Path) -> None:
     import matplotlib.pyplot as plt
+    import matplotlib.ticker as mticker
 
     fig, axes = plt.subplots(2, 2, figsize=(13.5, 10.2))
     summary: list[str] = []
@@ -165,6 +170,9 @@ def plot(out_path: Path) -> None:
                 va="bottom",
             )
         ax_slope.set_xscale("log")
+        ax_slope.xaxis.set_major_locator(mticker.FixedLocator(SLOPE_TICKS[dim]))
+        ax_slope.xaxis.set_major_formatter(mticker.ScalarFormatter())
+        ax_slope.xaxis.set_minor_formatter(mticker.NullFormatter())
         ax_slope.set_xlabel("T (geometric mean of the rung pair)")
         ax_slope.set_ylabel("local slope d log N / d log T")
         ax_slope.set_title(f"{dim}+1: local exponent vs resolution, per cutoff")
