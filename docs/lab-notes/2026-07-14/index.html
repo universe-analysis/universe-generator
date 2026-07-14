@@ -72,6 +72,76 @@
       </p>
     </article>
 
+    <article class="entry" id="accept-rate-wave">
+      <h2>Follow-ups: the kinetics in acceptance-rate form, and the &ldquo;wave&rdquo; that isn't</h2>
+      <p class="meta">
+        Reads the same 1e-6 stores (PACK + CONVERGE + extension) &middot;
+        charts + tick fix
+        <a href="https://github.com/universe-analysis/universe-generator/commit/589873a"><code>589873a</code></a>
+        &middot; the converge grid above was re-rendered with the readable
+        T ticks from the same commit
+      </p>
+      <p>
+        Two follow-ups from reading the extension chart (plus readable T tick
+        labels on every log-x exponent panel, replacing the bare powers of
+        ten). First, the kinetics seen in acceptance-rate terms rather than
+        count terms:
+      </p>
+      <figure class="plot">
+        <img src="accept_rate.png"
+             alt="Two-by-two grid. Top left: 3+1 acceptance rate versus attempts on log-log axes, one line per T from 40 to 520 — parallel straight lines of slope near minus one marching toward the 1e-6 stop line. Top right: attempts to reach the stop rate versus T, a clean power law fit T to the 2.223. Bottom row: the 2+1 twins; the rate decay is steeper than slope minus one and the cost exponent is 1.18 with large errors." />
+        <figcaption>
+          Left: instantaneous acceptance rate dN/d(attempts) per T (seed 1).
+          Right: attempts to reach the 1e-6 stop vs T, with the window fit.
+        </figcaption>
+      </figure>
+      <ul>
+        <li>The 3+1 rate decay is a family of parallel slope&asymp;&minus;1
+            lines (rate ~ 1/t &hArr; N ~ ln t) — the logarithmic approach law,
+            visible raw with no fitting.</li>
+        <li>The cost curve gives a <strong>third exponent from the same
+            process: attempts-to-converge ~ T<sup>2.223 &plusmn;
+            0.012</sup></strong>. Under <em>pure</em> log kinetics
+            (rate = b/t) the stop time would be b(T)/10<sup>-6</sup> and this
+            would equal the rate exponent 2.336; it is 0.11 lower. So the
+            ordering state (2.318) &gt; cost (2.223), both below rate (2.336) —
+            more evidence that the kinetics carry a T-dependent piece beyond
+            the pure log (the c(T) offset of the open question).</li>
+      </ul>
+      <p>
+        Second, Kevin's read of the extension: the local exponent
+        &ldquo;sure looks pretty wave like&rdquo; over T = 400&ndash;520.
+        Tested, it isn't — yet, at least:
+      </p>
+      <figure class="plot">
+        <img src="wave_test_ext.png"
+             alt="The wave-test grid re-run with the extension stitched in: the 3+1 state panel now reaches the 480-to-520 rung, and the legend reads window no detectable wave, delta chi squared 3.6, for the 1e-6 arm." />
+        <figcaption>
+          The window wave test re-run on the extended (T = 160&ndash;520)
+          1e-6 arm.
+        </figcaption>
+      </figure>
+      <ul>
+        <li>Best sinusoid vs constant on the extended window:
+            <strong>&Delta;&chi;&sup2; = 3.6, below the detection bar of
+            4</strong> — no statistically detectable wave, now over half a
+            decade of T.</li>
+        <li>The visual culprit is a single rung: <strong>N(440) sits +2.6&sigma;
+            above the window power law</strong> (every other rung is within
+            &plusmn;1.6&sigma;; one 2.6&sigma; point among ten rungs is
+            unremarkable). Adjacent two-point slopes share that rung, so one
+            high point mechanically makes the up&ndash;down swing
+            (2.35 &rarr; 2.27) that reads as a wave — local-slope wiggles are
+            anti-correlated by construction.</li>
+        <li>Honest caveat: the end-to-end residual pattern (low&ndash;high&ndash;low)
+            is mild downward curvature, consistent with the extension-only fit
+            sitting below the full-window fit (2.308 vs 2.318). That is the
+            depth/curvature systematic of the state&ndash;rate question, not an
+            oscillation; a T = 560&ndash;640 arm or an e7 extension would
+            separate them.</li>
+      </ul>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
