@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-07-14</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-07-14</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="ext-verdict">
+      <h2>The T = 400&ndash;520 extension: the state exponent does not crawl to 7/3</h2>
+      <p class="meta">
+        <code>converge3d_e6ext</code> campaign (T = 400, 440, 480, 520,
+        5 seeds, 1e-6 rate stop, sparse engine, dual-4090 rentals) &middot;
+        ladder stitch
+        <a href="https://github.com/universe-analysis/universe-generator/commit/a645bd0"><code>a645bd0</code></a>
+      </p>
+      <p>
+        The state-vs-rate discriminator. After the 7/3 chase ended with a
+        cutoff-invariant window value of D = 2.321 (07-11), the process-level
+        log-growth rate b(T) ~ T<sup>2.336(8)</sup> reopened 7/3 by a side
+        door: under log kinetics the stopped-count slope approaches the rate
+        exponent from below, so the window value could have been a still-rising
+        transient. The prediction was concrete &mdash; if the state exponent is
+        secretly 7/3, the local slope must <em>climb</em> toward 2.333 as the
+        ladder extends. It doesn't:
+      </p>
+      <figure class="plot">
+        <img src="converge_grid_ext.png"
+             alt="Two-by-two grid. Top left: 3+1 local exponent versus rung T, now extending to a 480-to-520 rung near T of 500; the blue 1e-6 points scatter between 2.27 and 2.35 around a flat fit line at 2.318, below the dotted 7/3 reference. Top right: 3+1 window-fit exponent versus cutoff depth, 2.318 at 1e-6 and 2.322 at 1e-7. Bottom row: the 2+1 twins, unchanged from 07-11." />
+        <figcaption>
+          The converge grid with the extension stitched into the 3+1
+          1e-6 arm (top left, rightmost four rungs).
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>Extension-only fit (T = 400&ndash;520): D = 2.308 &plusmn;
+            0.009</strong> &mdash; about 3&sigma; <em>below</em> 7/3 (2.333)
+            and 2.4&sigma; below the measured rate exponent (2.336 &plusmn;
+            0.008). The high-T local slopes (2.35, 2.27, 2.32 for the last
+            three rungs) scatter around the window value with no upward
+            trend.</li>
+        <li>The full converged window now spans T = 160&ndash;520 (half a
+            decade, up from 0.35): <strong>D = 2.3177 &plusmn; 0.0012</strong>
+            at 1e-6, versus 2.3216 &plusmn; 0.0035 at 1e-7 &mdash; the known
+            small depth drift (~+0.004/decade), far too small to reconcile the
+            state value with the rate value.</li>
+        <li><strong>Verdict: the state and rate exponents are genuinely
+            different observables.</strong> The stopped-count exponent is
+            D &asymp; 2.32 and is not crawling anywhere; the log-growth-rate
+            exponent sits ~0.02 above it. The gap &mdash; not 7/3 &mdash; is
+            now the thing needing a kinetic explanation (an offset term in
+            N &asymp; b(T)&middot;ln t + c(T) that grows with T would do it).</li>
+        <li>Ladder top: &lang;N&rang; = 1.079&times;10<sup>6</sup> worldlines
+            at T = 520 (seed spread 0.4%). The T = 520 grids peaked near
+            130 GB host RAM &mdash; the sparse engine's ceiling is system
+            memory, not VRAM; the tier only ran once the fleet had a 2 TB
+            box.</li>
+      </ul>
+      <p>
+        With this, open question 1 flips from &ldquo;is it 7/3 after
+        all?&rdquo; to &ldquo;why does the rate exponent exceed the state
+        exponent by 0.02?&rdquo; &mdash; a systematics pass on the rate
+        estimate (tail-window dependence, per-seed scatter) is the natural
+        next arm.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>

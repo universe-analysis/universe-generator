@@ -1,6 +1,6 @@
 # Braided Universe — Physics Findings
 
-The current state of knowledge, stated as of 2026-07-10. This file describes
+The current state of knowledge, stated as of 2026-07-14. This file describes
 what we know about the model as it is now defined and measured; the
 day-by-day evidence trail (including superseded models, estimators, and
 samplers) lives in the lab notebook (`docs/lab-notes/`) and git history. The
@@ -107,20 +107,24 @@ carrier** (section 4) — a *packing-number* exponent measuring the dynamical
 capacity of the joint all-times exclusion, strictly below the spatial
 dimension:
 
-- **3+1: the state exponent windows at 2.321; the rate exponent says 7/3
-  is still live.** The local slope of the stopped count N(T) rises from
-  ~2.15 (low-T transient) and is flat and cutoff-invariant over
-  T = 160–360 (2.3208 ± 0.0008 at 1e-6, 2.3216 ± 0.0035 at 1e-7); no wave
-  is detectable in the window and the full-range shape is a smooth
-  monotone transient. But the window spans only 0.35 decades and the
-  transient's asymptote is unconstrained by shape — and the process-level
-  **log-growth rate b(T) scales as T^2.336(8) / T^2.329(7)** (1e-6/1e-7),
-  ~4σ above the state window value and consistent with **7/3**. Under log
-  kinetics the state slope approaches the rate exponent from below, so
-  2.321 is a window value, plausibly still crawling toward the rate value.
-  D/d = 3/4 (2.25) stays ruled out; **7/3 is an open candidate again** via
-  the rate route. Discriminator: T = 400+ rungs and rate systematics
-  (open question 4).
+- **3+1: the state exponent is 2.32 and is not 7/3; the rate exponent
+  sits ~0.02 above it, and the gap is real.** The local slope of the
+  stopped count N(T) rises from ~2.15 (low-T transient) and is flat and
+  cutoff-invariant over T = 160–520, half a decade (window fits
+  2.3177 ± 0.0012 at 1e-6, 2.3216 ± 0.0035 at 1e-7 over its T ≤ 360
+  reach); no wave is detectable in the window and the full-range shape is
+  a smooth monotone transient. The 7/3 side door — under log kinetics the
+  state slope approaches the rate exponent from below, so 2.32 could have
+  been a still-rising transient — was tested directly by the T = 400–520
+  extension (`converge3d_e6ext`): the predicted climb does not happen.
+  The extension-only fit is **2.308 ± 0.009, ~3σ below 7/3** and 2.4σ
+  below the measured rate exponent, with no upward trend in the local
+  slopes. Meanwhile the process-level **log-growth rate b(T) scales as
+  T^2.336(8) / T^2.329(7)** (1e-6/1e-7), consistent with 7/3. Verdict:
+  the state and rate exponents are *different observables* — the ~0.02
+  gap needs a kinetic explanation (e.g. a T-dependent offset in
+  N ≈ b(T)·ln t + c(T)), and neither D/d = 3/4 (2.25) nor 7/3 describes
+  the stopped state (open question 1).
 - **2+1: jamming-limit D∞ = 1.434 ± 0.021** (Feder-law extrapolation of the
   kinetic curves: shared approach exponent p = 0.120 voted by the
   depth-constrained small-T tails; the p systematic moves D∞ by < 0.001).
@@ -317,13 +321,14 @@ and whether the ~1.5 ratio is an asymptote.
 
 ## Open questions / next steps
 
-1. **Resolve the 3+1 state-vs-rate discrepancy (is it 7/3 after all?).**
-   The stopped-count window says 2.321; the log-growth rate says
-   2.33 ≈ 7/3, and kinetics argue the state crawls toward the rate. The
-   discriminators are cheap: T = 400–480 rungs (sparse engine, fits a
-   24 GB card) and a systematics pass on the rate estimate (tail-window
-   dependence, per-seed scatter). This is now the sharpest number in the
-   project. The 2+1 limit (D∞ = 1.434 ± 0.021) stands. Closely coupled:
+1. **Explain the 3+1 state–rate gap.** The T = 400–520 extension settled
+   the direction: the stopped-count exponent is 2.32 (not crawling toward
+   7/3; extension-only fit 2.308 ± 0.009), while the log-growth rate
+   scales as 2.336 ± 0.008 ≈ 7/3. Two distinct exponents, ~0.02 apart,
+   out of one process. Next arms: a systematics pass on the rate estimate
+   (tail-window dependence, per-seed scatter), and a kinetic model with a
+   T-dependent offset (N ≈ b·ln t + c(T)) fit jointly to the curves. The
+   2+1 limit (D∞ = 1.434 ± 0.021) stands. Closely coupled:
    *why* is the approach law dimension-dependent (Feder power law in 2+1,
    activated/log in 3+1), and what analytic argument (1+1 reduction,
    mean-field packing) produces either exponent?
@@ -334,9 +339,9 @@ and whether the ~1.5 ratio is an asymptote.
    shape appear away from the turnaround? Needs careful treatment of
    peculiar velocities away from sin z = 1.
 4. **Wave exclusion beyond the window** — the wave test bounds oscillations
-   inside the measured range only; periods much longer than the window need
-   the extended ladder of question 1. (Merged into the state-vs-rate
-   program.)
+   inside the measured range only (now T = 160–520 after the extension);
+   periods much longer than half a decade in T remain formally
+   unconstrained, as they always will be at finite range.
 5. **Subpaths / unique groups** — post-jam filling by paths that join
    existing groups (engine `--subpaths`). How much subpath capacity does a
    jam retain, and what is a multi-place group, physically?
