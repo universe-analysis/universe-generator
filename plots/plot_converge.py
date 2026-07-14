@@ -12,7 +12,8 @@ A symmetric 2x2 grid so the dimensions can be compared panel-for-panel
                  weighted fit plus a fixed high-T two-point slope. Shows
                  the depth (in)dependence at a glance.
 
-3+1 arms stitch the PACK (T <= 160) and CONVERGE (T = 200-360) stores;
+3+1 arms stitch the PACK (T <= 160) and CONVERGE (T = 200-360) stores,
+plus the 1e-6 extension ladder (T = 400-520, the state-vs-rate probe);
 2+1 uses the full T = 20-300 ladders at each cutoff (the 1e-9 anchor arm
 has only two T values, so it appears in the right column only).
 
@@ -34,7 +35,11 @@ LADDERS: dict[int, tuple[tuple[str, tuple[str, ...], str], ...]] = {
     3: (
         (
             "1e-6",
-            ("data/pack/pack3d_e6.db", "data/converge/converge3d_e6.db"),
+            (
+                "data/pack/pack3d_e6.db",
+                "data/converge/converge3d_e6.db",
+                "data/converge/converge3d_e6ext.db",
+            ),
             "tab:blue",
         ),
         (
