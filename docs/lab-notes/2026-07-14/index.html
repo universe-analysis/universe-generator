@@ -142,6 +142,65 @@
       </ul>
     </article>
 
+    <article class="entry" id="rate-systematics">
+      <h2>Rate-exponent systematics: the rate converges onto 7/3 from above</h2>
+      <p class="meta">
+        Same stores (1e-6 ladder incl. extension; 2+1 Feder ceilings from
+        e8+e9) &middot; chart
+        <a href="https://github.com/universe-analysis/universe-generator/commit/1f54c5e"><code>1f54c5e</code></a>
+      </p>
+      <p>
+        Kevin asked how wide the error bar on the rate exponent (the
+        &ldquo;2.336 &plusmn; 0.008&rdquo;) really is. Answer: the quoted
+        &plusmn;0.008 was fit error only, and sweeping the two real knobs
+        &mdash; the curve-tail length used to measure b(T), and the T window
+        fitted &mdash; shows the rate exponent isn't a constant at all:
+      </p>
+      <figure class="plot">
+        <img src="rate_exponent.png"
+             alt="Two-by-two grid. Top left: local slope of the 3+1 log-growth rate versus rung T — it rises to a peak of 2.372 near T of 180, then decays monotonically through the 7/3 line, with the last three rungs at 2.33; the state window fit at 2.318 is drawn below. Top right: fitted rate exponent versus curve-tail length for three T windows; the tail choice moves each series by under 0.006, but the windows are separated by 0.02, and the extension-only window sits on the 7/3 line. Bottom row: the 2+1 twins using the Feder ceiling, noisier, hovering around the 1.434 jamming-limit value." />
+        <figcaption>
+          Left: local slope of the process observable vs T. Right: fitted
+          exponent vs tail length (series = T window).
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>The tail knob is a non-issue</strong>: sweeping 1&ndash;3
+            decades moves the fitted exponent by &lt; 0.007 in every
+            window.</li>
+        <li><strong>The T window is the real systematic, because the local
+            rate slope drifts</strong>: it peaks at 2.372 near T &asymp; 180
+            and decays monotonically &mdash; 2.34 by T &asymp; 260, and the
+            last three rungs read 2.328, 2.337, 2.331. Any single
+            &ldquo;rate exponent &plusmn; err&rdquo; was window-dependent
+            (160&ndash;360 gives 2.356, 160&ndash;520 gives 2.347 with this
+            estimator), which is also why earlier quotes varied by ~0.02
+            with estimator details.</li>
+        <li><strong>The extension window lands on 7/3</strong>:
+            T = 400&ndash;520 gives 2.3326 &plusmn; 0.0013 (stat) with a
+            &plusmn;0.005 tail spread &mdash; consistent with 7/3 = 2.3333
+            within half a sigma. The refined hypothesis: <em>the rate
+            exponent converges onto 7/3 from above</em>, while the state
+            exponent sits fixed at 2.318 below it. That is a cleaner story
+            than two arbitrary exponents 0.02 apart: 7/3 may be exact for
+            the process, with the state permanently offset by the c(T)
+            kinetic term.</li>
+        <li>2+1 twin: the Feder-ceiling exponent is much noisier (ceilings
+            are extrapolations), hovering around the D&#8734; = 1.434
+            jamming-limit value with ~&plusmn;0.02 errors and the same mild
+            window sensitivity &mdash; no contradiction, no comparable
+            resolution.</li>
+      </ul>
+      <p>
+        Caveats: three extension rungs is thin evidence for an asymptote;
+        adjacent local slopes share rungs (not independent); and the b(T)
+        estimator itself assumes the pure-log form on the fitted tail. The
+        clean discriminators are a T = 560&ndash;640 arm (the local rate
+        slope must <em>stay</em> at 2.333, not keep falling through it) and
+        the joint kinetic fit N &asymp; b(T)&middot;ln t + c(T).
+      </p>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>

@@ -117,14 +117,19 @@ dimension:
   state slope approaches the rate exponent from below, so 2.32 could have
   been a still-rising transient — was tested directly by the T = 400–520
   extension (`converge3d_e6ext`): the predicted climb does not happen.
-  The extension-only fit is **2.308 ± 0.009, ~3σ below 7/3** and 2.4σ
+  The extension-only fit is **2.308 ± 0.009, ~3σ below 7/3** and well
   below the measured rate exponent, with no upward trend in the local
-  slopes. Meanwhile the process-level **log-growth rate b(T) scales as
-  T^2.336(8) / T^2.329(7)** (1e-6/1e-7), consistent with 7/3. Verdict:
-  the state and rate exponents are *different observables* — the ~0.02
-  gap needs a kinetic explanation (e.g. a T-dependent offset in
-  N ≈ b(T)·ln t + c(T)), and neither D/d = 3/4 (2.25) nor 7/3 describes
-  the stopped state (open question 1).
+  slopes. The process-level **log-growth rate b(T) is not a single
+  exponent**: its local slope peaks at 2.372 near T ≈ 180 and decays
+  monotonically with T — window fits are estimator-dependent at the
+  ±0.02 level (2.356 over T = 160–360, 2.347 over 160–520; the
+  curve-tail knob contributes < 0.007) — and **over the extension it
+  lands on 7/3: 2.3326 ± 0.0013 (stat) ± 0.005 (tail)**. Working
+  hypothesis: *the rate exponent converges onto 7/3 from above, while
+  the state exponent sits fixed ~0.015 below it* — the offset needs a
+  kinetic explanation (e.g. a T-dependent term in N ≈ b(T)·ln t + c(T)).
+  Neither D/d = 3/4 (2.25) nor 7/3 describes the stopped state
+  (open question 1).
 - **2+1: jamming-limit D∞ = 1.434 ± 0.021** (Feder-law extrapolation of the
   kinetic curves: shared approach exponent p = 0.120 voted by the
   depth-constrained small-T tails; the p systematic moves D∞ by < 0.001).
@@ -321,14 +326,17 @@ and whether the ~1.5 ratio is an asymptote.
 
 ## Open questions / next steps
 
-1. **Explain the 3+1 state–rate gap.** The T = 400–520 extension settled
-   the direction: the stopped-count exponent is 2.32 (not crawling toward
-   7/3; extension-only fit 2.308 ± 0.009), while the log-growth rate
-   scales as 2.336 ± 0.008 ≈ 7/3. Two distinct exponents, ~0.02 apart,
-   out of one process. Next arms: a systematics pass on the rate estimate
-   (tail-window dependence, per-seed scatter), and a kinetic model with a
-   T-dependent offset (N ≈ b·ln t + c(T)) fit jointly to the curves. The
-   2+1 limit (D∞ = 1.434 ± 0.021) stands. Closely coupled:
+1. **Explain the 3+1 state–rate gap; test rate → 7/3.** The T = 400–520
+   extension settled the direction: the stopped-count exponent is 2.32
+   (not crawling toward 7/3; extension-only fit 2.308 ± 0.009). The
+   rate-systematics pass (2026-07-14) then showed the rate exponent
+   *decays with T onto 7/3 from above* (extension-only 2.3326 ± 0.0013;
+   tail knob < 0.007, T window ~0.02). Working hypothesis: 7/3 is exact
+   for the process, with the state offset below it by kinetics. Next
+   arms: a T = 560–640 rung pair (the local rate slope must *hold* 2.333,
+   not fall through it), and a joint kinetic fit N ≈ b(T)·ln t + c(T) to
+   the stored curves to derive the state offset. The 2+1 limit
+   (D∞ = 1.434 ± 0.021) stands. Closely coupled:
    *why* is the approach law dimension-dependent (Feder power law in 2+1,
    activated/log in 3+1), and what analytic argument (1+1 reduction,
    mean-field packing) produces either exponent?
