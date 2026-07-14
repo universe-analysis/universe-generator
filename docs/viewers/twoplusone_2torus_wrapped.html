@@ -1210,7 +1210,7 @@
         readSubConfig();
         genSubBudgetMs = parseFloat(subTimeRange.value) * 1000;
         time_steps = parseInt(timeInput.value);
-        modulation_Max = time_steps;
+        modulation_Max = time_steps-1;
         // total sinusoid terms per axis, incl. sin1; the NW = freqTerms-1
         // wiggle frequencies must be unique integers in [2, modulation_Max+1]
         freqTerms = termsInput.value;
