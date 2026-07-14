@@ -46,7 +46,7 @@ Note that this discrete method does not explicitly force that two paths ever per
 ## Physics
 
 ### Minkowski spacetime - FLRW spacetime
-This model describes generic n+1 dimension universes, with n spatial dimensions. The space is flat but has a torus submanifold embedded. This is known as a generalized Minkowski spacetime. However, this model embeds expansion and collapse over time, seperating it from standard Minkowski spacetime while still retaining it's properties (we believe.) It cannot be represented by standard FLRW spacetime either, due to being flat, so far as we understand.
+This model describes generic n+1 dimension universes, with n spatial dimensions. The space is flat but has a torus submanifold embedded. This is known as a generalized Minkowski spacetime. However, this model embeds expansion and collapse over time, making it align with a flat FLRW metric.
 
 ### Quantum Behavior
 A single unique group consists of a potentially infinite number of subpaths - paths which only intersect each other while avoiding intersections with every other path from a different unique group across all of time. This allows for a single unique group [particle] to be represented by many different positions and velocities at once. A goal of this project is to study these subpath behaviors to determine if they follow expected Bell inequalities / other tests for quantum behavior.
