@@ -216,7 +216,10 @@
                 <span>Max wraps</span><input type="number" id="frameWrapsInput" value="6" min="0">
             </div>
             <div class="choices">
-                <label title="Fix the front speed from the rewind floor alone: c = −1/η(floor), so a Bang-born pulse reaches the antipode (χ=1) exactly at t=π/2 — and by η-antisymmetry one full lap (χ=2) at the Crunch mirror t=π−floor. χmax then grows with observation time. Overrides the Light cones Speed input"><input type="checkbox" id="frameFitCChk" checked> Fit speed — antipode at π/2, full lap by Crunch</label>
+                <span class="group-name">Front</span>
+                <label title="The model's own causal boundary: the front radius at rewound time ζ is the largest comoving displacement any worldline under the unit wiggle budget |a·b| = 1 can make between ζ and the observation time. Plateau ≈ 1.26 near the Bang (no horizon at any epoch), √2 at π/2, exactly 2 at the Crunch. Per-axis, so the front is always a Chebyshev square"><input type="radio" name="frameFront" value="budget" checked> Wiggle budget — the model's causal reach</label>
+                <label title="Conformal front with the speed fixed by the rewind floor alone: c = −1/η(floor), so a Bang-born pulse reaches the antipode (χ=1) exactly at t=π/2 — and by η-antisymmetry one full lap (χ=2) at the Crunch mirror t=π−floor"><input type="radio" name="frameFront" value="fit"> Fit speed — antipode at π/2, lap by Crunch</label>
+                <label title="Conformal front at the Light cones Speed scalar (e.g. .33 circle / .2 square), shape from the Light cones metric radio"><input type="radio" name="frameFront" value="speed"> Light-cones speed scalar</label>
             </div>
             <div class="choices">
                 <span class="group-name">Observer</span>
@@ -224,10 +227,10 @@
                 <label title="The observer's instantaneous rest frame: apparent directions bend toward the velocity (aberration) and the Doppler factor multiplies the cosmological redshift"><input type="radio" name="frameObsMode" value="moving"> Moving — Doppler + aberration</label>
             </div>
             <div class="row">
-                <button id="frameBuildBtn" title="Build the observer's frame at the CURRENT scrub time (pauses playback). The wavefront metric AND speed follow the Light cones choices — shape radio + Speed scalar (e.g. .33 circle / .2 square)">Build frame @ now</button>
+                <button id="frameBuildBtn" title="Build the observer's frame at the CURRENT scrub time (pauses playback). The wavefront follows the Front choice above; the conformal modes take metric/speed from the Light cones panel">Build frame @ now</button>
                 <button id="frameAnimBtn" title="Replay the rewind: the pulse front sweeps outward from the observer while the universe runs back">Rewind ▸</button>
             </div>
-            <div class="row" title="Scrub the rewind by hand — the front sits at this fraction of the full pulse radius; the readout is the rewound time ζ the front has reached">
+            <div class="row" title="Scrub the rewind by hand — conformal fronts sweep this fraction of the full pulse radius, the budget front sweeps the rewound time; the readout is the time ζ the front has reached">
                 <span>Rewind</span><input type="range" id="frameRewindRange" min="0" max="1" step="0.001" value="1"><span class="val" id="frameRewindVal" style="width:38px">—</span>
             </div>
         </details>
@@ -295,7 +298,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v26';
+    const VIEWER_VERSION = 'v27';
 
     let functions = [];
     let Z_cache = [];
@@ -1740,6 +1743,37 @@
     const FRAME_BETA_CAP = 0.995;          // worldlines aren't enforced subluminal
 
     function etaOf(z){ return Math.log(Math.tan(z/2)); }
+    /* Wiggle-budget reach: the largest comoving displacement any admissible
+       worldline can make between times z and zObs. A unit-budget term
+       (|a·b| = 1, a = 1/b) sits at X(z) = [sin(bz+f) − sin f]/(b·sin z),
+       which is LINEAR in (sin f, cos f):
+           X(z) = α(z)·sin f + β(z)·cos f,
+           α(z) = (cos bz − 1)/(b sin z),  β(z) = sin bz/(b sin z),
+       so the two-time displacement has an exact maximum —
+           even b (free phase):  √(Δα² + Δβ²)
+           odd  b (f ∈ {0,π}):   |Δβ|
+       — and the budget being linear across terms, the single best frequency
+       is the overall optimum (multi-term worldlines cannot reach farther).
+       The reach is per-axis, i.e. natively a Chebyshev square front. */
+    function makeReachFn(zObs, bMax){
+        const aObs = new Float64Array(bMax + 1), bObs = new Float64Array(bMax + 1);
+        const sObs = Math.sin(zObs);
+        for (let b = 2; b <= bMax; b++){
+            aObs[b] = (Math.cos(b*zObs) - 1)/(b*sObs);
+            bObs[b] = Math.sin(b*zObs)/(b*sObs);
+        }
+        return function(z){
+            const s = Math.sin(z);
+            let best = 0;
+            for (let b = 2; b <= bMax; b++){
+                const da = (Math.cos(b*z) - 1)/(b*s) - aObs[b];
+                const db = Math.sin(b*z)/(b*s) - bObs[b];
+                const d = (b % 2 === 0) ? Math.hypot(da, db) : Math.abs(db);
+                if (d > best) best = d;
+            }
+            return best;
+        };
+    }
     function setFrameVisible(v){
         showFrame = v && !!frameHits;
         frameBox.style.display = showFrame ? 'block' : 'none';
@@ -1749,7 +1783,11 @@
     function updateRewindVal(){
         const el = document.getElementById('frameRewindVal');
         if (!frameInfo){ el.textContent = '—'; return; }
-        const zeta = 2*Math.atan(Math.exp(frameInfo.etaObs - frameRewind*frameInfo.chiMax/frameInfo.spd));
+        // budget mode rewinds linearly in z (the front radius follows the
+        // reach); conformal modes rewind linearly in χ and invert η
+        const zeta = frameInfo.budget
+            ? frameInfo.zObs - frameRewind*(frameInfo.zObs - frameInfo.zMin)
+            : 2*Math.atan(Math.exp(frameInfo.etaObs - frameRewind*frameInfo.chiMax/frameInfo.spd));
         el.textContent = (zeta/Math.PI).toFixed(2) + 'π';
     }
     function buildFrame(){
@@ -1773,20 +1811,32 @@
     }
     function buildFrameNow(obsIdx, zObs, zMin){
         const etaObs = etaOf(zObs);
-        // front metric follows the Light cones shape choice; speed comes from
-        // the Light cones Speed scalar (e.g. .33 circle / .2 square) — or,
-        // with Fit speed on, is FIXED by the rewind floor: c = −1/η(floor),
-        // so a Bang-born pulse reaches the antipode (χ=1) exactly at π/2 and,
-        // by η(π−z) = −η(z), one full lap (χ=2) at the Crunch mirror π−floor.
-        // χmax = c·(η_obs − η_floor) then grows with the observation time.
-        const cheb = U.uConeSquare.value === 1;
-        const fitC = document.getElementById('frameFitCChk').checked;
-        const spd = fitC ? -1/etaOf(zMin)
-                         : Math.max(1e-3, U.uConeSpeed.value);
-        const chiMax = spd*(etaObs - etaOf(zMin));
+        // Three front choices. "budget": the front radius at rewound time ζ
+        // is the wiggle-budget reach R(ζ, z_obs) — the model's own causal
+        // boundary, always a Chebyshev square. "fit": conformal front with
+        // the speed FIXED by the rewind floor, c = −1/η(floor), so a
+        // Bang-born pulse reaches the antipode (χ=1) exactly at π/2 and, by
+        // η(π−z) = −η(z), one full lap (χ=2) at the Crunch mirror π−floor.
+        // "speed": conformal front at the Light cones Speed scalar. The
+        // conformal modes take the metric from the Light cones shape choice.
+        const front = document.querySelector('input[name=frameFront]:checked').value;
+        const budget = front === 'budget';
+        const cheb = budget || U.uConeSquare.value === 1;
+        // budget mode has no single signal speed; it keeps the floor-fit
+        // speed as the reference c for the moving-observer β and ζ readouts
+        const spd = front === 'speed' ? Math.max(1e-3, U.uConeSpeed.value)
+                                      : -1/etaOf(zMin);
         const dist = cheb ? (dx,dy) => Math.max(Math.abs(dx), Math.abs(dy))
                           : (dx,dy) => Math.hypot(dx, dy);
         const zAtChi = chi => 2*Math.atan(Math.exp(etaObs - chi/spd));  // η(z) = η_obs − χ/c, inverted
+        // reach frequency band: what the sampler draws from, extended by any
+        // imported term above it
+        let bMax = Math.max(2, (modulation_Max || 0) + 1);
+        for (const f of functions) for (const t of f.terms){
+            if (t.bx > bMax) bMax = t.bx;
+            if (t.by > bMax) bMax = t.by;
+        }
+        const reachFn = budget ? makeReachFn(zObs, bMax) : null;
         const [ox, oy] = comovXY(functions[obsIdx], zObs);              // pulse centre, held fixed
         // proper peculiar velocity of the observer at reception, in units of
         // the SAME effective light speed as the front; capped below 1 so the
@@ -1798,11 +1848,27 @@
         if (betaClamped){
             beta = [beta[0]*FRAME_BETA_CAP/betaRaw, beta[1]*FRAME_BETA_CAP/betaRaw];
         }
-        const M = FRAME_GRID, dChi = chiMax / M;
+        // grid: conformal modes march χ uniformly (constant front step and
+        // map resolution), inverting η for z — that samples z ever finer
+        // toward the Bang on its own. Budget mode marches z uniformly (the
+        // reach is bounded and slowly varying), so its density must track
+        // the fastest wiggle or a crossing could slip between nodes.
+        const M = budget ? Math.min(4000, Math.max(FRAME_GRID, 2*bMax)) : FRAME_GRID;
         const zg = new Float64Array(M+1), chig = new Float64Array(M+1);
-        for (let i = 0; i <= M; i++){
-            chig[i] = dChi * i;
-            zg[i] = zAtChi(chig[i]);
+        let chiMax;
+        if (budget){
+            for (let i = 0; i <= M; i++){
+                zg[i] = zObs - (zObs - zMin)*i/M;
+                chig[i] = reachFn(zg[i]);
+            }
+            chiMax = 0;
+            for (let i = 0; i <= M; i++) if (chig[i] > chiMax) chiMax = chig[i];
+        } else {
+            chiMax = spd*(etaObs - etaOf(zMin));
+            for (let i = 0; i <= M; i++){
+                chig[i] = chiMax * i / M;
+                zg[i] = zAtChi(chig[i]);
+            }
         }
         // wrap images: unwrapped comoving coords stay within ±2, so the image
         // shifted by 2·max|n| cannot meet the front before χ = 2·max|n| − 4
@@ -1820,7 +1886,10 @@
                 const bx = 2*nx - ox, by = 2*ny - oy;
                 // skip grid rows the front cannot have reached for this image
                 const dmin = Math.max(0, 2*Math.max(Math.abs(nx), Math.abs(ny)) - 4);
-                const i0 = Math.max(1, Math.ceil(dmin / dChi));
+                if (dmin >= chiMax) continue;
+                // conformal grids are χ-uniform, so unreachable rows skip by
+                // index; the budget grid just starts at 1 (χ bounded by ~2)
+                const i0 = budget ? 1 : Math.max(1, Math.ceil(dmin*M/chiMax));
                 if (i0 > M) continue;
                 let prev = dist(px[i0-1] + bx, py[i0-1] + by) - chig[i0-1];
                 // the observer itself sits exactly ON the front at χ = 0; nudge
@@ -1830,16 +1899,31 @@
                 for (let i = i0; i <= M; i++){
                     const g = dist(px[i] + bx, py[i] + by) - chig[i];
                     if ((prev < 0) !== (g < 0)){
-                        // refine the crossing in χ (fresh worldline evals, not the grid)
-                        let lo = chig[i-1], hi = chig[i];
+                        // refine the crossing with fresh worldline evals (not
+                        // the grid): conformal modes bisect in χ, budget in z
                         const insidePrev = prev < 0;
-                        for (let it = 0; it < FRAME_BISECT; it++){
-                            const mid = (lo + hi) / 2;
-                            const q = comovXY(f, zAtChi(mid));
-                            const gm = dist(q[0] + bx, q[1] + by) - mid;
-                            if ((gm < 0) === insidePrev) lo = mid; else hi = mid;
+                        let chi, zEmit;
+                        if (budget){
+                            let lo = zg[i-1], hi = zg[i];
+                            for (let it = 0; it < FRAME_BISECT; it++){
+                                const mid = (lo + hi) / 2;
+                                const q = comovXY(f, mid);
+                                const gm = dist(q[0] + bx, q[1] + by) - reachFn(mid);
+                                if ((gm < 0) === insidePrev) lo = mid; else hi = mid;
+                            }
+                            zEmit = (lo + hi) / 2;
+                            chi = reachFn(zEmit);
+                        } else {
+                            let lo = chig[i-1], hi = chig[i];
+                            for (let it = 0; it < FRAME_BISECT; it++){
+                                const mid = (lo + hi) / 2;
+                                const q = comovXY(f, zAtChi(mid));
+                                const gm = dist(q[0] + bx, q[1] + by) - mid;
+                                if ((gm < 0) === insidePrev) lo = mid; else hi = mid;
+                            }
+                            chi = (lo + hi) / 2;
+                            zEmit = zAtChi(chi);
                         }
-                        const chi = (lo + hi) / 2, zEmit = zAtChi(chi);
                         const q = comovXY(f, zEmit);
                         hits.push({ dx: q[0] + bx, dy: q[1] + by, chi, zEmit, p });
                     }
@@ -1847,17 +1931,26 @@
                 }
             }
         }
-        hits.sort((a, b) => a.chi - b.chi);       // lets the draw loop stop at the front
+        // the draw loop stops at the front: conformal modes reveal in χ
+        // order, budget mode in rewind (emission-time) order — the reach can
+        // dip as z rewinds, so χ order and z order differ there
+        if (budget) hits.sort((a, b) => b.zEmit - a.zEmit);
+        else hits.sort((a, b) => a.chi - b.chi);
         frameHits = hits;
-        frameInfo = { zObs, chiMax, etaObs, obsIdx, cheb, spd, sinObs: Math.sin(zObs),
+        frameInfo = { zObs, zMin, chiMax, etaObs, obsIdx, cheb, spd, budget, reachFn,
+                      sinObs: Math.sin(zObs),
                       beta, betaMag: Math.min(betaRaw, FRAME_BETA_CAP), betaClamped };
         frameEpochAt = genEpoch;
         frameRewind = 1; frameRewindRange.value = 1; frameAnimOn = false;
         updateRewindVal();
         setFrameVisible(true);
+        let frontLbl;
+        if (budget) frontLbl = `budget reach, bmax ${bMax}`;
+        else if (front === 'fit') frontLbl = `c=${spd.toFixed(3)} fit`;
+        else frontLbl = `c=${spd}`;
         statusEl.textContent = `Frame built: observer #${obsIdx} at t=${(zObs/Math.PI).toFixed(3)}π · `
                              + `${hits.length} images to ζ=${(zMin/Math.PI).toFixed(2)}π `
-                             + `(c=${fitC ? spd.toFixed(3) + ' fit' : spd} ${cheb ? 'square' : 'circle'}, `
+                             + `(${frontLbl} ${cheb ? 'square' : 'circle'}, `
                              + `χmax ${chiMax.toFixed(2)})`;
     }
     function frameShape(ctx, x, y, r, square){
@@ -1871,7 +1964,8 @@
         }
         if (!frameHits) return;
         const W = frameCanvas.width, H = frameCanvas.height, ctx = frameCtx;
-        const { zObs, chiMax, etaObs, obsIdx, cheb, spd, sinObs, beta, betaMag, betaClamped } = frameInfo;
+        const { zObs, zMin, chiMax, etaObs, obsIdx, cheb, spd, budget, reachFn,
+                sinObs, beta, betaMag, betaClamped } = frameInfo;
         const moving = frameObsMode === 'moving' && betaMag > 1e-6;
         const gamma = moving ? 1/Math.sqrt(1 - betaMag*betaMag) : 1;
         const ubx = moving ? beta[0]/betaMag : 0, uby = moving ? beta[1]/betaMag : 0;
@@ -1881,8 +1975,17 @@
         ctx.lineWidth = 1;
         ctx.strokeStyle = 'rgba(120,140,180,0.14)';
         for (let rr = 1; rr < chiMax; rr++) frameShape(ctx, cx0, cy0, rr*sc, cheb);
-        // pulse front at the current rewind position
-        const chiFront = frameRewind * chiMax;
+        // pulse front at the current rewind position: conformal modes sweep
+        // χ linearly and invert η for the rewound time ζ; budget mode rewinds
+        // ζ linearly in z and the front radius follows the reach
+        let chiFront, zeta;
+        if (budget){
+            zeta = zObs - frameRewind*(zObs - zMin);
+            chiFront = reachFn(zeta);
+        } else {
+            chiFront = frameRewind * chiMax;
+            zeta = 2*Math.atan(Math.exp(etaObs - chiFront/spd));
+        }
         ctx.lineWidth = 1.3*hudDPR;
         ctx.strokeStyle = 'rgba(235,240,255,0.75)';
         frameShape(ctx, cx0, cy0, chiFront*sc, cheb);
@@ -1902,7 +2005,9 @@
         const r = 1.6*hudDPR;
         let shown = 0;
         for (const h of frameHits){
-            if (h.chi > chiFront) break;          // sorted by χ
+            // budget hits reveal in emission-time order, conformal in χ order
+            // (matching each mode's sort in buildFrameNow)
+            if (budget ? h.zEmit < zeta : h.chi > chiFront) break;
             shown++;
             let ax = h.dx, ay = h.dy, lnDopp = 0;
             const eucl = moving ? Math.hypot(h.dx, h.dy) : 0;
@@ -1935,10 +2040,12 @@
             }
         }
         ctx.globalCompositeOperation = 'source-over';
-        const zeta = 2*Math.atan(Math.exp(etaObs - chiFront/spd));
         // the bar is 240px — keep both labels terse or they clip ("*" = β capped)
+        let metricLbl = '';
+        if (budget) metricLbl = ' · reach';
+        else if (cheb) metricLbl = ' · cheb';
         document.getElementById('frameObsLbl').textContent =
-            'obs #' + obsIdx + ' @ ' + (zObs/Math.PI).toFixed(3) + 'π' + (cheb ? ' · cheb' : '');
+            'obs #' + obsIdx + ' @ ' + (zObs/Math.PI).toFixed(3) + 'π' + metricLbl;
         document.getElementById('frameStateLbl').textContent =
             'ζ=' + (zeta/Math.PI).toFixed(3) + 'π · ' + shown + ' im'
             + (moving ? ' · β=' + betaMag.toFixed(2) + (betaClamped ? '*' : '') : '');
