@@ -56,6 +56,16 @@
                   background:rgba(6,8,16,.92); border-top:1px solid #161c2c; }
         #hudMode { color:#7d8aa6; }
         #hudVer { color:#5a6880; }
+
+        /* observer frame map: same chrome as the minimap, stacked above it */
+        #frameBox { position:fixed; right:12px; bottom:288px; z-index:9; width:240px;
+                    border:1px solid #222b40; border-radius:6px; overflow:hidden;
+                    background:rgba(2,3,8,0.55); display:none; }
+        #frameCanvas { width:240px; height:240px; display:block; }
+        #frameBar { display:flex; justify-content:space-between; align-items:baseline; gap:8px;
+                    padding:4px 8px; font-size:11px; color:#aab8cc; white-space:nowrap;
+                    background:rgba(6,8,16,.92); border-top:1px solid #161c2c; }
+        #frameObsLbl { color:#7d8aa6; }
     </style>
 </head>
 <body>
@@ -191,11 +201,43 @@
                 <label><input type="radio" name="coneShape" value="square"> Square (matches wrapped domain)</label>
             </div>
         </details>
+        <details>
+            <summary>Reference frame</summary>
+            <div class="choices">
+                <label title="Past-light-cone map: pause at an instant, then rewind the universe while a light pulse expands from the observer — every worldline crossing is plotted at its apparent (emission-time) position, coloured by redshift"><input type="checkbox" id="frameChk"> Show frame map</label>
+            </div>
+            <div class="row" title="Path index of the observer (0 = the default cone-emitting path)">
+                <span>Observer #</span><input type="number" id="frameObsInput" value="0" min="0">
+            </div>
+            <div class="row" title="Rewind floor, in units of π. The pulse radius diverges at the Bang (η → −∞), wrapping the torus without bound — this floor caps the map">
+                <span>Rewind to (×π)</span><input type="number" id="frameZminInput" value="0.02" min="0.002" max="0.9" step="0.01">
+            </div>
+            <div class="row" title="Cap on torus wrap images per particle: each lap of the pulse around the torus can image the same particle again, at an earlier epoch">
+                <span>Max wraps</span><input type="number" id="frameWrapsInput" value="6" min="0">
+            </div>
+            <div class="choices">
+                <span class="group-name">Observer</span>
+                <label title="Ignore the observer's peculiar velocity — the frame of an observer at rest in the comoving grid"><input type="radio" name="frameObsMode" value="static" checked> Comoving (static)</label>
+                <label title="The observer's instantaneous rest frame: apparent directions bend toward the velocity (aberration) and the Doppler factor multiplies the cosmological redshift"><input type="radio" name="frameObsMode" value="moving"> Moving — Doppler + aberration</label>
+            </div>
+            <div class="row">
+                <button id="frameBuildBtn" title="Build the observer's frame at the CURRENT scrub time (pauses playback). The wavefront metric follows the Light cones shape choice">Build frame @ now</button>
+                <button id="frameAnimBtn" title="Replay the rewind: the pulse front sweeps outward from the observer while the universe runs back">Rewind ▸</button>
+            </div>
+            <div class="row" title="Scrub the rewind by hand — the front sits at this fraction of the full pulse radius; the readout is the rewound time ζ the front has reached">
+                <span>Rewind</span><input type="range" id="frameRewindRange" min="0" max="1" step="0.001" value="1"><span class="val" id="frameRewindVal" style="width:38px">—</span>
+            </div>
+        </details>
     </div>
 
     <div id="hudBox">
         <canvas id="hud" width="240" height="240"></canvas>
         <div id="hudBar"><span id="hudMode">local (comoving)</span><span id="hudTime">t = —</span><span id="hudVer"></span></div>
+    </div>
+
+    <div id="frameBox">
+        <canvas id="frameCanvas" width="240" height="240"></canvas>
+        <div id="frameBar"><span id="frameObsLbl">—</span><span id="frameStateLbl">—</span></div>
     </div>
 
     <!-- Three.js classic UMD builds — load from file:// without CORS issues -->
@@ -250,7 +292,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v21';
+    const VIEWER_VERSION = 'v22';
 
     let functions = [];
     let Z_cache = [];
@@ -310,6 +352,21 @@
             y += t.ay * (Math.sin(t.by * z + t.fy) - Math.sin(t.fy));
         }
         return [x / s, y / s];
+    }
+    // d(comoving)/dz, analytic — the observer's peculiar velocity for the
+    // reference-frame map. Proper peculiar speed (units of c) = sin(z) · this.
+    function comovVelXY(f, z) {
+        const s = Math.sin(z), c = Math.cos(z);
+        let x = f.ax2 * s, y = f.ay2 * s;
+        let dx = f.ax2 * c, dy = f.ay2 * c;
+        for (let j = 0; j < f.terms.length; j++) {
+            const t = f.terms[j];
+            x += t.ax * (Math.sin(t.bx * z + t.fx) - Math.sin(t.fx));
+            y += t.ay * (Math.sin(t.by * z + t.fy) - Math.sin(t.fy));
+            dx += t.ax * t.bx * Math.cos(t.bx * z + t.fx);
+            dy += t.ay * t.by * Math.cos(t.by * z + t.fy);
+        }
+        return [(dx * s - x * c) / (s * s), (dy * s - y * c) / (s * s)];
     }
     function comovingTraj(f) {
         const n = Z_cache.length, X = new Float32Array(n), Y = new Float32Array(n);
@@ -1539,14 +1596,20 @@
         const f=n=>{ let p=Math.abs((((h+n)%1)+1)%1*6-3); p=p<1?0:p>2?1:p-1; return v*(1+(p-1)*s); };
         return [f(0), f(2/3), f(1/3)];
     }
-    // light-cone ring colour, matching ringSrc (track = hue per emission, else redshift)
-    function coneColorJS(k, sinz, zEmit){
-        if (U.uConeColor.value === 1) return hsv2rgb((((k*0.61803399)%1)+1)%1, 0.7, 1.0);
-        const f = Math.log(sinz+1e-6) - Math.log(Math.sin(zEmit)+1e-6);
+    // redshift colour, matching ringSrc: white unshifted → deep red / deep blue.
+    // lnDopp is an extra ln(Doppler factor) folded into the shift — 0 for a
+    // comoving observer, γ(1 + β·n̂) for the moving reference-frame view.
+    function redshiftRGB(sinObs, zEmit, lnDopp){
+        const f = Math.log(sinObs+1e-6) - Math.log(Math.sin(zEmit)+1e-6) - (lnDopp || 0);
         let t = Math.max(-1, Math.min(1, f/U.uRedNorm.value));
         t = Math.sign(t)*Math.pow(Math.abs(t), 0.6);          // match shader boost
         const tgt = t>=0 ? [1.0,0.05,0.02] : [0.06,0.32,1.0], a=Math.abs(t);
         return [1+(tgt[0]-1)*a, 1+(tgt[1]-1)*a, 1+(tgt[2]-1)*a];
+    }
+    // light-cone ring colour, matching ringSrc (track = hue per emission, else redshift)
+    function coneColorJS(k, sinz, zEmit){
+        if (U.uConeColor.value === 1) return hsv2rgb((((k*0.61803399)%1)+1)%1, 0.7, 1.0);
+        return redshiftRGB(sinz, zEmit, 0);
     }
     function sliceColor(f,p,z,zN){                 // matches the GPU paint modes
         if(paintMode==='mono') return [0.78,0.85,1.0];
@@ -1639,6 +1702,244 @@
     }
     document.getElementById('hudVer').textContent = VIEWER_VERSION;
 
+    /* ---- OBSERVER REFERENCE FRAME: past-light-cone map ----
+       Pause at z_obs, hold the pulse centre on the observer's comoving
+       position AT z_obs, then rewind the universe while the pulse expands.
+       Light obeys dχ/dz = 1/sin z in comoving coords, so when the rewind has
+       reached z_e the front sits at χ = η(z_obs) − η(z_e), η = ln tan(z/2).
+       A worldline is imaged wherever it crosses that front, arriving with
+       cosmological redshift 1+Z = sin(z_obs)/sin(z_e) — the ring-shader law.
+       η → −∞ at the Bang, so the front wraps the torus without bound and
+       every path is imaged many times (ghost images at earlier epochs); the
+       rewind floor and wrap cap bound the map. Crossings are found on a
+       χ-uniform rewind grid (constant front step = constant map resolution),
+       refined by bisection, and plotted at their apparent (emission-time)
+       positions relative to the observer.
+       Hits are stored frame-independently (Δ, χ, z_e), so the Observer mode
+       is a draw-time remap: "moving" boosts into the observer's instantaneous
+       rest frame — aberration bends apparent directions toward the peculiar
+       velocity and the Doppler factor γ(1 + β·n̂) multiplies the redshift. */
+    const frameCanvas = document.getElementById('frameCanvas');
+    frameCanvas.width = 240*hudDPR; frameCanvas.height = 240*hudDPR;
+    const frameCtx = frameCanvas.getContext('2d');
+    const frameBox = document.getElementById('frameBox');
+    const frameRewindRange = document.getElementById('frameRewindRange');
+    let frameHits = null, frameInfo = null, frameEpochAt = -1;
+    let showFrame = false, frameDirty = false, frameObsMode = 'static';
+    let frameRewind = 1, frameAnimOn = false, frameAnimT0 = 0;
+    const FRAME_ANIM_SECS = 8, FRAME_GRID = 420, FRAME_BISECT = 24;
+    const FRAME_BETA_CAP = 0.995;          // worldlines aren't enforced subluminal
+
+    function etaOf(z){ return Math.log(Math.tan(z/2)); }
+    function setFrameVisible(v){
+        showFrame = v && !!frameHits;
+        frameBox.style.display = showFrame ? 'block' : 'none';
+        document.getElementById('frameChk').checked = showFrame;
+        if (showFrame) frameDirty = true;
+    }
+    function updateRewindVal(){
+        const el = document.getElementById('frameRewindVal');
+        if (!frameInfo){ el.textContent = '—'; return; }
+        const zeta = 2*Math.atan(Math.exp(frameInfo.etaObs - frameRewind*frameInfo.chiMax));
+        el.textContent = (zeta/Math.PI).toFixed(2) + 'π';
+    }
+    function buildFrame(){
+        if (!functions.length || Z_cache.length < 2){
+            statusEl.textContent = 'No paths — Generate or Import first';
+            return;
+        }
+        // the frame is a snapshot of one instant: freeze playback at it
+        playing = false; playBtn.classList.remove('on'); playBtn.textContent = 'Paused';
+        const obsIdx = Math.min(Math.max(0, parseInt(document.getElementById('frameObsInput').value) || 0),
+                                functions.length - 1);
+        document.getElementById('frameObsInput').value = obsIdx;
+        const zObs = Math.min(zAt(framePos), Math.PI - 1e-3);
+        const zMin = Math.max(2e-3, (parseFloat(document.getElementById('frameZminInput').value) || 0.02) * Math.PI);
+        if (zMin >= zObs){
+            statusEl.textContent = 'Rewind floor is later than the observation time — scrub forward or lower it';
+            return;
+        }
+        statusEl.textContent = 'Building frame…';
+        setTimeout(() => buildFrameNow(obsIdx, zObs, zMin), 0);   // let the status paint first
+    }
+    function buildFrameNow(obsIdx, zObs, zMin){
+        const etaObs = etaOf(zObs);
+        const chiMax = etaObs - etaOf(zMin);
+        const cheb = U.uConeSquare.value === 1;   // front metric follows the cone shape choice
+        const dist = cheb ? (dx,dy) => Math.max(Math.abs(dx), Math.abs(dy))
+                          : (dx,dy) => Math.hypot(dx, dy);
+        const zAtChi = chi => 2*Math.atan(Math.exp(etaObs - chi));  // η(z) = η_obs − χ, inverted
+        const [ox, oy] = comovXY(functions[obsIdx], zObs);          // pulse centre, held fixed
+        // proper peculiar velocity of the observer at reception (units of c),
+        // for the moving-observer view; capped below 1 so the boost exists
+        const vel = comovVelXY(functions[obsIdx], zObs);
+        let beta = [Math.sin(zObs)*vel[0], Math.sin(zObs)*vel[1]];
+        const betaRaw = Math.hypot(beta[0], beta[1]);
+        const betaClamped = betaRaw > FRAME_BETA_CAP;
+        if (betaClamped){
+            beta = [beta[0]*FRAME_BETA_CAP/betaRaw, beta[1]*FRAME_BETA_CAP/betaRaw];
+        }
+        const M = FRAME_GRID, dChi = chiMax / M;
+        const zg = new Float64Array(M+1), chig = new Float64Array(M+1);
+        for (let i = 0; i <= M; i++){
+            chig[i] = dChi * i;
+            zg[i] = zAtChi(chig[i]);
+        }
+        // wrap images: unwrapped comoving coords stay within ±2, so the image
+        // shifted by 2·max|n| cannot meet the front before χ = 2·max|n| − 4
+        const autoK = Math.ceil((chiMax + 4) / 2);
+        const K = Math.min(autoK, Math.max(0, parseInt(document.getElementById('frameWrapsInput').value) || 0));
+        const px = new Float64Array(M+1), py = new Float64Array(M+1);
+        const hits = [];
+        for (let p = 0; p < functions.length; p++){
+            const f = functions[p];
+            for (let i = 0; i <= M; i++){
+                const c = comovXY(f, zg[i]);
+                px[i] = c[0]; py[i] = c[1];
+            }
+            for (let nx = -K; nx <= K; nx++) for (let ny = -K; ny <= K; ny++){
+                const bx = 2*nx - ox, by = 2*ny - oy;
+                // skip grid rows the front cannot have reached for this image
+                const dmin = Math.max(0, 2*Math.max(Math.abs(nx), Math.abs(ny)) - 4);
+                const i0 = Math.max(1, Math.ceil(dmin / dChi));
+                if (i0 > M) continue;
+                let prev = dist(px[i0-1] + bx, py[i0-1] + by) - chig[i0-1];
+                // the observer itself sits exactly ON the front at χ = 0; nudge
+                // it inside so the trivial self-contact isn't recorded (a path
+                // starting exactly on the front counts as an image at χ ≈ 0)
+                if (prev === 0) prev = (p === obsIdx && nx === 0 && ny === 0) ? -1e-12 : 1e-12;
+                for (let i = i0; i <= M; i++){
+                    const g = dist(px[i] + bx, py[i] + by) - chig[i];
+                    if ((prev < 0) !== (g < 0)){
+                        // refine the crossing in χ (fresh worldline evals, not the grid)
+                        let lo = chig[i-1], hi = chig[i];
+                        const insidePrev = prev < 0;
+                        for (let it = 0; it < FRAME_BISECT; it++){
+                            const mid = (lo + hi) / 2;
+                            const q = comovXY(f, zAtChi(mid));
+                            const gm = dist(q[0] + bx, q[1] + by) - mid;
+                            if ((gm < 0) === insidePrev) lo = mid; else hi = mid;
+                        }
+                        const chi = (lo + hi) / 2, zEmit = zAtChi(chi);
+                        const q = comovXY(f, zEmit);
+                        hits.push({ dx: q[0] + bx, dy: q[1] + by, chi, zEmit, p });
+                    }
+                    prev = g;
+                }
+            }
+        }
+        hits.sort((a, b) => a.chi - b.chi);       // lets the draw loop stop at the front
+        frameHits = hits;
+        frameInfo = { zObs, chiMax, etaObs, obsIdx, cheb, sinObs: Math.sin(zObs),
+                      beta, betaMag: Math.min(betaRaw, FRAME_BETA_CAP), betaClamped };
+        frameEpochAt = genEpoch;
+        frameRewind = 1; frameRewindRange.value = 1; frameAnimOn = false;
+        updateRewindVal();
+        setFrameVisible(true);
+        statusEl.textContent = `Frame built: observer #${obsIdx} at t=${(zObs/Math.PI).toFixed(3)}π · `
+                             + `${hits.length} images to ζ=${(zMin/Math.PI).toFixed(2)}π (χmax ${chiMax.toFixed(2)})`;
+    }
+    function frameShape(ctx, x, y, r, square){
+        if (square) ctx.strokeRect(x - r, y - r, r*2, r*2);
+        else { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.stroke(); }
+    }
+    function drawFrame(){
+        if (frameHits && frameEpochAt !== genEpoch){   // paths were replaced — frame is stale
+            frameHits = null;
+            setFrameVisible(false);
+        }
+        if (!frameHits) return;
+        const W = frameCanvas.width, H = frameCanvas.height, ctx = frameCtx;
+        const { zObs, chiMax, etaObs, obsIdx, cheb, sinObs, beta, betaMag, betaClamped } = frameInfo;
+        const moving = frameObsMode === 'moving' && betaMag > 1e-6;
+        const gamma = moving ? 1/Math.sqrt(1 - betaMag*betaMag) : 1;
+        const ubx = moving ? beta[0]/betaMag : 0, uby = moving ? beta[1]/betaMag : 0;
+        ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,W,H);
+        const sc = (Math.min(W,H)/2 - 6*hudDPR) / chiMax, cx0 = W/2, cy0 = H/2;
+        // lookback rings every unit of comoving distance (χ = 2 = one full wrap)
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(120,140,180,0.14)';
+        for (let rr = 1; rr < chiMax; rr++) frameShape(ctx, cx0, cy0, rr*sc, cheb);
+        // pulse front at the current rewind position
+        const chiFront = frameRewind * chiMax;
+        ctx.lineWidth = 1.3*hudDPR;
+        ctx.strokeStyle = 'rgba(235,240,255,0.75)';
+        frameShape(ctx, cx0, cy0, chiFront*sc, cheb);
+        // the observer at the received moment — centre of its own sky — and,
+        // in the moving view, its velocity (length β in comoving units)
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(cx0 - 2*hudDPR, cy0 - 2*hudDPR, 4*hudDPR, 4*hudDPR);
+        if (moving){
+            ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+            ctx.beginPath();
+            ctx.moveTo(cx0, cy0);
+            ctx.lineTo(cx0 + betaMag*ubx*sc, cy0 - betaMag*uby*sc);
+            ctx.stroke();
+        }
+        // images the front has crossed so far, at their apparent positions
+        ctx.globalCompositeOperation = 'lighter';
+        const r = 1.6*hudDPR;
+        let shown = 0;
+        for (const h of frameHits){
+            if (h.chi > chiFront) break;          // sorted by χ
+            shown++;
+            let ax = h.dx, ay = h.dy, lnDopp = 0;
+            if (moving && h.chi > 0){
+                // n̂ points observer → source; the boost gives the apparent
+                // direction n̂' = [n̂ + γβ + (γ−1)(β̂·n̂)β̂] / [γ(1 + β·n̂)]
+                // and Doppler 1+Z_dopp = γ(1 + β·n̂) on top of the cosmological shift
+                const nX = h.dx/h.chi, nY = h.dy/h.chi;
+                const bdotn = beta[0]*nX + beta[1]*nY;
+                const udotn = ubx*nX + uby*nY;
+                const D = gamma*(1 + bdotn);
+                const apx = (nX + gamma*beta[0] + (gamma - 1)*udotn*ubx) / D;
+                const apy = (nY + gamma*beta[1] + (gamma - 1)*udotn*uby) / D;
+                ax = apx*h.chi; ay = apy*h.chi;
+                lnDopp = Math.log(D);
+            }
+            const c = redshiftRGB(sinObs, h.zEmit, lnDopp);
+            ctx.fillStyle = 'rgb(' + ((c[0]*255)|0) + ',' + ((c[1]*255)|0) + ',' + ((c[2]*255)|0) + ')';
+            ctx.fillRect(cx0 + ax*sc - r, cy0 - ay*sc - r, r*2, r*2);
+            if (h.p === obsIdx){                  // the observer's own past, seen around the torus
+                ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+                ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.arc(cx0 + ax*sc, cy0 - ay*sc, r*2.4, 0, Math.PI*2); ctx.stroke();
+            }
+        }
+        ctx.globalCompositeOperation = 'source-over';
+        const zeta = 2*Math.atan(Math.exp(etaObs - chiFront));
+        // the bar is 240px — keep both labels terse or they clip ("*" = β capped)
+        document.getElementById('frameObsLbl').textContent =
+            'obs #' + obsIdx + ' @ ' + (zObs/Math.PI).toFixed(3) + 'π' + (cheb ? ' · cheb' : '');
+        document.getElementById('frameStateLbl').textContent =
+            'ζ=' + (zeta/Math.PI).toFixed(3) + 'π · ' + shown + ' im'
+            + (moving ? ' · β=' + betaMag.toFixed(2) + (betaClamped ? '*' : '') : '');
+    }
+    document.getElementById('frameBuildBtn').addEventListener('click', buildFrame);
+    document.getElementById('frameChk').addEventListener('change', e => {
+        if (e.target.checked && !frameHits){
+            e.target.checked = false;
+            statusEl.textContent = 'No frame yet — press "Build frame @ now" first';
+            return;
+        }
+        setFrameVisible(e.target.checked);
+    });
+    onRadio('frameObsMode', v => { frameObsMode = v; frameDirty = true; });
+    frameRewindRange.addEventListener('input', e => {
+        frameAnimOn = false;
+        frameRewind = parseFloat(e.target.value);
+        updateRewindVal();
+        frameDirty = true;
+    });
+    document.getElementById('frameAnimBtn').addEventListener('click', () => {
+        if (!frameHits){
+            statusEl.textContent = 'No frame yet — press "Build frame @ now" first';
+            return;
+        }
+        frameAnimOn = true;
+        frameAnimT0 = performance.now();
+    });
+
     rebuildGrid();
     setTimeout(() => document.getElementById('generateBtn').click(), 60);   // auto-render on load
 
@@ -1663,6 +1964,16 @@
             timeScrub.value = (framePos/span).toFixed(3);
         }
         if (showHUD && functions.length && (playing || hudDirty)){ drawHUD(framePos); hudDirty=false; }
+        // reference-frame rewind replay: the front sweeps outward at constant
+        // χ speed (linear in the slider), the universe running back behind it
+        if (frameAnimOn){
+            frameRewind = Math.min(1, (performance.now() - frameAnimT0) / (FRAME_ANIM_SECS*1000));
+            frameRewindRange.value = frameRewind.toFixed(3);
+            updateRewindVal();
+            frameDirty = true;
+            if (frameRewind >= 1) frameAnimOn = false;
+        }
+        if (showFrame && frameDirty){ drawFrame(); frameDirty = false; }
         renderer.render(scene, camera);
     }
     tick();
