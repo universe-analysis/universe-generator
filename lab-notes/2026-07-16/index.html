@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-07-16</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-07-16</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="wiggle-reach">
+      <h2>The wiggle budget is the causal structure: reach goes 1.26 &rarr; &radic;2 &rarr; 2, and there is no horizon</h2>
+      <p class="meta">
+        Closed-form analysis (no campaign) &middot; analysis module + tests
+        <a href="https://github.com/universe-analysis/universe-generator/commit/bc2d4b9"><code>bc2d4b9</code></a>
+        &middot; shipped as the frame map's default front in wrapped viewer
+        v27
+        <a href="https://github.com/universe-analysis/universe-generator/commit/1ab48c2"><code>1ab48c2</code></a>
+      </p>
+      <p>
+        Chris questioned the conformal fit speed the frame map used (v26,
+        07-15): instead of a pulse whose comoving radius grows from 0 like
+        c&middot;&Delta;&eta;, he argued the reach should be roughly constant
+        (&asymp;1) up to &pi;/2 and grow to 2 only afterwards, &ldquo;because
+        you can connect comoving x=1 to x=0 at any point before &pi;/2 with a
+        high frequency function&rdquo; &mdash; guessing the values
+        ~1.2128 &rarr; ~1.3333 &rarr; 2. He is right, and the numbers are
+        closed forms. A unit-budget term (|a&middot;b| = 1, a = 1/b) sits at
+        X(z) = [sin(bz+f) &minus; sin f]/(b&middot;sin z), which is
+        <em>linear</em> in (sin f, cos f) &mdash; so the maximum comoving
+        displacement between any two times is exact per frequency, and budget
+        linearity means the best single term beats any multi-term split.
+      </p>
+      <figure class="plot">
+        <img src="wiggle_reach.png"
+             alt="Two panels. Left: max comoving displacement from the Bang versus time. Both ensemble curves sit flat near 1.22 to 1.26 until about 0.43 pi — above the dotted antipode line at chi equals 1 — then follow the dashed 2 sin of z over 2 envelope up to exactly 2 at the Crunch. Marked points at pi over 2: four thirds for the phase-free ensemble from b equals 3, root 2 for the phased ensemble from b equals 2. Right: two-time reach curves for four observation times (solid), each starting near the Bang-reach value and falling to zero at the observation time, versus the diverging conformal front at c equals 0.289 (dashed) which over-reaches near the Bang and under-reaches at intermediate times." />
+        <figcaption>
+          Left: reach from the Bang, phase-free vs phased ensembles, with the
+          b=2 envelope 2&thinsp;sin(z/2). Right: two-time reach
+          R(z<sub>e</sub>, z<sub>obs</sub>) vs the v26 conformal front.
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>Chris's numbers decoded.</strong> The phase-free (f = 0)
+            ensemble has a Bang plateau of exactly
+            1 + |min&thinsp;sinc| = <strong>1.21723</strong> at
+            bz = 4.4934 (the root of tan&thinsp;u = u) &mdash; his ~1.2128.
+            At &pi;/2 the winner is b = 3 giving exactly
+            <strong>4/3</strong> &mdash; his ~1.3333. And at the Crunch
+            <em>every even frequency</em> reaches exactly
+            <strong>2</strong>. His &ldquo;ignore the part that dips below
+            x=0&rdquo; is exact too: stopping the path at its zero crossing
+            (bz = &pi;) gives reach exactly 1; the turnaround overshoot is
+            the extra 0.217.</li>
+        <li><strong>The current ensemble is slightly hotter.</strong> With
+            free phases on even frequencies (always on since 07-09) the
+            plateau lifts to <strong>1.25959</strong> (bz = 4.086) and the
+            &pi;/2 value to <strong>&radic;2</strong> (b = 2, f = &pi;/4).
+            Late growth is the b = 2 envelope 2&thinsp;sin(z/2), which
+            overtakes the plateau at z &asymp; 0.434&pi; &mdash; the
+            transition starts just <em>before</em> the turnaround.</li>
+        <li><strong>No horizon at any epoch.</strong> The plateau exceeds the
+            antipode distance &chi; = 1, so antipodal comoving points are
+            connectable arbitrarily close to the Bang (needs b &asymp;
+            4.1/z, well inside the sampled band b &le; T). What changes with
+            epoch is the width of the doubled-image band: ~0.26 early,
+            growing to a fully doubled sky at the Crunch.</li>
+        <li><strong>No conformal speed reproduces this</strong> (right
+            panel): c&middot;&Delta;&eta; diverges toward the Bang
+            (over-reaching &mdash; the ghost-wrap images of v22&ndash;v26)
+            and under-reaches at intermediate times for late observers. The
+            model's causal structure is set by the wiggle budget, not a null
+            cone.</li>
+        <li><strong>Shipped:</strong> viewer v27's frame map now defaults to
+            a &ldquo;wiggle budget&rdquo; front whose radius at rewound time
+            &zeta; is R(&zeta;, z<sub>obs</sub>), natively a Chebyshev
+            square (the reach is per-axis). The JS and Python
+            implementations agree at t = 0.25/0.50/0.75/0.98&pi;
+            (&chi;max 1.21/1.37/1.82/2.00 with the 0.02&pi; floor and
+            b &le; 180). The conformal fit-speed and speed-scalar modes
+            remain as options.</li>
+      </ul>
+      <p>
+        The reach is per-axis and hence dimension-independent &mdash; this is
+        one chart where 2+1 and 3+1 genuinely share the curve. Landmarks are
+        locked in <code>tests/test_wiggle_reach.py</code>.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
