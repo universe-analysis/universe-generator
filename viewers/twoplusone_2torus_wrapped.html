@@ -216,6 +216,9 @@
                 <span>Max wraps</span><input type="number" id="frameWrapsInput" value="6" min="0">
             </div>
             <div class="choices">
+                <label title="Solve the front speed per build so the pulse laps the torus exactly once at full rewind (χmax = 2): c = 2/(η_obs − η_floor). Holds at any observation time; overrides the Light cones Speed input"><input type="checkbox" id="frameFitCChk" checked> Fit speed — χmax = 2 (one full lap)</label>
+            </div>
+            <div class="choices">
                 <span class="group-name">Observer</span>
                 <label title="Ignore the observer's peculiar velocity — the frame of an observer at rest in the comoving grid"><input type="radio" name="frameObsMode" value="static" checked> Comoving (static)</label>
                 <label title="The observer's instantaneous rest frame: apparent directions bend toward the velocity (aberration) and the Doppler factor multiplies the cosmological redshift"><input type="radio" name="frameObsMode" value="moving"> Moving — Doppler + aberration</label>
@@ -292,7 +295,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v24';
+    const VIEWER_VERSION = 'v25';
 
     let functions = [];
     let Z_cache = [];
@@ -1479,6 +1482,9 @@
         const v = parseFloat(e.target.value);                  // scalar on cone expansion radius
         if (!isNaN(v)) U.uConeSpeed.value = v;
     });
+    // sync the uniform to the input's default — it ships as .2 while the
+    // uniform initializes to 1.0, so untouched sessions rendered the wrong speed
+    U.uConeSpeed.value = parseFloat(document.getElementById('coneSpeedRange').value);
     document.getElementById('coneFadeRange').addEventListener('input', e=>{
         U.uConeFadeW.value = parseFloat(e.target.value);       // fade window before the antipode (0 = hard meet)
     });
@@ -1767,10 +1773,14 @@
     }
     function buildFrameNow(obsIdx, zObs, zMin){
         const etaObs = etaOf(zObs);
-        // front metric AND speed follow the Light cones choices (shape radio +
-        // Speed scalar — e.g. .33 for the circle, .2 for the square)
+        // front metric follows the Light cones shape choice; speed comes from
+        // the Light cones Speed scalar (e.g. .33 circle / .2 square) — or,
+        // with Fit speed on, is solved so the front laps the torus exactly
+        // once at full rewind: χmax = c·(η_obs − η_floor) = 2
         const cheb = U.uConeSquare.value === 1;
-        const spd = Math.max(1e-3, U.uConeSpeed.value);
+        const fitC = document.getElementById('frameFitCChk').checked;
+        const spd = fitC ? 2/(etaObs - etaOf(zMin))
+                         : Math.max(1e-3, U.uConeSpeed.value);
         const chiMax = spd*(etaObs - etaOf(zMin));
         const dist = cheb ? (dx,dy) => Math.max(Math.abs(dx), Math.abs(dy))
                           : (dx,dy) => Math.hypot(dx, dy);
@@ -1845,7 +1855,8 @@
         setFrameVisible(true);
         statusEl.textContent = `Frame built: observer #${obsIdx} at t=${(zObs/Math.PI).toFixed(3)}π · `
                              + `${hits.length} images to ζ=${(zMin/Math.PI).toFixed(2)}π `
-                             + `(c=${spd} ${cheb ? 'square' : 'circle'}, χmax ${chiMax.toFixed(2)})`;
+                             + `(c=${fitC ? spd.toFixed(3) + ' fit' : spd} ${cheb ? 'square' : 'circle'}, `
+                             + `χmax ${chiMax.toFixed(2)})`;
     }
     function frameShape(ctx, x, y, r, square){
         if (square) ctx.strokeRect(x - r, y - r, r*2, r*2);
