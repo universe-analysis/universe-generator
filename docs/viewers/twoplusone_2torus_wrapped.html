@@ -221,7 +221,7 @@
                 <label title="The observer's instantaneous rest frame: apparent directions bend toward the velocity (aberration) and the Doppler factor multiplies the cosmological redshift"><input type="radio" name="frameObsMode" value="moving"> Moving — Doppler + aberration</label>
             </div>
             <div class="row">
-                <button id="frameBuildBtn" title="Build the observer's frame at the CURRENT scrub time (pauses playback). The wavefront metric follows the Light cones shape choice">Build frame @ now</button>
+                <button id="frameBuildBtn" title="Build the observer's frame at the CURRENT scrub time (pauses playback). The wavefront metric AND speed follow the Light cones choices — shape radio + Speed scalar (e.g. .33 circle / .2 square)">Build frame @ now</button>
                 <button id="frameAnimBtn" title="Replay the rewind: the pulse front sweeps outward from the observer while the universe runs back">Rewind ▸</button>
             </div>
             <div class="row" title="Scrub the rewind by hand — the front sits at this fraction of the full pulse radius; the readout is the rewound time ζ the front has reached">
@@ -292,7 +292,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v22';
+    const VIEWER_VERSION = 'v23';
 
     let functions = [];
     let Z_cache = [];
@@ -1705,8 +1705,11 @@
     /* ---- OBSERVER REFERENCE FRAME: past-light-cone map ----
        Pause at z_obs, hold the pulse centre on the observer's comoving
        position AT z_obs, then rewind the universe while the pulse expands.
-       Light obeys dχ/dz = 1/sin z in comoving coords, so when the rewind has
-       reached z_e the front sits at χ = η(z_obs) − η(z_e), η = ln tan(z/2).
+       Light obeys dχ/dz = c/sin z in comoving coords, so when the rewind has
+       reached z_e the front sits at χ = c·(η(z_obs) − η(z_e)), η = ln tan(z/2),
+       where c is the Light cones Speed scalar (the same knob the rings use —
+       e.g. the .33-circle / .2-square calibration), read at build time along
+       with the wavefront shape.
        A worldline is imaged wherever it crosses that front, arriving with
        cosmological redshift 1+Z = sin(z_obs)/sin(z_e) — the ring-shader law.
        η → −∞ at the Bang, so the front wraps the torus without bound and
@@ -1740,7 +1743,7 @@
     function updateRewindVal(){
         const el = document.getElementById('frameRewindVal');
         if (!frameInfo){ el.textContent = '—'; return; }
-        const zeta = 2*Math.atan(Math.exp(frameInfo.etaObs - frameRewind*frameInfo.chiMax));
+        const zeta = 2*Math.atan(Math.exp(frameInfo.etaObs - frameRewind*frameInfo.chiMax/frameInfo.spd));
         el.textContent = (zeta/Math.PI).toFixed(2) + 'π';
     }
     function buildFrame(){
@@ -1764,16 +1767,20 @@
     }
     function buildFrameNow(obsIdx, zObs, zMin){
         const etaObs = etaOf(zObs);
-        const chiMax = etaObs - etaOf(zMin);
-        const cheb = U.uConeSquare.value === 1;   // front metric follows the cone shape choice
+        // front metric AND speed follow the Light cones choices (shape radio +
+        // Speed scalar — e.g. .33 for the circle, .2 for the square)
+        const cheb = U.uConeSquare.value === 1;
+        const spd = Math.max(1e-3, U.uConeSpeed.value);
+        const chiMax = spd*(etaObs - etaOf(zMin));
         const dist = cheb ? (dx,dy) => Math.max(Math.abs(dx), Math.abs(dy))
                           : (dx,dy) => Math.hypot(dx, dy);
-        const zAtChi = chi => 2*Math.atan(Math.exp(etaObs - chi));  // η(z) = η_obs − χ, inverted
-        const [ox, oy] = comovXY(functions[obsIdx], zObs);          // pulse centre, held fixed
-        // proper peculiar velocity of the observer at reception (units of c),
-        // for the moving-observer view; capped below 1 so the boost exists
+        const zAtChi = chi => 2*Math.atan(Math.exp(etaObs - chi/spd));  // η(z) = η_obs − χ/c, inverted
+        const [ox, oy] = comovXY(functions[obsIdx], zObs);              // pulse centre, held fixed
+        // proper peculiar velocity of the observer at reception, in units of
+        // the SAME effective light speed as the front; capped below 1 so the
+        // boost exists (worldlines aren't enforced subluminal)
         const vel = comovVelXY(functions[obsIdx], zObs);
-        let beta = [Math.sin(zObs)*vel[0], Math.sin(zObs)*vel[1]];
+        let beta = [Math.sin(zObs)*vel[0]/spd, Math.sin(zObs)*vel[1]/spd];
         const betaRaw = Math.hypot(beta[0], beta[1]);
         const betaClamped = betaRaw > FRAME_BETA_CAP;
         if (betaClamped){
@@ -1830,14 +1837,15 @@
         }
         hits.sort((a, b) => a.chi - b.chi);       // lets the draw loop stop at the front
         frameHits = hits;
-        frameInfo = { zObs, chiMax, etaObs, obsIdx, cheb, sinObs: Math.sin(zObs),
+        frameInfo = { zObs, chiMax, etaObs, obsIdx, cheb, spd, sinObs: Math.sin(zObs),
                       beta, betaMag: Math.min(betaRaw, FRAME_BETA_CAP), betaClamped };
         frameEpochAt = genEpoch;
         frameRewind = 1; frameRewindRange.value = 1; frameAnimOn = false;
         updateRewindVal();
         setFrameVisible(true);
         statusEl.textContent = `Frame built: observer #${obsIdx} at t=${(zObs/Math.PI).toFixed(3)}π · `
-                             + `${hits.length} images to ζ=${(zMin/Math.PI).toFixed(2)}π (χmax ${chiMax.toFixed(2)})`;
+                             + `${hits.length} images to ζ=${(zMin/Math.PI).toFixed(2)}π `
+                             + `(c=${spd} ${cheb ? 'square' : 'circle'}, χmax ${chiMax.toFixed(2)})`;
     }
     function frameShape(ctx, x, y, r, square){
         if (square) ctx.strokeRect(x - r, y - r, r*2, r*2);
@@ -1850,7 +1858,7 @@
         }
         if (!frameHits) return;
         const W = frameCanvas.width, H = frameCanvas.height, ctx = frameCtx;
-        const { zObs, chiMax, etaObs, obsIdx, cheb, sinObs, beta, betaMag, betaClamped } = frameInfo;
+        const { zObs, chiMax, etaObs, obsIdx, cheb, spd, sinObs, beta, betaMag, betaClamped } = frameInfo;
         const moving = frameObsMode === 'moving' && betaMag > 1e-6;
         const gamma = moving ? 1/Math.sqrt(1 - betaMag*betaMag) : 1;
         const ubx = moving ? beta[0]/betaMag : 0, uby = moving ? beta[1]/betaMag : 0;
@@ -1907,7 +1915,7 @@
             }
         }
         ctx.globalCompositeOperation = 'source-over';
-        const zeta = 2*Math.atan(Math.exp(etaObs - chiFront));
+        const zeta = 2*Math.atan(Math.exp(etaObs - chiFront/spd));
         // the bar is 240px — keep both labels terse or they clip ("*" = β capped)
         document.getElementById('frameObsLbl').textContent =
             'obs #' + obsIdx + ' @ ' + (zObs/Math.PI).toFixed(3) + 'π' + (cheb ? ' · cheb' : '');
