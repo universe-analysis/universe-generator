@@ -216,7 +216,7 @@
                 <span>Max wraps</span><input type="number" id="frameWrapsInput" value="6" min="0">
             </div>
             <div class="choices">
-                <label title="Solve the front speed per build so the pulse laps the torus exactly once at full rewind (χmax = 2): c = 2/(η_obs − η_floor). Holds at any observation time; overrides the Light cones Speed input"><input type="checkbox" id="frameFitCChk" checked> Fit speed — χmax = 2 (one full lap)</label>
+                <label title="Fix the front speed from the rewind floor alone: c = −1/η(floor), so a Bang-born pulse reaches the antipode (χ=1) exactly at t=π/2 — and by η-antisymmetry one full lap (χ=2) at the Crunch mirror t=π−floor. χmax then grows with observation time. Overrides the Light cones Speed input"><input type="checkbox" id="frameFitCChk" checked> Fit speed — antipode at π/2, full lap by Crunch</label>
             </div>
             <div class="choices">
                 <span class="group-name">Observer</span>
@@ -295,7 +295,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v25';
+    const VIEWER_VERSION = 'v26';
 
     let functions = [];
     let Z_cache = [];
@@ -1775,11 +1775,13 @@
         const etaObs = etaOf(zObs);
         // front metric follows the Light cones shape choice; speed comes from
         // the Light cones Speed scalar (e.g. .33 circle / .2 square) — or,
-        // with Fit speed on, is solved so the front laps the torus exactly
-        // once at full rewind: χmax = c·(η_obs − η_floor) = 2
+        // with Fit speed on, is FIXED by the rewind floor: c = −1/η(floor),
+        // so a Bang-born pulse reaches the antipode (χ=1) exactly at π/2 and,
+        // by η(π−z) = −η(z), one full lap (χ=2) at the Crunch mirror π−floor.
+        // χmax = c·(η_obs − η_floor) then grows with the observation time.
         const cheb = U.uConeSquare.value === 1;
         const fitC = document.getElementById('frameFitCChk').checked;
-        const spd = fitC ? 2/(etaObs - etaOf(zMin))
+        const spd = fitC ? -1/etaOf(zMin)
                          : Math.max(1e-3, U.uConeSpeed.value);
         const chiMax = spd*(etaObs - etaOf(zMin));
         const dist = cheb ? (dx,dy) => Math.max(Math.abs(dx), Math.abs(dy))
