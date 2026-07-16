@@ -292,7 +292,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v23';
+    const VIEWER_VERSION = 'v24';
 
     let functions = [];
     let Z_cache = [];
@@ -1892,17 +1892,24 @@
             if (h.chi > chiFront) break;          // sorted by χ
             shown++;
             let ax = h.dx, ay = h.dy, lnDopp = 0;
-            if (moving && h.chi > 0){
+            const eucl = moving ? Math.hypot(h.dx, h.dy) : 0;
+            if (moving && eucl > 0){
                 // n̂ points observer → source; the boost gives the apparent
                 // direction n̂' = [n̂ + γβ + (γ−1)(β̂·n̂)β̂] / [γ(1 + β·n̂)]
-                // and Doppler 1+Z_dopp = γ(1 + β·n̂) on top of the cosmological shift
-                const nX = h.dx/h.chi, nY = h.dy/h.chi;
+                // and Doppler 1+Z_dopp = γ(1 + β·n̂) on top of the cosmological
+                // shift. The formula acts on the EUCLIDEAN unit direction —
+                // dividing Δ by its Chebyshev norm feeds it a vector up to √2
+                // long and diagonal images land outside the front — so for the
+                // square metric the aberrated direction is re-projected onto
+                // the hit's own square shell (|·|_cheb = χ) afterwards.
+                const nX = h.dx/eucl, nY = h.dy/eucl;
                 const bdotn = beta[0]*nX + beta[1]*nY;
                 const udotn = ubx*nX + uby*nY;
                 const D = gamma*(1 + bdotn);
                 const apx = (nX + gamma*beta[0] + (gamma - 1)*udotn*ubx) / D;
                 const apy = (nY + gamma*beta[1] + (gamma - 1)*udotn*uby) / D;
-                ax = apx*h.chi; ay = apy*h.chi;
+                const m = cheb ? Math.max(Math.abs(apx), Math.abs(apy)) : 1;  // |n̂'|₂ = 1 already
+                ax = apx*h.chi/m; ay = apy*h.chi/m;
                 lnDopp = Math.log(D);
             }
             const c = redshiftRGB(sinObs, h.zEmit, lnDopp);
