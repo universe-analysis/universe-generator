@@ -57,7 +57,7 @@ This model naturally embeds an expansion and collapse cycle, as well as a measur
 ### Speculation
 The following below is loose speculation.
 #### Small-scale knots
-The ability to form a stable knot of n unique paths depends on the dimension, therefore a goal of this project is to analyze the unique path knots and attempt to relate them to standard model particles.
+The ability to form a stable knot of n unique paths depends on the dimension, therefore a goal of this project is to analyze the unique path knots and attempt to relate them to standard model particles. As far as we understand, the most unique paths that can be knotted in one dimension is one, in two dimensions is four, and in three dimensions is 12, in four is 32 and five is 80. However, the exploration into this has only just begun and these are all tentative findings.
 #### Gravity
 This model follows a string theory approach, gravity arises from closed strings propagating through the larger ambient space. Specifically, due to the flat nature of space, our model invokes the Celestial holography conjecture:<br>
 `The central conjecture is that this correspondence provides a complete boundary description of the gravitational S-matrix in a flat Minkowski spacetime.` [https://en.wikipedia.org/wiki/Holographic_principle#Celestial_holography](https://en.wikipedia.org/wiki/Holographic_principle#Celestial_holography)<br>
