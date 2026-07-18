@@ -205,7 +205,7 @@
             <summary>Reference frame</summary>
             <div class="choices">
                 <label title="Past-light-cone map: pause at an instant, then rewind the universe while a light pulse expands from the observer — every worldline crossing is plotted at its apparent (emission-time) position, coloured by redshift"><input type="checkbox" id="frameChk"> Show frame map</label>
-                <label title="Paint the same frame back onto the 2D slice minimap: each image maps to its source's TRUE emission-time position on the torus — wrap(observer + Δ) — so a worldline crossed at several epochs leaves a breadcrumb trail of its past positions, tinted by the received redshift. The front becomes a wrapped square around the observer. Aberration only bends apparent directions, so in the Moving view positions stay put and just the Doppler tint changes"><input type="checkbox" id="frameOnSliceChk"> Paint back onto the 2D slice</label>
+                <label title="Paint the same frame back onto the torus — the 3D view and the 2D slice minimap: each image maps to its source's TRUE emission-time position on the torus — wrap(observer + Δ) — so a worldline crossed at several epochs leaves a breadcrumb trail of its past positions, tinted by the received redshift. The front becomes a wrapped square around the observer. Aberration only bends apparent directions, so in the Moving view positions stay put and just the Doppler tint changes"><input type="checkbox" id="frameOnSliceChk"> Paint back onto the torus &amp; slice</label>
             </div>
             <div class="row" title="Path index of the observer (0 = the default cone-emitting path)">
                 <span>Observer #</span><input type="number" id="frameObsInput" value="0" min="0">
@@ -299,7 +299,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v28';
+    const VIEWER_VERSION = 'v29';
 
     let functions = [];
     let Z_cache = [];
@@ -1738,7 +1738,8 @@
        velocity and the Doppler factor γ(1 + β·n̂) multiplies the redshift.
        The same hits also map back onto the torus itself: wrap(observer + Δ)
        is the source's true emission-time position, which the "Paint back
-       onto the 2D slice" toggle overlays on the minimap (drawFrameOnSlice). */
+       onto the torus & slice" toggle overlays on the minimap
+       (drawFrameOnSlice) and on the 3D torus surface (frame3DUpdate). */
     const frameCanvas = document.getElementById('frameCanvas');
     frameCanvas.width = 240*hudDPR; frameCanvas.height = 240*hudDPR;
     const frameCtx = frameCanvas.getContext('2d');
@@ -2112,6 +2113,147 @@
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(opx - 2*hudDPR, opy - 2*hudDPR, 4*hudDPR, 4*hudDPR);
     }
+
+    /* ---- the frame painted onto the 3D torus itself ----
+       Same back-mapping as the slice overlay, but through the torus embedding
+       the main view uses: wrapped comoving position (scaled by its own sin z
+       in raw mode) → angles u = π(x + offX), v = π(y + offY) on the donut.
+       Hit points are revealed with the rewind (the hits are already stored in
+       reveal order, so a drawRange prefix does it); the front is a line loop
+       on the surface at the rewound time's radius, and the observer is a
+       bright marker. Rebuilt cheaply every tick while visible, so the torus
+       offset sliders and geometry toggle stay live. */
+    const FRAME3D_FRONT_PTS = 256;         // perimeter samples for the front loop
+    let frame3D = null;                    // { pts, geo, front, frontGeo, obs, obsGeo, n, epoch, colorsFor }
+    // sized like the scene's own points (uOrthoScale-aware), so the overlay
+    // stays visible under both camera types — PointsMaterial sizing is not
+    const FRAME3D_VERT = `
+        precision highp float;
+        attribute vec3 position;
+        attribute vec3 aCol;
+        uniform mat4 modelViewMatrix, projectionMatrix;
+        uniform float uPtSize, uOrthoScale;
+        varying vec3 vColor;
+        void main(){
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            gl_Position = projectionMatrix * mv;
+            float depth = (uOrthoScale > 0.0) ? uOrthoScale : max(-mv.z, 0.1);
+            gl_PointSize = clamp(uPtSize * 300.0 / depth, 1.0, 90.0);
+            vColor = aCol;
+        }`;
+    function frame3DMat(ptSize, opacity){
+        return new THREE.RawShaderMaterial({
+            uniforms: { uPtSize: { value: ptSize }, uOrthoScale: U.uOrthoScale,
+                        uTex: { value: glowTex }, uOpacity: { value: opacity } },
+            vertexShader: FRAME3D_VERT, fragmentShader: FRAG,
+            transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+        });
+    }
+    function frame3DPoint(cx, cy, sinE, out3){
+        let px = wrapComov(cx), py = wrapComov(cy);
+        if (!geoLocal){ px *= sinE; py *= sinE; }
+        const u = U.uAngK.value*(px + U.uOffX.value);
+        const v = U.uAngK.value*(py + U.uOffY.value);
+        const rad = R + S*Math.cos(v);
+        out3[0] = rad*Math.cos(u); out3[1] = rad*Math.sin(u); out3[2] = S*Math.sin(v);
+    }
+    function frame3DDispose(){
+        if (!frame3D) return;
+        scene.remove(frame3D.pts); scene.remove(frame3D.front); scene.remove(frame3D.obs);
+        frame3D.geo.dispose(); frame3D.frontGeo.dispose(); frame3D.obsGeo.dispose();
+        frame3D.pts.material.dispose(); frame3D.front.material.dispose(); frame3D.obs.material.dispose();
+        frame3D = null;
+    }
+    function frame3DEnsure(){
+        const n = frameHits.length;
+        if (frame3D && frame3D.n === n && frame3D.epoch === frameEpochAt) return;
+        frame3DDispose();
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n*3), 3));
+        geo.setAttribute('aCol', new THREE.BufferAttribute(new Float32Array(n*3), 3));
+        const pts = new THREE.Points(geo, frame3DMat(0.9, 0.9));
+        pts.frustumCulled = false;
+        const frontGeo = new THREE.BufferGeometry();
+        frontGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(FRAME3D_FRONT_PTS*3), 3));
+        const front = new THREE.LineLoop(frontGeo, new THREE.LineBasicMaterial({
+            color: 0xebf0ff, transparent: true, opacity: 0.75 }));
+        front.frustumCulled = false;
+        const obsGeo = new THREE.BufferGeometry();
+        obsGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3));
+        obsGeo.setAttribute('aCol', new THREE.BufferAttribute(new Float32Array([1, 1, 1]), 3));
+        const obs = new THREE.Points(obsGeo, frame3DMat(2.0, 1.0));
+        obs.frustumCulled = false;
+        scene.add(pts); scene.add(front); scene.add(obs);
+        frame3D = { pts, geo, front, frontGeo, obs, obsGeo, n, epoch: frameEpochAt, colorsFor: '' };
+    }
+    function frame3DUpdate(){
+        const on = frameOnSlice && frameHits && frameEpochAt === genEpoch;
+        if (!on){
+            if (frame3D){ frame3D.pts.visible = frame3D.front.visible = frame3D.obs.visible = false; }
+            return;
+        }
+        frame3DEnsure();
+        frame3D.pts.visible = frame3D.front.visible = frame3D.obs.visible = true;
+        const { ox, oy, cheb, budget, sinObs, beta, betaMag } = frameInfo;
+        const { chiFront, zeta } = frameFrontState();
+        const moving = frameObsMode === 'moving' && betaMag > 1e-6;
+        const gamma = moving ? 1/Math.sqrt(1 - betaMag*betaMag) : 1;
+        const p3 = [0, 0, 0];
+        // hit points, in reveal order (same break rule as the 2D draws)
+        const pos = frame3D.geo.attributes.position.array;
+        let shown = 0;
+        for (const h of frameHits){
+            if (budget ? h.zEmit < zeta : h.chi > chiFront) break;
+            frame3DPoint(ox + h.dx, oy + h.dy, Math.sin(h.zEmit), p3);
+            pos[shown*3] = p3[0]; pos[shown*3 + 1] = p3[1]; pos[shown*3 + 2] = p3[2];
+            shown++;
+        }
+        frame3D.geo.setDrawRange(0, shown);
+        frame3D.geo.attributes.position.needsUpdate = true;
+        // redshift tints only change with the observer mode (or a new frame)
+        const colorsKey = frameObsMode + ':' + frameEpochAt;
+        if (frame3D.colorsFor !== colorsKey){
+            const col = frame3D.geo.attributes.aCol.array;
+            for (let i = 0; i < frameHits.length; i++){
+                const h = frameHits[i];
+                let lnDopp = 0;
+                if (moving){
+                    const eucl = Math.hypot(h.dx, h.dy);
+                    if (eucl > 0) lnDopp = Math.log(gamma*(1 + (beta[0]*h.dx + beta[1]*h.dy)/eucl));
+                }
+                const c = redshiftRGB(sinObs, h.zEmit, lnDopp);
+                col[i*3] = c[0]; col[i*3 + 1] = c[1]; col[i*3 + 2] = c[2];
+            }
+            frame3D.geo.attributes.aCol.needsUpdate = true;
+            frame3D.colorsFor = colorsKey;
+        }
+        // the front loop at the rewound time's radius, on the surface
+        const fpos = frame3D.frontGeo.attributes.position.array;
+        const sinF = Math.sin(zeta);
+        for (let i = 0; i < FRAME3D_FRONT_PTS; i++){
+            const t = i / FRAME3D_FRONT_PTS;
+            let dx, dy;
+            if (cheb){
+                // square perimeter, four sides of half-width χ_front
+                const s = t*4, k = Math.floor(s), f = s - k, w = chiFront;
+                if (k === 0){ dx = -w + 2*w*f; dy = -w; }
+                else if (k === 1){ dx = w; dy = -w + 2*w*f; }
+                else if (k === 2){ dx = w - 2*w*f; dy = w; }
+                else { dx = -w; dy = w - 2*w*f; }
+            } else {
+                dx = chiFront*Math.cos(2*Math.PI*t);
+                dy = chiFront*Math.sin(2*Math.PI*t);
+            }
+            frame3DPoint(ox + dx, oy + dy, sinF, p3);
+            fpos[i*3] = p3[0]; fpos[i*3 + 1] = p3[1]; fpos[i*3 + 2] = p3[2];
+        }
+        frame3D.frontGeo.attributes.position.needsUpdate = true;
+        // observer marker at its held position (received epoch's scale in raw)
+        frame3DPoint(ox, oy, sinObs, p3);
+        const opos = frame3D.obsGeo.attributes.position.array;
+        opos[0] = p3[0]; opos[1] = p3[1]; opos[2] = p3[2];
+        frame3D.obsGeo.attributes.position.needsUpdate = true;
+    }
     document.getElementById('frameBuildBtn').addEventListener('click', buildFrame);
     document.getElementById('frameChk').addEventListener('change', e => {
         if (e.target.checked && !frameHits){
@@ -2184,6 +2326,7 @@
             if (frameRewind >= 1) frameAnimOn = false;
         }
         if (showFrame && frameDirty){ drawFrame(); frameDirty = false; }
+        frame3DUpdate();                   // frame painted onto the 3D torus
         renderer.render(scene, camera);
     }
     tick();
