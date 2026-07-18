@@ -305,7 +305,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v32';
+    const VIEWER_VERSION = 'v33';
 
     let functions = [];
     let Z_cache = [];
@@ -2353,7 +2353,9 @@
         if (autoOffX) applyOffset('offXRange', 'offXVal', U.uOffX, U.uOffX.value + driftX*dt/60);
         if (autoOffY) applyOffset('offYRange', 'offYVal', U.uOffY, U.uOffY.value + driftY*dt/60);
         if (autoOffX || autoOffY) hudDirty = true;   // keep the minimap sliding even when paused
-        if (playing && showSweep && Z_cache.length > 1){
+        // advance time whenever playing — the sweep visibility toggle must
+        // not freeze the clock (scrub, minimap, and frame builds all read it)
+        if (playing && Z_cache.length > 1){
             const span = Z_cache.length - 1;
             framePos = (framePos + playSpeed*dt) % span;
             sweepMat.uniforms.uTime.value = zAt(framePos);
