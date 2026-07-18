@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-07-18</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-07-18</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="multiterm-reach">
+      <h2>Nobody beats the blue line: multi-term phase combinations stay under the single-term reach envelope</h2>
+      <p class="meta">
+        Numerical stress test (no campaign) &middot; analysis module + tests
+        <a href="https://github.com/universe-analysis/universe-generator/commit/2876484"><code>2876484</code></a>
+      </p>
+      <p>
+        Kevin asked whether the 07-16 reach chart really covered all possible
+        phases &mdash; and, fairly, wanted data rather than just the linearity
+        argument for the multi-term case. The claim under test: with the unit
+        rapidity budget &Sigma;|a&middot;b| = 1 split across k terms, no choice
+        of frequencies, budget shares, amplitude signs, or phases can out-reach
+        the phased single-term envelope (the blue line) at any time. Two
+        attacks: a 200,000-config random sweep per k &isin; {2, 3, 4} drawn
+        from the actual sampling ensemble (distinct integer frequencies,
+        Dirichlet budget splits, f ~ U[0, 2&pi;) on even frequencies, f &isin;
+        {0, &pi;} on odd), and a Nelder-Mead adversary at 25 fixed times, free
+        to pick any signed budget split and any admissible phases over
+        frequency sets seeded with the top single-term performers.
+      </p>
+      <figure class="plot">
+        <img src="multiterm_reach.png"
+             alt="Two panels. Left: max comoving displacement from the Bang versus time. The thick blue single-term envelope sits on top; the best random 2-, 3- and 4-term configs (orange, green, red) hug it from below, and optimizer crosses land exactly on it. Right: the same data as ratios to the envelope — random-sweep curves just under 1, optimizer crosses pinned at 1, nothing above." />
+        <figcaption>
+          Left: the phased single-term envelope vs the best multi-term configs
+          found. Right: everything as a ratio to the envelope &mdash; no point
+          exceeds 1.
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>The optimizer converges to the envelope exactly</strong>
+            (ratio 1 at every probed time, worst excess +2.2&times;10<sup>&minus;16</sup>
+            &mdash; machine epsilon, never above): its
+            winning move is always to concentrate the whole budget on the best
+            single frequency at its optimal phase &mdash; it rediscovers the
+            linearity argument numerically. At &pi;/2 the 2-term adversary
+            lands on &radic;2, the b = 2, f = &pi;/4 optimum, to 1e-4.</li>
+        <li><strong>Random ensemble configs approach from below and never
+            cross:</strong> best sweep ratios 0.99990 (k = 2), 0.99825
+            (k = 3), 0.98912 (k = 4). More terms reach <em>less</em> &mdash;
+            each extra term dilutes the budget, exactly as
+            &Sigma;w<sub>i</sub>r<sub>i</sub> &le; max r<sub>i</sub>
+            predicts.</li>
+        <li><strong>Phase coverage is exact, not sampled.</strong> The
+            displacement is linear in (sin f, cos f), so the envelope's
+            hypot(&Delta;&alpha;, &Delta;&beta;) is the analytic maximum over
+            the whole continuous phase circle; the ensemble reaches all of it
+            because f ~ U[0, &pi;) plus the &plusmn; amplitude sign covers
+            [0, 2&pi;) (a &rarr; &minus;a &equiv; f &rarr; f + &pi;), and odd
+            frequencies admit only f &isin; {0, &pi;} (loop closure), both
+            covered by the |&Delta;&beta;| branch.</li>
+      </ul>
+      <p>
+        Locked in <code>tests/test_multiterm_reach.py</code>: the random sweep
+        never exceeds the envelope, the optimizer saturates at it, and the
+        &pi;/2 optimum is &radic;2.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
