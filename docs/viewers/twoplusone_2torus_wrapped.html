@@ -99,9 +99,6 @@
     <div id="sidepanel">
         <details>
             <summary>Generation</summary>
-            <div class="choices">
-                <label><input type="checkbox" id="smartFreqChk"> Smart frequencies (coprime, packs denser)</label>
-            </div>
             <div class="row" title="Stop the unique phase at this many paths (0 = run to time/jam)">
                 <span>Max uniques</span><input type="number" id="maxUniquesInput" value="0" min="0">
             </div>
@@ -110,6 +107,10 @@
             </div>
             <div class="row" title="Volume jam: stop after this many consecutive accepted subpaths that claim zero new volume">
                 <span>Vol jam hits</span><input type="number" id="volAcceptsInput" value="200" min="10">
+            </div>
+            <div class="row" title="Max cloud samples per path (time-steps are strided down to this; higher = denser cloud, more draw cost)">
+                <span>Cloud res</span><input type="number" id="cloudResInput" value="100" min="2">
+                <button id="cloudResBtn">Regenerate</button>
             </div>
         </details>
         <details>
@@ -146,10 +147,6 @@
             <div class="row"><span>Spread</span><input type="range" id="sRange" min="1" max="24" step="0.5" value="5"></div>
             <div class="row"><span>Sweep glow</span><input type="range" id="sizeRange" min="0.05" max="6" step="0.01" value="0.7"></div>
             <div class="row"><span>Cloud glow</span><input type="range" id="cloudSizeRange" min="0.05" max="4" step="0.01" value="0.7"></div>
-            <div class="row" title="Max cloud samples per path (time-steps are strided down to this; higher = denser cloud, more draw cost)">
-                <span>Cloud res</span><input type="number" id="cloudResInput" value="100" min="2">
-                <button id="cloudResBtn">Regenerate</button>
-            </div>
             <div class="group-name">Torus offset — slide the map around the loops</div>
             <div class="row"><span>X offset</span><input type="range" id="offXRange" min="-1" max="1" step="0.01" value="0"><span class="val" id="offXVal" style="width:34px">0.00</span></div>
             <div class="row"><span>Y offset</span><input type="range" id="offYRange" min="-1" max="1" step="0.01" value="0"><span class="val" id="offYVal" style="width:34px">0.00</span></div>
@@ -299,7 +296,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v30';
+    const VIEWER_VERSION = 'v31';
 
     let functions = [];
     let Z_cache = [];
@@ -456,16 +453,11 @@
         return newCells;
     }
 
-    // ---- frequency selection (Smart = high-frequency bias → ~40% denser packing;
-    //      the legacy two-term model additionally keeps bx,by coprime) ----
-    let smartFreq = false;
-    function gcd(a, b){ while (b){ const t = a % b; a = b; b = t; } return a; }
+    // ---- frequency selection: uniform over the sampled band, matching the
+    //      CUDA engines (the smart/coprime sampler was retired 2026-07-08 —
+    //      its exponent rise was a sampler artifact) ----
     function drawOneFreq(){
-        if (!smartFreq) return Math.floor(Math.random()*modulation_Max) + 2;
-        // high-frequency bias: max of two uniform draws favours finer, nearly
-        // stationary paths that pack more orderly
-        return Math.max(Math.floor(Math.random()*modulation_Max),
-                        Math.floor(Math.random()*modulation_Max)) + 2;
+        return Math.floor(Math.random()*modulation_Max) + 2;
     }
     function drawUniqueFreqs(count){
         // each wiggle term needs its own integer frequency; duplicates re-draw
@@ -507,14 +499,7 @@
     // and subpaths draw from exactly the same model.
     function makeCandidate() {
         const NW = freqTerms - 1;                             // wiggle terms per axis
-        let fqx, fqy;
-        if (NW === 1 && smartFreq){                           // legacy coprime pair rule
-            let guard = 0;
-            do { fqx = drawUniqueFreqs(1); fqy = drawUniqueFreqs(1); }
-            while (gcd(fqx[0], fqy[0]) !== 1 && ++guard < 24);
-        } else {
-            fqx = drawUniqueFreqs(NW); fqy = drawUniqueFreqs(NW);
-        }
+        const fqx = drawUniqueFreqs(NW), fqy = drawUniqueFreqs(NW);
         const tx = makeAxisTerms(fqx), ty = makeAxisTerms(fqy);
         const terms = tx.map((t, j) => ({ ax: t.a, bx: t.b, fx: t.f,
                                           ay: ty[j].a, by: ty[j].b, fy: ty[j].f }));
@@ -1159,7 +1144,7 @@
     // T=1000 → every 10th). Positions are analytic in the shader, so this
     // bounds per-frame draw cost only — no stored data changes. The sweep
     // slice and the packing itself always use the full time-step grid.
-    // Adjustable via the View panel's "Cloud res" + Regenerate button.
+    // Adjustable via the Generation panel's "Cloud res" + Regenerate button.
     let cloudRes = 100;
     function cloudSamples(n){
         const stride = Math.max(1, Math.ceil(n / cloudRes));
@@ -1384,7 +1369,6 @@
             el.addEventListener('change', ()=>{ if (el.checked) apply(el.value); })); }
 
     /* generation */
-    onCheck('smartFreqChk', v=>{ smartFreq = v; });              // applies on next Generate
 
     /* view */
     onRadio('viewMode', v=>setView(v));
