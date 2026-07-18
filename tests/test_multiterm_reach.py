@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import numpy as np
 
-from analysis.analyze_multiterm_reach import optimize_at, random_sweep
+from analysis.analyze_multiterm_reach import (
+    optimize_at,
+    random_sweep,
+    split_scan,
+    top_examples,
+)
 from analysis.analyze_wiggle_reach import reach_from_bang
 
 PI = np.pi
@@ -32,6 +37,28 @@ def test_optimizer_saturates_at_envelope() -> None:
             found = optimize_at(z, k, BMAX, rng, n_freq_sets=6, n_starts=4)
             assert found <= env + 1e-6
             assert found >= 0.95 * env  # it does find near-optimal configs
+
+
+def test_examples_spend_exactly_unit_budget() -> None:
+    """Every sampled config satisfies sum |a_i * b_i| = 1 and its trajectory
+    at z_star reproduces the recorded displacement."""
+    rng = np.random.default_rng(11)
+    z_star = PI / 2
+    env = reach_from_bang(z_star, BMAX)[0]
+    for cfg in top_examples(z_star, 2, n_configs=2000, bmax=BMAX, rng=rng):
+        assert abs(cfg.budget() - 1.0) < 1e-12
+        traj = cfg.trajectory(np.array([z_star]))
+        assert abs(abs(traj[0]) - cfg.disp) < 1e-12
+        assert cfg.disp <= env + 1e-12
+
+
+def test_split_scan_is_linear_in_the_budget() -> None:
+    """The phase-maximized reach of a fixed frequency pair interpolates
+    linearly in the budget split — the geometric heart of the claim."""
+    for pair in ((2, 3), (2, 4)):
+        w_grid, numeric, predicted = split_scan(PI / 2, pair)
+        assert np.allclose(numeric, predicted, atol=2e-5)
+        assert float(numeric.max()) <= np.sqrt(2) + 1e-12
 
 
 def test_pi_half_optimum_is_sqrt2() -> None:
