@@ -205,6 +205,7 @@
             <summary>Reference frame</summary>
             <div class="choices">
                 <label title="Past-light-cone map: pause at an instant, then rewind the universe while a light pulse expands from the observer — every worldline crossing is plotted at its apparent (emission-time) position, coloured by redshift"><input type="checkbox" id="frameChk"> Show frame map</label>
+                <label title="Paint the same frame back onto the 2D slice minimap: each image maps to its source's TRUE emission-time position on the torus — wrap(observer + Δ) — so a worldline crossed at several epochs leaves a breadcrumb trail of its past positions, tinted by the received redshift. The front becomes a wrapped square around the observer. Aberration only bends apparent directions, so in the Moving view positions stay put and just the Doppler tint changes"><input type="checkbox" id="frameOnSliceChk"> Paint back onto the 2D slice</label>
             </div>
             <div class="row" title="Path index of the observer (0 = the default cone-emitting path)">
                 <span>Observer #</span><input type="number" id="frameObsInput" value="0" min="0">
@@ -298,7 +299,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v27';
+    const VIEWER_VERSION = 'v28';
 
     let functions = [];
     let Z_cache = [];
@@ -1703,6 +1704,10 @@
             }
             ctx.globalAlpha=1;
         }
+        // reference-frame overlay: the frame mapped back onto the torus
+        if (frameOnSlice && frameHits && frameEpochAt === genEpoch){
+            drawFrameOnSlice(ctx, W, H, sc, cx0, cy0, sinz);
+        }
         ctx.globalCompositeOperation='source-over';
         // caption lives in the DOM bar below the chart — never overlays the map
         document.getElementById('hudTime').textContent =
@@ -1730,7 +1735,10 @@
        Hits are stored frame-independently (Δ, χ, z_e), so the Observer mode
        is a draw-time remap: "moving" boosts into the observer's instantaneous
        rest frame — aberration bends apparent directions toward the peculiar
-       velocity and the Doppler factor γ(1 + β·n̂) multiplies the redshift. */
+       velocity and the Doppler factor γ(1 + β·n̂) multiplies the redshift.
+       The same hits also map back onto the torus itself: wrap(observer + Δ)
+       is the source's true emission-time position, which the "Paint back
+       onto the 2D slice" toggle overlays on the minimap (drawFrameOnSlice). */
     const frameCanvas = document.getElementById('frameCanvas');
     frameCanvas.width = 240*hudDPR; frameCanvas.height = 240*hudDPR;
     const frameCtx = frameCanvas.getContext('2d');
@@ -1738,6 +1746,7 @@
     const frameRewindRange = document.getElementById('frameRewindRange');
     let frameHits = null, frameInfo = null, frameEpochAt = -1;
     let showFrame = false, frameDirty = false, frameObsMode = 'static';
+    let frameOnSlice = false;              // paint the frame back onto the 2D slice
     let frameRewind = 1, frameAnimOn = false, frameAnimT0 = 0;
     const FRAME_ANIM_SECS = 8, FRAME_GRID = 420, FRAME_BISECT = 24;
     const FRAME_BETA_CAP = 0.995;          // worldlines aren't enforced subluminal
@@ -1780,15 +1789,22 @@
         document.getElementById('frameChk').checked = showFrame;
         if (showFrame) frameDirty = true;
     }
+    // the front at the current rewind position: budget mode rewinds ζ
+    // linearly in z and the radius follows the reach; conformal modes sweep
+    // χ linearly and invert η for ζ
+    function frameFrontState(){
+        if (frameInfo.budget){
+            const zeta = frameInfo.zObs - frameRewind*(frameInfo.zObs - frameInfo.zMin);
+            return { chiFront: frameInfo.reachFn(zeta), zeta };
+        }
+        const chiFront = frameRewind * frameInfo.chiMax;
+        const zeta = 2*Math.atan(Math.exp(frameInfo.etaObs - chiFront/frameInfo.spd));
+        return { chiFront, zeta };
+    }
     function updateRewindVal(){
         const el = document.getElementById('frameRewindVal');
         if (!frameInfo){ el.textContent = '—'; return; }
-        // budget mode rewinds linearly in z (the front radius follows the
-        // reach); conformal modes rewind linearly in χ and invert η
-        const zeta = frameInfo.budget
-            ? frameInfo.zObs - frameRewind*(frameInfo.zObs - frameInfo.zMin)
-            : 2*Math.atan(Math.exp(frameInfo.etaObs - frameRewind*frameInfo.chiMax/frameInfo.spd));
-        el.textContent = (zeta/Math.PI).toFixed(2) + 'π';
+        el.textContent = (frameFrontState().zeta/Math.PI).toFixed(2) + 'π';
     }
     function buildFrame(){
         if (!functions.length || Z_cache.length < 2){
@@ -1938,12 +1954,13 @@
         else hits.sort((a, b) => a.chi - b.chi);
         frameHits = hits;
         frameInfo = { zObs, zMin, chiMax, etaObs, obsIdx, cheb, spd, budget, reachFn,
-                      sinObs: Math.sin(zObs),
+                      ox, oy, sinObs: Math.sin(zObs),
                       beta, betaMag: Math.min(betaRaw, FRAME_BETA_CAP), betaClamped };
         frameEpochAt = genEpoch;
         frameRewind = 1; frameRewindRange.value = 1; frameAnimOn = false;
         updateRewindVal();
         setFrameVisible(true);
+        hudDirty = true;                   // the slice overlay reflects the new frame
         let frontLbl;
         if (budget) frontLbl = `budget reach, bmax ${bMax}`;
         else if (front === 'fit') frontLbl = `c=${spd.toFixed(3)} fit`;
@@ -1964,7 +1981,7 @@
         }
         if (!frameHits) return;
         const W = frameCanvas.width, H = frameCanvas.height, ctx = frameCtx;
-        const { zObs, zMin, chiMax, etaObs, obsIdx, cheb, spd, budget, reachFn,
+        const { zObs, chiMax, obsIdx, cheb, budget,
                 sinObs, beta, betaMag, betaClamped } = frameInfo;
         const moving = frameObsMode === 'moving' && betaMag > 1e-6;
         const gamma = moving ? 1/Math.sqrt(1 - betaMag*betaMag) : 1;
@@ -1975,17 +1992,8 @@
         ctx.lineWidth = 1;
         ctx.strokeStyle = 'rgba(120,140,180,0.14)';
         for (let rr = 1; rr < chiMax; rr++) frameShape(ctx, cx0, cy0, rr*sc, cheb);
-        // pulse front at the current rewind position: conformal modes sweep
-        // χ linearly and invert η for the rewound time ζ; budget mode rewinds
-        // ζ linearly in z and the front radius follows the reach
-        let chiFront, zeta;
-        if (budget){
-            zeta = zObs - frameRewind*(zObs - zMin);
-            chiFront = reachFn(zeta);
-        } else {
-            chiFront = frameRewind * chiMax;
-            zeta = 2*Math.atan(Math.exp(etaObs - chiFront/spd));
-        }
+        // pulse front at the current rewind position (see frameFrontState)
+        const { chiFront, zeta } = frameFrontState();
         ctx.lineWidth = 1.3*hudDPR;
         ctx.strokeStyle = 'rgba(235,240,255,0.75)';
         frameShape(ctx, cx0, cy0, chiFront*sc, cheb);
@@ -2050,6 +2058,60 @@
             'ζ=' + (zeta/Math.PI).toFixed(3) + 'π · ' + shown + ' im'
             + (moving ? ' · β=' + betaMag.toFixed(2) + (betaClamped ? '*' : '') : '');
     }
+    /* Paint the frame back onto the torus chart (the 2D slice minimap).
+       Each hit stores the unwrapped comoving offset Δ from the observer, so
+       wrap(observer + Δ) is the source's TRUE emission-time position on the
+       torus — one worldline crossed at several epochs (wrap images) leaves a
+       breadcrumb trail of its own past positions. The front is a wrapped
+       shape of half-width χ_front around the observer. Aberration only bends
+       apparent directions, so in the Moving view positions stay put and just
+       the Doppler factor tints the redshift colour. */
+    function drawFrameOnSlice(ctx, W, H, sc, cx0, cy0, sinz){
+        const { obsIdx, cheb, budget, sinObs, beta, betaMag, ox, oy } = frameInfo;
+        const { chiFront, zeta } = frameFrontState();
+        const moving = frameObsMode === 'moving' && betaMag > 1e-6;
+        const gamma = moving ? 1/Math.sqrt(1 - betaMag*betaMag) : 1;
+        // observer, in the chart's own coordinates (comoving or raw·sin z)
+        let owx = wrapComov(ox), owy = wrapComov(oy);
+        if (!geoLocal){ owx *= sinz; owy *= sinz; }
+        owx = wrapComov(owx + U.uOffX.value); owy = wrapComov(owy + U.uOffY.value);
+        const opx = cx0 + owx*sc, opy = cy0 - owy*sc;
+        // the front around the observer, tiled so it wraps the torus
+        const pr = (geoLocal ? chiFront : chiFront*sinz)*sc;
+        const Ppx = 2*sc;                  // tile pitch = one wrap period
+        ctx.lineWidth = 1.3*hudDPR;
+        ctx.strokeStyle = 'rgba(235,240,255,0.75)';
+        for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++){
+            const axp = opx + di*Ppx, ayp = opy + dj*Ppx;
+            if (axp+pr < 0 || axp-pr > W || ayp+pr < 0 || ayp-pr > H) continue;
+            frameShape(ctx, axp, ayp, pr, cheb);
+        }
+        // every image the front has swept, at its true past position
+        const r = 2*hudDPR;
+        for (const h of frameHits){
+            // same reveal rule as drawFrame (matches each mode's hit sort)
+            if (budget ? h.zEmit < zeta : h.chi > chiFront) break;
+            let lnDopp = 0;
+            if (moving){
+                const eucl = Math.hypot(h.dx, h.dy);
+                if (eucl > 0) lnDopp = Math.log(gamma*(1 + (beta[0]*h.dx + beta[1]*h.dy)/eucl));
+            }
+            let x = wrapComov(ox + h.dx), y = wrapComov(oy + h.dy);
+            if (!geoLocal){ x *= sinz; y *= sinz; }
+            x = wrapComov(x + U.uOffX.value); y = wrapComov(y + U.uOffY.value);
+            const c = redshiftRGB(sinObs, h.zEmit, lnDopp);
+            ctx.fillStyle = 'rgb(' + ((c[0]*255)|0) + ',' + ((c[1]*255)|0) + ',' + ((c[2]*255)|0) + ')';
+            ctx.fillRect(cx0 + x*sc - r, cy0 - y*sc - r, r*2, r*2);
+            if (h.p === obsIdx){          // the observer's own past
+                ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+                ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.arc(cx0 + x*sc, cy0 - y*sc, r*2, 0, Math.PI*2); ctx.stroke();
+            }
+        }
+        // observer marker on top of everything it has imaged
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(opx - 2*hudDPR, opy - 2*hudDPR, 4*hudDPR, 4*hudDPR);
+    }
     document.getElementById('frameBuildBtn').addEventListener('click', buildFrame);
     document.getElementById('frameChk').addEventListener('change', e => {
         if (e.target.checked && !frameHits){
@@ -2059,12 +2121,24 @@
         }
         setFrameVisible(e.target.checked);
     });
-    onRadio('frameObsMode', v => { frameObsMode = v; frameDirty = true; });
+    document.getElementById('frameOnSliceChk').addEventListener('change', e => {
+        frameOnSlice = e.target.checked;
+        hudDirty = true;
+        if (frameOnSlice && !frameHits){
+            statusEl.textContent = 'Slice overlay armed — press "Build frame @ now" to populate it';
+        }
+    });
+    onRadio('frameObsMode', v => {
+        frameObsMode = v;
+        frameDirty = true;
+        if (frameOnSlice) hudDirty = true;
+    });
     frameRewindRange.addEventListener('input', e => {
         frameAnimOn = false;
         frameRewind = parseFloat(e.target.value);
         updateRewindVal();
         frameDirty = true;
+        if (frameOnSlice) hudDirty = true;
     });
     document.getElementById('frameAnimBtn').addEventListener('click', () => {
         if (!frameHits){
@@ -2106,6 +2180,7 @@
             frameRewindRange.value = frameRewind.toFixed(3);
             updateRewindVal();
             frameDirty = true;
+            if (frameOnSlice) hudDirty = true;
             if (frameRewind >= 1) frameAnimOn = false;
         }
         if (showFrame && frameDirty){ drawFrame(); frameDirty = false; }
