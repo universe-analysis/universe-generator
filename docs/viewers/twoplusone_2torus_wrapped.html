@@ -299,7 +299,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v29';
+    const VIEWER_VERSION = 'v30';
 
     let functions = [];
     let Z_cache = [];
@@ -1337,6 +1337,15 @@
     document.getElementById('menuBtn').addEventListener('click', e=>{
         e.currentTarget.classList.toggle('on', sidepanel.classList.toggle('open'));
     });
+    // the fixed topbar wraps to two rows on narrower windows and draws OVER
+    // the sidepanel — reserve its real height, or the first section
+    // (Generation) hides underneath it
+    const topbarEl = document.getElementById('topbar');
+    function fitSidepanel(){
+        sidepanel.style.paddingTop = (topbarEl.offsetHeight + 10) + 'px';
+    }
+    window.addEventListener('resize', fitSidepanel);
+    fitSidepanel();
     /* fullscreen toggle — button in the top bar, or the F key. Uses the
        webkit-prefixed API as a fallback for older Safari. */
     const fsBtn = document.getElementById('fsBtn');
