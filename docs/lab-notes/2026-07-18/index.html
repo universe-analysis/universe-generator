@@ -72,6 +72,62 @@
       </p>
     </article>
 
+    <article class="entry" id="multiterm-examples">
+      <h2>What the tried functions actually look like: example 2-term worldlines and the split-linearity line</h2>
+      <p class="meta">
+        Numerical stress test (no campaign) &middot; analysis module + tests
+        <a href="https://github.com/universe-analysis/universe-generator/commit/7f711e0"><code>7f711e0</code></a>
+      </p>
+      <p>
+        Follow-up to the entry above: Kevin wanted to see concrete examples of
+        the functions the sweep tried, to make sure the budget really is being
+        split across terms. Every sampled config is a genuine worldline
+        x(z) = &Sigma;<sub>i</sub> a<sub>i</sub>[sin(b<sub>i</sub>z +
+        f<sub>i</sub>) &minus; sin f<sub>i</sub>] with amplitudes
+        a<sub>i</sub> = &plusmn;w<sub>i</sub>/b<sub>i</sub>, so the rapidity
+        budget &Sigma;|a<sub>i</sub>b<sub>i</sub>| = &Sigma;w<sub>i</sub> = 1
+        exactly (verified to 1e-12 on every example). The four shown are the
+        two best free draws at z = &pi;/2 plus the two best <em>genuinely
+        split</em> draws (every term forced to hold &ge; 30% of the
+        budget):
+      </p>
+      <ul>
+        <li><code>x(z) = &minus;6.3e&minus;5 [sin(170z + 2.93) &minus; sin 2.93] + 0.495 [sin(2z + 0.88) &minus; sin 0.88]</code>
+            &mdash; disp 1.4031 (0.992 of &radic;2). The best free draw
+            self-concentrates: 99% of the budget on b = 2 near the optimal
+            phase &pi;/4, a whisker of budget wasted on b = 170.</li>
+        <li><code>x(z) = &minus;0.00314 sin(109z) + 0.329 [sin(2z + 3.80) &minus; sin 3.80]</code>
+            &mdash; a real 34/66 split (odd b = 109 carries
+            0.00314&times;109 = 0.34 of the budget); disp 1.2622, only 0.89
+            of the envelope.</li>
+        <li><code>x(z) = 0.202 [sin(3z + 3.14) &minus; sin 3.14] + &hellip;</code>
+            &mdash; the odd-frequency phases show up only as f &isin;
+            {0, &pi;} (here b = 3 at f = &pi;, b = 7 at f = 0), the loop-closure
+            constraint; a 60/40 split reaching 0.89 of the envelope.</li>
+      </ul>
+      <figure class="plot">
+        <img src="multiterm_examples.png"
+             alt="Two panels. Left: displacement-from-Bang trajectories of four example 2-term worldlines under the thick blue single-term envelope, each labelled with its explicit formula; the near-concentrated ones touch the envelope at pi over 2, the genuinely split ones peak lower. Right: max reach at pi over 2 versus the budget share w on b equals 2 paired with b equals 3, 4, or 6 — the phase-maximized dots lie exactly on straight lines rising to root 2 at w equals 1." />
+        <figcaption>
+          Left: example 2-term worldlines with their explicit formulas; dots
+          mark their displacement at z = &pi;/2. Right: reach vs budget split
+          for fixed pairs, maximized over all phases and signs at every w
+          &mdash; exactly the straight line w&middot;r<sub>1</sub> +
+          (1&minus;w)&middot;r<sub>2</sub>.
+        </figcaption>
+      </figure>
+      <p>
+        The right panel is the whole argument made visible: for any frequency
+        pair, the phase-maximized reach is <em>exactly linear</em> in the
+        budget split (numeric dots on the predicted line to 2e-5, locked in
+        <code>tests/test_multiterm_reach.py</code>), so the maximum over
+        splits always sits at an endpoint &mdash; concentration. Splitting
+        with b = 2 + 4 at w = 0 shows the even partner's reach 1.0 exactly
+        (b = 4's own phased optimum at &pi;/2); no interior w ever pokes
+        above the &radic;2 dashed line.
+      </p>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
