@@ -300,6 +300,12 @@ def word_str(word: list[tuple[int, int]]) -> str:
     return ".".join(f"s{k}" + ("'" if s < 0 else "") for k, s in word)
 
 
+# The Bilson-Thompson first-generation braiding template sigma1*sigma2^-1, its
+# parity mirror sigma2^-1*sigma1, and their charge conjugates (word reversed,
+# generators inverted) -- the four mixed-sign 2-crossing words.
+BT_TEMPLATES = ("s1.s2'", "s2'.s1", "s2.s1'", "s1'.s2")
+
+
 # ---------------------------------------------------------------------------
 # census
 # ---------------------------------------------------------------------------
@@ -415,38 +421,78 @@ def main() -> None:
     parser.add_argument(
         "--dict-len", type=int, default=6, help="B_3 shortest-word dictionary depth"
     )
+    parser.add_argument(
+        "--replot",
+        action="store_true",
+        help="rebuild census + figure from the existing --csv (no braid extraction)",
+    )
     args = parser.parse_args()
 
     paths = sorted(glob.glob(args.dumps))
     if not paths:
         raise SystemExit(f"no dumps match {args.dumps}")
-    b3dict = build_b3_dictionary(args.dict_len)
-    print(f"B_3 dictionary: {len(b3dict)} classes up to word length {args.dict_len}")
 
-    results = [analyze_dump(p, args.supersample, args.max_group, b3dict) for p in paths]
-    for r, p in zip(results, paths):
-        n_groups = sum(1 for _ in r.groups)
+    if args.replot:
+        with open(args.csv) as fh:
+            rows = []
+            for r in csv.DictReader(fh):
+                for k in (
+                    "t",
+                    "seed",
+                    "gid",
+                    "n",
+                    "n_crossings",
+                    "exp_sum",
+                    "fragile",
+                    "anomalies",
+                ):
+                    r[k] = int(r[k])
+                rows.append(r)
+        # Size census straight from the dumps (cheap: just gid counts).
+        results = []
+        for p in paths:
+            m = _NAME_RE.search(Path(p).name)
+            assert m is not None
+            res = DumpResult(t=int(m["t"]), seed=int(m["seed"]))
+            with open(p) as fh:
+                gids = Counter(
+                    r["gid"]
+                    for r in csv.DictReader(fh)
+                    if r.get("gid") not in (None, "")
+                )
+            res.size_hist.update(Counter(gids.values()))
+            results.append(res)
+    else:
+        b3dict = build_b3_dictionary(args.dict_len)
         print(
-            f"  {Path(p).name}: {n_groups} multi-strand groups analyzed"
-            + (f" ({r.skipped_giant} giant skipped)" if r.skipped_giant else "")
+            f"B_3 dictionary: {len(b3dict)} classes up to word length {args.dict_len}"
         )
+        results = [
+            analyze_dump(p, args.supersample, args.max_group, b3dict) for p in paths
+        ]
+        for r, p in zip(results, paths):
+            n_groups = sum(1 for _ in r.groups)
+            print(
+                f"  {Path(p).name}: {n_groups} multi-strand groups analyzed"
+                + (f" ({r.skipped_giant} giant skipped)" if r.skipped_giant else "")
+            )
 
-    rows = [g for r in results for g in r.groups]
-    skipped = sum(r.skipped_giant for r in results)
-    if skipped:
-        print(
-            f"NOTE: {skipped} groups larger than --max-group={args.max_group} "
-            "were skipped for braid extraction (still in the size census)."
-        )
+        rows = [g for r in results for g in r.groups]
+        skipped = sum(r.skipped_giant for r in results)
+        if skipped:
+            print(
+                f"NOTE: {skipped} groups larger than --max-group={args.max_group} "
+                "were skipped for braid extraction (still in the size census)."
+            )
 
-    if not rows:
-        raise SystemExit("no multi-strand groups found in the given dumps")
-    args.csv.parent.mkdir(parents=True, exist_ok=True)
-    with open(args.csv, "w", newline="") as fh:
-        writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
-    print(f"wrote {args.csv} ({len(rows)} groups)")
+        if not rows:
+            raise SystemExit("no multi-strand groups found in the given dumps")
+        args.csv.parent.mkdir(parents=True, exist_ok=True)
+        with open(args.csv, "w", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(rows)
+        print(f"wrote {args.csv} ({len(rows)} groups)")
 
     # ---- printed census ----
     pairs = [g for g in rows if g["n"] == 2]
@@ -464,6 +510,17 @@ def main() -> None:
         print(f"\n  B_3 classes ({label}):")
         for cls, cnt in census.most_common(15):
             print(f"    {cls:<24} {cnt:>5}  ({100 * cnt / max(len(subset), 1):.1f}%)")
+
+    bt_hits = [g for g in triples if g["class"] in BT_TEMPLATES]
+    print(
+        f"\n  Bilson-Thompson template incidence "
+        f"(any of {', '.join(BT_TEMPLATES)}): {len(bt_hits)}/{len(triples)} triples"
+    )
+    for g in bt_hits:
+        print(
+            f"    T={g['t']} s{g['seed']} gid={g['gid']}: class {g['class']}, "
+            f"{g['n_crossings']} raw crossings, {g['fragile']} fragile"
+        )
 
     # Chirality balance: does jamming prefer a handedness? (parity test)
     pe_pos = sum(1 for g in pairs if g["exp_sum"] > 0)
@@ -534,33 +591,44 @@ def make_figure(results: list[DumpResult], rows: list[dict], out: Path) -> None:
     ax.legend(fontsize=7)
     ax.grid(True, which="both", alpha=0.25)
 
-    # (b) pair (n=2) linking: exponent-sum distribution
+    # (b) pair (n=2) linking: exponent-sum distribution (clipped to the bulk;
+    # log counts so the tails stay visible)
     ax = axes[1]
-    es = [g["exp_sum"] for g in rows if g["n"] == 2]
-    lo, hi = min(es, default=-1), max(es, default=1)
-    bins = np.arange(lo - 0.5, hi + 1.5)
-    ax.hist(es, bins=bins, color="tab:blue", edgecolor="white")
+    es = np.array([g["exp_sum"] for g in rows if g["n"] == 2])
+    clip = 24
+    n_out = int(np.sum(np.abs(es) > clip))
+    bins = np.arange(-clip - 0.5, clip + 1.5)
+    ax.hist(np.clip(es, -clip, clip), bins=bins, color="tab:blue", log=True)
     ax.set_xlabel("signed crossing sum e (B$_2$ class)")
-    ax.set_ylabel("pairs")
-    ax.set_title("(b) 2-strand groups: linking census")
+    ax.set_ylabel("pairs (log)")
+    title_b = "(b) 2-strand groups: linking census"
+    if n_out:
+        title_b += f"\n({n_out} pairs beyond |e|={clip} clipped into edge bins)"
+    ax.set_title(title_b)
     ax.grid(True, axis="y", alpha=0.25)
 
-    # (c) 3-strand class census, Bilson-Thompson template highlighted
+    # (c) 3-strand class census over ALL triples, Bilson-Thompson rows appended
+    # so their (near-)absence is visible rather than silent.
     ax = axes[2]
-    solid = [g for g in rows if g["n"] == 3 and g["fragile"] == 0]
-    census = Counter(g["class"] for g in solid)
-    top = census.most_common(12)
-    labels = [c for c, _ in top]
-    counts = [v for _, v in top]
-    bt_like = {"s1.s2'", "s2.s1'", "s1'.s2", "s2'.s1"}  # sigma_i sigma_j^-1 templates
-    colors = ["tab:orange" if lb in bt_like else "tab:blue" for lb in labels]
-    ax.barh(range(len(top))[::-1], counts, color=colors, edgecolor="white")
-    ax.set_yticks(range(len(top))[::-1])
+    triples = [g for g in rows if g["n"] == 3]
+    census = Counter(g["class"] for g in triples)
+    top = census.most_common(10)
+    bt_count = sum(census.get(c, 0) for c in BT_TEMPLATES)
+    labels = [c for c, _ in top] + ["B-T template\n(all 4 words)"]
+    counts = [v for _, v in top] + [bt_count]
+    colors = ["tab:blue"] * len(top) + ["tab:orange"]
+    pos = list(range(len(labels)))[::-1]
+    ax.barh(pos, counts, color=colors, edgecolor="white")
+    for p, c in zip(pos, counts):
+        ax.annotate(
+            str(c), (c, p), xytext=(4, -3), textcoords="offset points", fontsize=8
+        )
+    ax.set_yticks(pos)
     ax.set_yticklabels(labels, fontsize=8, family="monospace")
-    ax.set_xlabel("groups (fragile-free)")
+    ax.set_xlabel(f"3-strand groups (of {len(triples)})")
     ax.set_title(
         "(c) B$_3$ classes of 3-strand groups\n"
-        "(orange = Bilson-Thompson $\\sigma_i\\sigma_j^{-1}$ template)"
+        "(orange = Bilson-Thompson $\\sigma_i\\sigma_j^{\\mp1}$ incidence)"
     )
     ax.grid(True, axis="x", alpha=0.25)
 
