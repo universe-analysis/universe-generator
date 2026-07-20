@@ -49,7 +49,7 @@
     <div id="topbar">
         <button id="menuBtn">☰ Settings</button>
         <label>Time-steps <input type="number" id="timeInput" value="64" min="2"></label>
-        <label title="Sinusoid terms per axis, incl. the sin1 term (2 = legacy model)">Freq terms <input type="number" id="termsInput" value="3" min="2"></label>
+        <label title="v3 experiment: slaved to Time-steps on Generate — every strand carries every integer frequency 2..T, and the sin1 amplitude is pinned to zero. Import CSV still sets the count from the file.">Freq terms <input type="number" id="termsInput" value="3" min="2" disabled></label>
         <label>Gen time <input type="range" id="genTimeRange" min="1" max="60" step="1" value="6"><span id="genTimeVal" class="val">6s</span></label>
         <label title="Generate stops at this many strands; Import shows only the first this-many rows. Braids read best under ~60 strands.">Max strands <input type="number" id="maxStrandsInput" value="36" min="1"></label>
         <button id="generateBtn">Generate</button>
@@ -178,7 +178,7 @@
     const termsInput = document.getElementById('termsInput');
     const statusEl   = document.getElementById('status');
 
-    const VIEWER_VERSION = 'v2';
+    const VIEWER_VERSION = 'v3';
     document.getElementById('verLbl').textContent = 'braid ' + VIEWER_VERSION;
 
     /* ---------------- PART 1: packing (mirrors the wrapped viewer) -------- */
@@ -309,8 +309,9 @@
         const tx = makeAxisTerms(fqx), ty = makeAxisTerms(fqy);
         const terms = tx.map((t, j) => ({ ax: t.a, bx: t.b, fx: t.f,
                                           ay: ty[j].a, by: ty[j].b, fy: ty[j].f }));
-        return { ax2: Math.random() * 2 - 1,
-                 ay2: Math.random() * 2 - 1,
+        // EXPERIMENT (v3): the sin1 free comoving-offset amplitude is pinned
+        // to zero — strands carry only the wiggle terms (was U[-1,1] draws)
+        return { ax2: 0, ay2: 0,
                  terms, fsum: freqSum(terms) };
     }
     function generateFunction() {
@@ -364,7 +365,11 @@
         time_steps = Math.max(2, parseInt(timeInput.value) || 64);
         timeInput.value = time_steps;
         modulation_Max = time_steps - 1;
-        freqTerms = Math.min(Math.max(2, parseInt(termsInput.value) || 3), modulation_Max + 1);
+        // EXPERIMENT (v3): the term count is slaved to the time-step count.
+        // With the unique-frequency band being [2, modulation_Max + 1] = [2, T],
+        // NW = T − 1 wiggle terms means every strand carries EVERY integer
+        // frequency 2..T; only the simplex split, signs and phases differ.
+        freqTerms = modulation_Max + 1;
         termsInput.value = freqTerms;
         targetStrands = Math.max(1, parseInt(document.getElementById('maxStrandsInput').value) || 36);
         genBudgetMs = parseFloat(document.getElementById('genTimeRange').value) * 1000;
