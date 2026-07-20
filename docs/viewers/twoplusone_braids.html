@@ -49,7 +49,7 @@
     <div id="topbar">
         <button id="menuBtn">☰ Settings</button>
         <label>Time-steps <input type="number" id="timeInput" value="64" min="2"></label>
-        <label title="v3 experiment: slaved to Time-steps on Generate — every strand carries every integer frequency 2..T, and the sin1 amplitude is pinned to zero. Import CSV still sets the count from the file.">Freq terms <input type="number" id="termsInput" value="3" min="2" disabled></label>
+        <label title="Sinusoid terms per axis, incl. the sin1 term (2 = legacy model). Disabled while the full-band experiment is on.">Freq terms <input type="number" id="termsInput" value="3" min="2"></label>
         <label>Gen time <input type="range" id="genTimeRange" min="1" max="60" step="1" value="6"><span id="genTimeVal" class="val">6s</span></label>
         <label title="Generate stops at this many strands; Import shows only the first this-many rows. Braids read best under ~60 strands.">Max strands <input type="number" id="maxStrandsInput" value="36" min="1"></label>
         <button id="generateBtn">Generate</button>
@@ -124,6 +124,13 @@
                 <label><input type="checkbox" id="guideChk" checked> Domain guides</label>
             </div>
         </details>
+        <details>
+            <summary>Model experiments</summary>
+            <div class="choices">
+                <label title="Pin the sin1 free comoving-offset amplitude to zero (ax2 = ay2 = 0): strands lose their free placement on the torus and bunch near the comoving origin. Takes effect on the next Generate."><input type="checkbox" id="pinSin1Chk"> Pin sin1 amplitude to zero</label>
+                <label title="Slave the term count to Time-steps: every strand carries every integer frequency 2..T, splitting the unit slope budget across all of them. Takes effect on the next Generate."><input type="checkbox" id="fullBandChk"> Full frequency band (terms = T)</label>
+            </div>
+        </details>
     </div>
 
     <!-- Three.js classic UMD builds — load from file:// without CORS issues -->
@@ -160,6 +167,14 @@
        few dozen strands). Subpath families still appear via Import CSV:
        a dump with a gid column colours by family in Group mode.
 
+       MODEL EXPERIMENTS (v4): two independent panel toggles, applied at
+       Generate — pin the sin1 amplitude to zero (strands lose their free
+       comoving placement and bunch near the origin), and/or slave the
+       term count to T (every integer frequency 2..T on every strand,
+       diluting the unit slope budget). Both default off = the standard
+       model. The v3 build had both hardcoded on; v4 separates them so
+       each effect can be isolated.
+
        v2 additions:
         - FUTURE DIM: tube vertices carry their conformal time; a shader
           uniform dims everything later than the playback time, so the
@@ -178,7 +193,7 @@
     const termsInput = document.getElementById('termsInput');
     const statusEl   = document.getElementById('status');
 
-    const VIEWER_VERSION = 'v3';
+    const VIEWER_VERSION = 'v4';
     document.getElementById('verLbl').textContent = 'braid ' + VIEWER_VERSION;
 
     /* ---------------- PART 1: packing (mirrors the wrapped viewer) -------- */
@@ -188,6 +203,8 @@
     let abort_gen = false, saturated = false, consecFails = 0;
     let genBudgetMs = 6000, genStart = 0, lastLiveUpload = 0, genEpoch = 0;
     let targetStrands = 36;
+    // Model experiments (see the sidepanel section; read at Generate time)
+    let pinSin1 = false, fullBand = false, expNote = '';
     const maxAttemptsPerFunction = 50;
 
     // Canonical z grid, identical to the CUDA engines: T interior points of
@@ -309,9 +326,10 @@
         const tx = makeAxisTerms(fqx), ty = makeAxisTerms(fqy);
         const terms = tx.map((t, j) => ({ ax: t.a, bx: t.b, fx: t.f,
                                           ay: ty[j].a, by: ty[j].b, fy: ty[j].f }));
-        // EXPERIMENT (v3): the sin1 free comoving-offset amplitude is pinned
-        // to zero — strands carry only the wiggle terms (was U[-1,1] draws)
-        return { ax2: 0, ay2: 0,
+        // sin(1·z) amp: the free comoving offset, U[-1,1] — or pinned to
+        // zero under the Model experiments toggle
+        return { ax2: pinSin1 ? 0 : Math.random() * 2 - 1,
+                 ay2: pinSin1 ? 0 : Math.random() * 2 - 1,
                  terms, fsum: freqSum(terms) };
     }
     function generateFunction() {
@@ -355,7 +373,8 @@
             buildStrands();
             const note = saturated ? ' (space saturated)' :
                          (functions.length >= targetStrands ? ' (max strands)' : '');
-            statusEl.textContent = `${functions.length} strands packed${note} · T=${time_steps}`;
+            const expTxt = expNote ? ` · ${expNote}` : '';
+            statusEl.textContent = `${functions.length} strands packed${note} · T=${time_steps}${expTxt}`;
         }
     }
 
@@ -365,12 +384,16 @@
         time_steps = Math.max(2, parseInt(timeInput.value) || 64);
         timeInput.value = time_steps;
         modulation_Max = time_steps - 1;
-        // EXPERIMENT (v3): the term count is slaved to the time-step count.
-        // With the unique-frequency band being [2, modulation_Max + 1] = [2, T],
-        // NW = T − 1 wiggle terms means every strand carries EVERY integer
-        // frequency 2..T; only the simplex split, signs and phases differ.
-        freqTerms = modulation_Max + 1;
+        // Full-band experiment: slave the term count to T. With the unique-
+        // frequency band being [2, modulation_Max + 1] = [2, T], NW = T − 1
+        // wiggle terms means every strand carries EVERY integer frequency
+        // 2..T; only the simplex split, signs and phases differ.
+        freqTerms = fullBand ? modulation_Max + 1
+                             : Math.min(Math.max(2, parseInt(termsInput.value) || 3),
+                                        modulation_Max + 1);
         termsInput.value = freqTerms;
+        expNote = [pinSin1 ? 'sin1=0' : '', fullBand ? 'full band' : '']
+                  .filter(Boolean).join(' · ');
         targetStrands = Math.max(1, parseInt(document.getElementById('maxStrandsInput').value) || 36);
         genBudgetMs = parseFloat(document.getElementById('genTimeRange').value) * 1000;
         functions = [];
@@ -381,6 +404,20 @@
     document.getElementById('abortBtn').addEventListener('click', () => abort_gen = true);
     document.getElementById('genTimeRange').addEventListener('input', e => {
         document.getElementById('genTimeVal').textContent = e.target.value + 's';
+    });
+    // Model experiment toggles. The terms box is slaved (and disabled) while
+    // full band is on; its last hand-entered value comes back when it's off.
+    let manualTerms = 3;
+    termsInput.addEventListener('change', () => {
+        if (!termsInput.disabled) manualTerms = parseInt(termsInput.value) || 3;
+    });
+    document.getElementById('pinSin1Chk').addEventListener('change', e => {
+        pinSin1 = e.target.checked;
+    });
+    document.getElementById('fullBandChk').addEventListener('change', e => {
+        fullBand = e.target.checked;
+        termsInput.disabled = fullBand;
+        if (!fullBand) termsInput.value = manualTerms;
     });
 
     /* ---- CSV import: load a CUDA --dump-params file (2+1 only) ----
