@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>2+1 Universe — Braid view (worldlines as strands)</title>
+    <style>
+        :root { color-scheme: dark; }
+        html,body { margin:0; height:100%; background:#000006; color:#aeb8cc; font-family:sans-serif; overflow:hidden; }
+        canvas { display:block; }
+        button { background:#141c30; color:#dce4f4; border:1px solid #29344f; border-radius:5px; padding:5px 10px; cursor:pointer; font-size:12px; }
+        button:hover { background:#1d2742; }
+        button.on { background:#2f6f4f; border-color:#3f9f6f; }
+        input[type=number]{ width:64px; background:#0c1018; color:#cdd6e4; border:1px solid #232c40; border-radius:4px; padding:3px 5px; }
+        input[type=range]{ width:104px; accent-color:#4f7fd0; }
+        input[type=checkbox], input[type=radio]{ accent-color:#4f7fd0; margin:0; }
+        .sep { width:1px; height:20px; background:#222b40; }
+
+        #topbar {
+            position:fixed; top:0; left:0; right:0; z-index:12;
+            display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px;
+            padding:8px 12px; background:rgba(4,5,12,.85);
+            border-bottom:1px solid #161c2c; backdrop-filter:blur(4px);
+        }
+        #topbar label { font-size:12px; display:inline-flex; align-items:center; gap:5px; }
+        #status { font-size:12px; color:#7d8aa6; margin-left:auto; }
+        #verLbl { font-size:12px; color:#5a6880; }
+
+        #sidepanel {
+            position:fixed; top:0; left:0; bottom:0; z-index:11;
+            width:280px; box-sizing:border-box; padding:56px 16px 16px;
+            overflow-y:auto; background:rgba(6,8,16,.93);
+            border-right:1px solid #161c2c; backdrop-filter:blur(6px);
+            transform:translateX(-100%); transition:transform .22s ease;
+        }
+        #sidepanel.open { transform:none; }
+        #sidepanel details { border-bottom:1px solid #161c2c; padding-bottom:10px; }
+        #sidepanel summary { cursor:pointer; font-size:11px; font-weight:bold; color:#c8d4ea;
+                             letter-spacing:.6px; text-transform:uppercase; padding:10px 0 6px; }
+        .choices { display:flex; flex-direction:column; gap:4px; padding:2px 0 4px; }
+        .choices label { font-size:12px; display:flex; align-items:center; gap:7px; cursor:pointer; }
+        .group-name { font-size:11px; color:#7d8aa6; padding-top:5px; }
+        .row { display:flex; align-items:center; gap:8px; font-size:12px; padding:4px 0; }
+        .row > span:first-child { flex:0 0 86px; }
+        .row > input[type=range]{ flex:1; min-width:0; width:auto; }
+        .row .val { flex:none; width:34px; text-align:right; color:#9fb0d0; }
+    </style>
+</head>
+<body>
+    <div id="topbar">
+        <button id="menuBtn">☰ Settings</button>
+        <label>Time-steps <input type="number" id="timeInput" value="64" min="2"></label>
+        <label title="Sinusoid terms per axis, incl. the sin1 term (2 = legacy model)">Freq terms <input type="number" id="termsInput" value="3" min="2"></label>
+        <label>Gen time <input type="range" id="genTimeRange" min="1" max="60" step="1" value="6"><span id="genTimeVal" class="val">6s</span></label>
+        <label title="Generate stops at this many strands; Import shows only the first this-many rows. Braids read best under ~60 strands.">Max strands <input type="number" id="maxStrandsInput" value="36" min="1"></label>
+        <button id="generateBtn">Generate</button>
+        <button id="abortBtn">Abort</button>
+        <input type="file" id="importInput" accept=".csv,text/csv" hidden>
+        <button id="importBtn" title="Load a CUDA --dump-params CSV (2+1 dumps only)">Import CSV</button>
+        <span class="sep"></span>
+        <button id="playBtn" class="on">Play ▶</button>
+        <label>Speed <input type="range" id="speedRange" min="0.05" max="4" step="0.01" value="0.5"><span id="speedVal" class="val">0.5×</span></label>
+        <label>Time <input type="range" id="timeScrub" min="0" max="1" step="0.001" value="0"></label>
+        <span id="hudTime" style="font-size:12px;color:#9fb0d0;width:86px">t = —</span>
+        <span id="status">Idle — press Generate</span>
+        <span id="verLbl"></span>
+        <button id="fsBtn" title="Toggle fullscreen (F)">⛶</button>
+    </div>
+
+    <div id="sidepanel">
+        <details open>
+            <summary>Braid layout</summary>
+            <div class="choices">
+                <span class="group-name">View</span>
+                <label title="Time runs vertically, (x,y) is the comoving square — the braid diagram in 3D"><input type="radio" name="braidView" value="column" checked> Column — time upward</label>
+                <label title="The (0,π) conformal loop bent around a circle — the braid-closure (knot/link) look"><input type="radio" name="braidView" value="ring"> Ring — closed loop</label>
+                <span class="group-name">Geometry</span>
+                <label title="Comoving coordinates: strands keep their full width for the whole loop"><input type="radio" name="geomMode" value="comoving" checked> Comoving</label>
+                <label title="Raw coordinates (× sin z): every strand pinches to the origin at the Bang and the Crunch — the ring view becomes a bouquet through one point"><input type="radio" name="geomMode" value="raw"> Raw — pinched at Bang/Crunch</label>
+            </div>
+            <div class="choices">
+                <label title="Plot unwrapped comoving coordinates (extent up to ±2) instead of cutting tubes at the torus seams"><input type="checkbox" id="unwrapChk"> Unwrapped — no seam cuts</label>
+            </div>
+            <div class="row"><span>Tube radius</span><input type="range" id="tubeRadRange" min="0.008" max="0.12" step="0.002" value="0.032"><span class="val" id="tubeRadVal">.032</span></div>
+            <div class="row" title="Samples along each strand (tube smoothness)"><span>Tube res</span><input type="range" id="tubeResRange" min="60" max="600" step="20" value="240"><span class="val" id="tubeResVal">240</span></div>
+            <div class="row" title="Sides of each tube's cross-section"><span>Radial segs</span><input type="range" id="radialRange" min="4" max="16" step="1" value="10"><span class="val" id="radialVal">10</span></div>
+            <div class="row" title="Column view: height of the time axis"><span>Height</span><input type="range" id="heightRange" min="4" max="20" step="0.5" value="10"><span class="val" id="heightVal">10</span></div>
+            <div class="row" title="Ring view: radius of the time circle"><span>Ring R</span><input type="range" id="ringRRange" min="3" max="12" step="0.5" value="6"><span class="val" id="ringRVal">6</span></div>
+        </details>
+        <details open>
+            <summary>Coloring</summary>
+            <div class="choices">
+                <label><input type="radio" name="colorMode" value="strand" checked> Per strand — golden-ratio hues</label>
+                <label title="Colour by group ID: on an imported subpath dump, each family shares a colour"><input type="radio" name="colorMode" value="group"> Group ID — subpath families</label>
+                <label><input type="radio" name="colorMode" value="freq"> Frequency (fsum) — red low, blue high</label>
+            </div>
+        </details>
+        <details>
+            <summary>Time marker</summary>
+            <div class="choices">
+                <label title="A bead riding each strand at the current time"><input type="checkbox" id="beadChk" checked> Beads on strands</label>
+                <label title="A translucent plane at the current time slice"><input type="checkbox" id="planeChk"> Slice plane</label>
+            </div>
+            <div class="row"><span>Bead size</span><input type="range" id="beadSizeRange" min="1" max="6" step="0.1" value="2.4"><span class="val" id="beadSizeVal">2.4</span></div>
+        </details>
+        <details>
+            <summary>Scene</summary>
+            <div class="choices">
+                <label><input type="checkbox" id="spinChk"> Auto-spin</label>
+                <label><input type="checkbox" id="guideChk" checked> Domain guides</label>
+            </div>
+        </details>
+    </div>
+
+    <!-- Three.js classic UMD builds — load from file:// without CORS issues -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+    /* ================================================================
+       BRAID VIEW — the wrapped 2+1 packing rendered as actual strands.
+
+       Same worldline model and packing rule as
+       twoplusone_2torus_wrapped.html (uniform sampler, phases on even
+       frequencies, unit slope budget Σ|a·b| = 1 per axis, wrapped
+       Chebyshev collision hash with cell 2/T), but instead of animating
+       a dot per path, each accepted worldline is swept over the whole
+       conformal loop z ∈ (0,π) and drawn as a lit 3D tube. Strands
+       passing over and under each other ARE the braid: from Bang to
+       Crunch every worldline traces a strand in (x, y, time), and the
+       packing guarantees no two strands ever touch.
+
+       Two layouts:
+        - COLUMN: time upward, (x,y) the comoving square — the braid
+          diagram in 3D. Comoving coordinates wrap the torus: a tube is
+          cut at each seam crossing, with both cut ends overshooting the
+          seam symmetrically so the crossing still reads as one strand.
+        - RING: the (0,π) loop bent around a circle (θ = 2z), the
+          braid-closure look. In raw geometry (× sin z) all strands
+          pinch to a single point where Bang meets Crunch — a bouquet
+          of closed loops, the closest thing to a knot diagram the
+          model owns. (True closure pairs strand ends by permutation;
+          here comoving mode honestly leaves the end-gaps visible.)
+
+       Only phase-1 uniques are generated here (braids read best with a
+       few dozen strands). Subpath families still appear via Import CSV:
+       a dump with a gid column colours by family in Group mode.
+    ================================================================ */
+    const timeInput  = document.getElementById('timeInput');
+    const termsInput = document.getElementById('termsInput');
+    const statusEl   = document.getElementById('status');
+
+    const VIEWER_VERSION = 'v1';
+    document.getElementById('verLbl').textContent = 'braid ' + VIEWER_VERSION;
+
+    /* ---------------- PART 1: packing (mirrors the wrapped viewer) -------- */
+    let functions = [];
+    let Z_cache = [];
+    let time_steps = 64, modulation_Max = 32, freqTerms = 3, groupIDcount = 0;
+    let abort_gen = false, saturated = false, consecFails = 0;
+    let genBudgetMs = 6000, genStart = 0, lastLiveUpload = 0, genEpoch = 0;
+    let targetStrands = 36;
+    const maxAttemptsPerFunction = 50;
+
+    // Canonical z grid, identical to the CUDA engines: T interior points of
+    // (0, pi), one step in from each end.
+    function bakeZValues() {
+        const step = Math.PI / (time_steps + 1);
+        Z_cache = Array.from({ length: time_steps }, (_, i) => step + i * step);
+    }
+
+    // per-time-step uniform spatial hash (comoving, cell = 2/T), wrapped
+    let CELL = 1, NCELL = 1, gridByT = [];
+    function cellKey(cx, cy){ return cx * NCELL + cy; }
+    const wrapCell = c => ((c % NCELL) + NCELL) % NCELL;
+    function cellOf(v){ return wrapCell(Math.floor((v + 1) / CELL)); }
+    const wrapComov = v => (((v + 1) % 2) + 2) % 2 - 1;
+    function resetGrid(){
+        CELL = 2 / time_steps; NCELL = time_steps;
+        gridByT = Array.from({ length: Z_cache.length }, () => new Map());
+    }
+
+    // Worldline evaluation: the sin1 term plus every wiggle term, each
+    // re-pinned to zero at the endpoints by its own a·sin(f) offset.
+    // Returns UNWRAPPED comoving coords.
+    function comovXY(f, z) {
+        const s = Math.sin(z);
+        let x = f.ax2 * s, y = f.ay2 * s;
+        for (let j = 0; j < f.terms.length; j++) {
+            const t = f.terms[j];
+            x += t.ax * (Math.sin(t.bx * z + t.fx) - Math.sin(t.fx));
+            y += t.ay * (Math.sin(t.by * z + t.fy) - Math.sin(t.fy));
+        }
+        return [x / s, y / s];
+    }
+    function comovingTraj(f) {
+        const n = Z_cache.length, X = new Float32Array(n), Y = new Float32Array(n);
+        for (let i = 0; i < n; i++) {
+            const [cx, cy] = comovXY(f, Z_cache[i]);
+            X[i] = wrapComov(cx);
+            Y[i] = wrapComov(cy);
+        }
+        return { X, Y };
+    }
+    function collides(traj) {
+        const n = Z_cache.length;
+        for (let i = 0; i < n; i++) {
+            const Xi = traj.X[i], Yi = traj.Y[i], m = gridByT[i];
+            const cx = cellOf(Xi), cy = cellOf(Yi);
+            for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+                const arr = m.get(cellKey(wrapCell(cx + dx), wrapCell(cy + dy)));
+                if (!arr) continue;
+                for (let j = 0; j < arr.length; j += 2) {
+                    // minimum-image: coords are pre-wrapped, one ±2 correction is exact
+                    let dX = Xi - arr[j];   if (dX > 1) dX -= 2; else if (dX < -1) dX += 2;
+                    let dY = Yi - arr[j+1]; if (dY > 1) dY -= 2; else if (dY < -1) dY += 2;
+                    if (Math.abs(dX) <= CELL && Math.abs(dY) <= CELL) return true;
+                }
+            }
+        }
+        return false;
+    }
+    function insertTraj(traj) {
+        const n = Z_cache.length;
+        for (let i = 0; i < n; i++) {
+            const Xi = traj.X[i], Yi = traj.Y[i], m = gridByT[i];
+            const k = cellKey(cellOf(Xi), cellOf(Yi));
+            let arr = m.get(k); if (!arr) { arr = []; m.set(k, arr); }
+            arr.push(Xi, Yi);
+        }
+    }
+
+    // frequency selection: uniform over the sampled band, as in the engines
+    function drawOneFreq(){
+        return Math.floor(Math.random() * modulation_Max) + 2;
+    }
+    function drawUniqueFreqs(count){
+        const out = [];
+        let guard = 0;
+        while (out.length < count && guard < 400){
+            const b = drawOneFreq();
+            if (out.includes(b)) { guard++; continue; }
+            out.push(b);
+        }
+        for (let b = 2; out.length < count; b++)
+            if (!out.includes(b)) out.push(b);
+        return out;
+    }
+    function splitUnit(count){
+        // split 1 into `count` parts, uniform on the simplex (sorted cuts)
+        if (count === 1) return [1];
+        const cuts = Array.from({ length: count - 1 }, Math.random).sort((a, b) => a - b);
+        const w = [cuts[0]];
+        for (let j = 1; j < count - 1; j++) w.push(cuts[j] - cuts[j-1]);
+        w.push(1 - cuts[count - 2]);
+        return w;
+    }
+    function makeAxisTerms(freqs){
+        // amplitude = (unit-budget share) / frequency, so Σ|a·b| = 1 exactly;
+        // phases only on even frequencies (odd must stay phase-free to close)
+        const w = splitUnit(freqs.length);
+        return freqs.map((b, j) => ({
+            a: (Math.random() > 0.5 ? 1 : -1) * w[j] / b,
+            b,
+            f: (b % 2 === 0) ? Math.random() * Math.PI : 0
+        }));
+    }
+    // Frequency-paint scalar: amplitude-weighted mean wiggle frequency per
+    // axis (weights |a·b|), summed over both axes.
+    function freqSum(terms){
+        let sx = 0, sy = 0, wx = 0, wy = 0;
+        for (const t of terms){
+            sx += Math.abs(t.ax * t.bx) * t.bx;  wx += Math.abs(t.ax * t.bx);
+            sy += Math.abs(t.ay * t.by) * t.by;  wy += Math.abs(t.ay * t.by);
+        }
+        return sx / (wx || 1) + sy / (wy || 1);
+    }
+    function makeCandidate() {
+        const NW = freqTerms - 1;
+        const fqx = drawUniqueFreqs(NW), fqy = drawUniqueFreqs(NW);
+        const tx = makeAxisTerms(fqx), ty = makeAxisTerms(fqy);
+        const terms = tx.map((t, j) => ({ ax: t.a, bx: t.b, fx: t.f,
+                                          ay: ty[j].a, by: ty[j].b, fy: ty[j].f }));
+        return { ax2: Math.random() * 2 - 1,
+                 ay2: Math.random() * 2 - 1,
+                 terms, fsum: freqSum(terms) };
+    }
+    function generateFunction() {
+        for (let attempt = 0; attempt < maxAttemptsPerFunction; attempt++) {
+            const f = makeCandidate();
+            const traj = comovingTraj(f);
+            if (!collides(traj)) {
+                insertTraj(traj);
+                f.groupID = groupIDcount; f.isSub = false;
+                return f;
+            }
+        }
+        return null;
+    }
+
+    // Chunked packing loop: 12 ms of work, then yield; live-rebuild the
+    // strands every ~700 ms so the braid weaves itself on screen.
+    function packLoop(epoch) {
+        if (epoch !== genEpoch) return;
+        const t0 = performance.now();
+        let done = false;
+        while (!abort_gen && !done && performance.now() - t0 <= 12) {
+            if (saturated ||
+                performance.now() - genStart >= genBudgetMs ||
+                functions.length >= targetStrands) { done = true; continue; }
+            const nf = generateFunction();
+            if (nf) { functions.push(nf); groupIDcount++; consecFails = 0; }
+            else if (++consecFails > 500) saturated = true;
+        }
+        done = done || abort_gen;
+        if (!done) {
+            const secsLeft = Math.ceil((genBudgetMs - (performance.now() - genStart)) / 1000);
+            statusEl.textContent = `Weaving… ${functions.length} strands · ${secsLeft}s left`;
+            if (performance.now() - lastLiveUpload > 700) {
+                lastLiveUpload = performance.now();
+                buildStrands();
+            }
+            setTimeout(() => packLoop(epoch), 0);
+        } else {
+            gridByT = [];                    // packing-only storage, free it
+            buildStrands();
+            const note = saturated ? ' (space saturated)' :
+                         (functions.length >= targetStrands ? ' (max strands)' : '');
+            statusEl.textContent = `${functions.length} strands packed${note} · T=${time_steps}`;
+        }
+    }
+
+    document.getElementById('generateBtn').addEventListener('click', () => {
+        genEpoch++;
+        abort_gen = false; saturated = false; consecFails = 0; groupIDcount = 0;
+        time_steps = Math.max(2, parseInt(timeInput.value) || 64);
+        timeInput.value = time_steps;
+        modulation_Max = time_steps - 1;
+        freqTerms = Math.min(Math.max(2, parseInt(termsInput.value) || 3), modulation_Max + 1);
+        termsInput.value = freqTerms;
+        targetStrands = Math.max(1, parseInt(document.getElementById('maxStrandsInput').value) || 36);
+        genBudgetMs = parseFloat(document.getElementById('genTimeRange').value) * 1000;
+        functions = [];
+        genStart = performance.now(); lastLiveUpload = genStart;
+        bakeZValues(); resetGrid();
+        packLoop(genEpoch);
+    });
+    document.getElementById('abortBtn').addEventListener('click', () => abort_gen = true);
+    document.getElementById('genTimeRange').addEventListener('input', e => {
+        document.getElementById('genTimeVal').textContent = e.target.value + 's';
+    });
+
+    /* ---- CSV import: load a CUDA --dump-params file (2+1 only) ----
+       Same parser as the wrapped viewer: legacy single-wiggle layout
+       ax,ay,bx,by,ax2,ay2[,fx,fy] and the multi-term --terms layout
+       ax2,ay2,ax_1,bx_1,fx_1,… A gid column marks subpath families. */
+    function tFromFilename(name) {
+        const m = name.match(/_T(\d+)_/);
+        return m ? parseInt(m[1]) : null;
+    }
+    function parseDumpCSV(text) {
+        const lines = text.split(/\r?\n/).map(s => s.trim()).filter(s => s.length);
+        if (lines.length < 2) throw new Error('no data rows');
+        const cols = lines[0].split(',').map(s => s.trim());
+        if (cols.includes('aw')) throw new Error('3+1 dump — not supported in this viewer');
+        const idx = {};
+        cols.forEach((c, i) => { idx[c] = i; });
+        const multi = 'ax_1' in idx;
+        let nw = 1;
+        if (multi) {
+            nw = 0;
+            while (('ax_' + (nw+1)) in idx) nw++;
+            for (let j = 1; j <= nw; j++)
+                for (const c of ['ax_','bx_','fx_','ay_','by_','fy_'])
+                    if (!((c + j) in idx))
+                        throw new Error(`missing column "${c}${j}" — truncated multi-term dump?`);
+            if (!('ax2' in idx) || !('ay2' in idx))
+                throw new Error('missing sin1 columns ax2/ay2');
+        } else {
+            const required = ['ax', 'ay', 'bx', 'by', 'ax2', 'ay2'];
+            for (const c of required) {
+                if (!cols.includes(c)) throw new Error(`missing column "${c}" — not an engine dump?`);
+            }
+        }
+        const hasPhase = 'fx' in idx && 'fy' in idx;
+        const rows = [];
+        let skipped = 0;
+        for (let li = 1; li < lines.length; li++) {
+            const parts = lines[li].split(',');
+            const row = { ax2: parseFloat(parts[idx.ax2]), ay2: parseFloat(parts[idx.ay2]),
+                          terms: [] };
+            if (multi) {
+                for (let j = 1; j <= nw; j++)
+                    row.terms.push({
+                        ax: parseFloat(parts[idx['ax_'+j]]), bx: parseFloat(parts[idx['bx_'+j]]),
+                        fx: parseFloat(parts[idx['fx_'+j]]), ay: parseFloat(parts[idx['ay_'+j]]),
+                        by: parseFloat(parts[idx['by_'+j]]), fy: parseFloat(parts[idx['fy_'+j]])
+                    });
+            } else {
+                row.terms.push({
+                    ax: parseFloat(parts[idx.ax]), bx: parseFloat(parts[idx.bx]),
+                    fx: hasPhase ? parseFloat(parts[idx.fx]) : 0,
+                    ay: parseFloat(parts[idx.ay]), by: parseFloat(parts[idx.by]),
+                    fy: hasPhase ? parseFloat(parts[idx.fy]) : 0
+                });
+            }
+            row.gid = ('gid' in idx) ? parseInt(parts[idx.gid]) : null;
+            if (Number.isNaN(row.gid)) row.gid = null;
+            const bad = Number.isNaN(row.ax2) || Number.isNaN(row.ay2) ||
+                        row.terms.some(t => Object.values(t).some(v => Number.isNaN(v)));
+            if (bad) { skipped++; continue; }
+            rows.push(row);
+        }
+        if (!rows.length) throw new Error('no valid rows');
+        return { rows, skipped, nw };
+    }
+    function applyImportedDump(rows, skipped, nw, name) {
+        genEpoch++; abort_gen = true;                 // kill any in-flight generation
+        const tFile = tFromFilename(name);
+        time_steps = tFile || Math.max(2, parseInt(timeInput.value) || 64);
+        if (tFile) timeInput.value = tFile;
+        freqTerms = nw + 1;
+        termsInput.value = freqTerms;
+        bakeZValues();
+        gridByT = [];
+        functions = [];
+        let groups = 0, subs = 0, rowIdx = 0;
+        const seenGids = new Set();
+        for (const r of rows) {
+            const f = { ax2: r.ax2, ay2: r.ay2, terms: r.terms, fsum: freqSum(r.terms) };
+            f.groupID = (r.gid != null) ? r.gid : rowIdx;
+            f.isSub = seenGids.has(f.groupID);
+            if (f.isSub) subs++; else groups++;
+            seenGids.add(f.groupID);
+            rowIdx++;
+            functions.push(f);
+        }
+        buildStrands();
+        const cap = Math.max(1, parseInt(document.getElementById('maxStrandsInput').value) || 36);
+        const shown = Math.min(functions.length, cap);
+        const grpNote = subs ? ` (${groups} groups + ${subs} subs)` : '';
+        const skipNote = skipped ? ` · ${skipped} rows skipped` : '';
+        statusEl.textContent = `Imported ${functions.length} paths${grpNote} · showing ${shown} strands${skipNote} — ${name}`;
+    }
+    const importInput = document.getElementById('importInput');
+    document.getElementById('importBtn').addEventListener('click', () => importInput.click());
+    importInput.addEventListener('change', () => {
+        if (!importInput.files.length) return;
+        const file = importInput.files[0];
+        importInput.value = '';
+        statusEl.textContent = `Importing ${file.name}…`;
+        file.text().then(text => {
+            const parsed = parseDumpCSV(text);
+            applyImportedDump(parsed.rows, parsed.skipped, parsed.nw, file.name);
+        }).catch(err => {
+            statusEl.textContent = `Import failed: ${err.message}`;
+        });
+    });
+
+    /* ---------------- PART 2: strand rendering ---------------- */
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000006);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(devicePixelRatio);
+    renderer.setSize(innerWidth, innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 2000);
+    camera.position.set(9, 6, 13);
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.autoRotateSpeed = 0.6;
+
+    scene.add(new THREE.AmbientLight(0x8890a8, 0.55));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    keyLight.position.set(6, 10, 8);
+    scene.add(keyLight);
+    const fillLight = new THREE.DirectionalLight(0x6070a0, 0.35);
+    fillLight.position.set(-7, -5, -9);
+    scene.add(fillLight);
+
+    const strandGroup = new THREE.Group();
+    scene.add(strandGroup);
+    const guideGroup = new THREE.Group();
+    scene.add(guideGroup);
+
+    // view/geometry state (bound to the panel below)
+    let braidView = 'column', geomMode = 'comoving', unwrapped = false;
+    let tubeRadius = 0.032, tubeRes = 240, radialSegs = 10;
+    let colHeight = 10, ringRadius = 6;
+    let colorMode = 'strand';
+    const COL_W = 2.2;                       // column: comoving [-1,1) → ±COL_W
+    function ringW(){ return ringRadius / 3; }   // ring: cross-section half-scale
+
+    // Map a (comoving x, comoving y, conformal time z) sample into scene space.
+    function embedPoint(cx, cy, z) {
+        let x = cx, y = cy;
+        if (geomMode === 'raw') {
+            const s = Math.sin(z);
+            x = cx * s; y = cy * s;
+        }
+        if (braidView === 'column') {
+            return new THREE.Vector3(x * COL_W, (z / Math.PI - 0.5) * colHeight, y * COL_W);
+        }
+        const th = 2 * z;                    // the (0,π) loop spans the full ring
+        const r = ringRadius + x * ringW();
+        return new THREE.Vector3(r * Math.cos(th), y * ringW(), -r * Math.sin(th));
+    }
+
+    // Sample one worldline and split it into continuous pieces at the torus
+    // seams. On a crossing, the current piece is extended one sample PAST the
+    // seam under the old wrap offset, and the next piece starts one sample
+    // BEFORE it under the new offset — both tube ends overshoot symmetrically,
+    // so the crossing reads as one strand passing through the wall.
+    function strandPieces(f) {
+        const samples = [];
+        for (let i = 0; i < tubeRes; i++) {
+            const z = Math.PI * (i + 0.5) / tubeRes;
+            const [ux, uy] = comovXY(f, z);
+            samples.push({ z, ux, uy });
+        }
+        if (unwrapped) {
+            return [samples.map(p => embedPoint(p.ux, p.uy, p.z))];
+        }
+        const pieces = [];
+        let cur = [];
+        let prev = null;
+        for (const p of samples) {
+            const kx = wrapComov(p.ux) - p.ux;   // wrap offsets: multiples of 2
+            const ky = wrapComov(p.uy) - p.uy;
+            if (prev && (Math.abs(kx - prev.kx) > 1 || Math.abs(ky - prev.ky) > 1)) {
+                cur.push(embedPoint(p.ux + prev.kx, p.uy + prev.ky, p.z));
+                pieces.push(cur);
+                cur = [embedPoint(prev.ux + kx, prev.uy + ky, prev.z)];
+            }
+            cur.push(embedPoint(p.ux + kx, p.uy + ky, p.z));
+            prev = { z: p.z, ux: p.ux, uy: p.uy, kx, ky };
+        }
+        pieces.push(cur);
+        return pieces.filter(pc => pc.length >= 2);
+    }
+
+    function hueColor(k) {
+        const hue = (k * 0.61803398875) % 1;
+        return new THREE.Color().setHSL(hue, 0.72, 0.55);
+    }
+    let freqMin = 0, freqMax = 1;
+    function strandColor(f, i) {
+        if (colorMode === 'group') return hueColor(f.groupID);
+        if (colorMode === 'freq') {
+            const t = (f.fsum - freqMin) / Math.max(1e-9, freqMax - freqMin);
+            return new THREE.Color().setHSL(0.66 * t, 0.85, 0.55);   // red low → blue high
+        }
+        return hueColor(i);
+    }
+
+    let shownFns = [];                       // the strands currently on screen
+    let strandMats = [];
+    function disposeStrands() {
+        for (const mesh of strandGroup.children) mesh.geometry.dispose();
+        strandGroup.clear();
+        for (const m of strandMats) m.dispose();
+        strandMats = [];
+    }
+    function buildStrands() {
+        disposeStrands();
+        const cap = Math.max(1, parseInt(document.getElementById('maxStrandsInput').value) || 36);
+        shownFns = functions.slice(0, cap);
+        freqMin = Infinity; freqMax = -Infinity;
+        for (const f of shownFns) {
+            if (f.fsum < freqMin) freqMin = f.fsum;
+            if (f.fsum > freqMax) freqMax = f.fsum;
+        }
+        for (let i = 0; i < shownFns.length; i++) {
+            const f = shownFns[i];
+            const mat = new THREE.MeshPhongMaterial({
+                color: strandColor(f, i), shininess: 55, specular: 0x2a2a2a
+            });
+            strandMats.push(mat);
+            for (const pts of strandPieces(f)) {
+                const curve = new THREE.CatmullRomCurve3(pts);
+                const segs = Math.min(2 * pts.length, 900);
+                const geo = new THREE.TubeGeometry(curve, segs, tubeRadius, radialSegs, false);
+                strandGroup.add(new THREE.Mesh(geo, mat));
+            }
+        }
+        rebuildBeads();
+        rebuildGuides();
+    }
+
+    /* ---- time markers: beads riding the strands + optional slice plane ---- */
+    let beadMesh = null, beadScale = 2.4;
+    const beadGeo = new THREE.SphereGeometry(1, 12, 10);
+    const beadMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    function rebuildBeads() {
+        if (beadMesh) { scene.remove(beadMesh); beadMesh.dispose(); beadMesh = null; }
+        if (!shownFns.length) return;
+        beadMesh = new THREE.InstancedMesh(beadGeo, beadMat, shownFns.length);
+        for (let i = 0; i < shownFns.length; i++) {
+            const c = strandColor(shownFns[i], i).clone().lerp(new THREE.Color(1, 1, 1), 0.55);
+            beadMesh.setColorAt(i, c);
+        }
+        beadMesh.instanceColor.needsUpdate = true;
+        beadMesh.visible = document.getElementById('beadChk').checked;
+        scene.add(beadMesh);
+    }
+    const beadMatrix = new THREE.Matrix4();
+    function updateBeads(z) {
+        if (!beadMesh || !beadMesh.visible) return;
+        const s = beadScale * tubeRadius;
+        for (let i = 0; i < shownFns.length; i++) {
+            let [cx, cy] = comovXY(shownFns[i], z);
+            if (!unwrapped) { cx = wrapComov(cx); cy = wrapComov(cy); }
+            const p = embedPoint(cx, cy, z);
+            beadMatrix.makeScale(s, s, s);
+            beadMatrix.setPosition(p);
+            beadMesh.setMatrixAt(i, beadMatrix);
+        }
+        beadMesh.instanceMatrix.needsUpdate = true;
+    }
+
+    const sliceMat = new THREE.MeshBasicMaterial({
+        color: 0x4f7fd0, transparent: true, opacity: 0.12,
+        side: THREE.DoubleSide, depthWrite: false
+    });
+    let sliceMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), sliceMat);
+    sliceMesh.visible = false;
+    scene.add(sliceMesh);
+    function updateSlice(z) {
+        const on = document.getElementById('planeChk').checked;
+        sliceMesh.visible = on;
+        if (!on) return;
+        if (braidView === 'column') {
+            sliceMesh.scale.set(2.15 * COL_W, 2.15 * COL_W, 1);
+            sliceMesh.rotation.set(-Math.PI / 2, 0, 0);
+            sliceMesh.position.set(0, (z / Math.PI - 0.5) * colHeight, 0);
+        } else {
+            const th = 2 * z;
+            sliceMesh.scale.set(2.3 * ringW(), 2.3 * ringW(), 1);
+            // plane's local x → the radial direction at angle th, local y → world y
+            sliceMesh.rotation.set(0, th, 0);
+            sliceMesh.position.set(ringRadius * Math.cos(th), 0, -ringRadius * Math.sin(th));
+        }
+    }
+
+    /* ---- domain guides: the comoving box (column) / ring rails (ring) ---- */
+    const guideMat = new THREE.LineBasicMaterial({ color: 0x223050 });
+    function rebuildGuides() {
+        for (const child of guideGroup.children) child.geometry.dispose();
+        guideGroup.clear();
+        guideGroup.visible = document.getElementById('guideChk').checked;
+        if (braidView === 'column') {
+            const box = new THREE.BoxGeometry(2 * COL_W, colHeight, 2 * COL_W);
+            guideGroup.add(new THREE.LineSegments(new THREE.EdgesGeometry(box), guideMat));
+            box.dispose();
+        } else {
+            for (const r of [ringRadius - ringW(), ringRadius + ringW()]) {
+                const pts = [];
+                for (let i = 0; i <= 128; i++) {
+                    const a = 2 * Math.PI * i / 128;
+                    pts.push(new THREE.Vector3(r * Math.cos(a), 0, -r * Math.sin(a)));
+                }
+                const geo = new THREE.BufferGeometry().setFromPoints(pts);
+                guideGroup.add(new THREE.Line(geo, guideMat));
+            }
+        }
+    }
+
+    /* ---------------- PART 3: playback + UI wiring ---------------- */
+    let playing = true, timeFrac = 0, speed = 0.5;
+    const LOOP_SECONDS = 14;                 // one Bang→Crunch sweep at speed 1×
+    const timeScrub = document.getElementById('timeScrub');
+    const playBtn = document.getElementById('playBtn');
+    playBtn.addEventListener('click', () => {
+        playing = !playing;
+        playBtn.textContent = playing ? 'Play ▶' : 'Paused ⏸';
+        playBtn.classList.toggle('on', playing);
+    });
+    document.getElementById('speedRange').addEventListener('input', e => {
+        speed = parseFloat(e.target.value);
+        document.getElementById('speedVal').textContent = speed.toFixed(2) + '×';
+    });
+    timeScrub.addEventListener('input', e => {
+        timeFrac = parseFloat(e.target.value);
+        playing = false;
+        playBtn.textContent = 'Paused ⏸';
+        playBtn.classList.remove('on');
+    });
+
+    function bindRadio(name, apply) {
+        for (const el of document.querySelectorAll(`input[name=${name}]`))
+            el.addEventListener('change', () => { if (el.checked) apply(el.value); });
+    }
+    bindRadio('braidView', v => { braidView = v; buildStrands(); });
+    bindRadio('geomMode', v => { geomMode = v; buildStrands(); });
+    bindRadio('colorMode', v => { colorMode = v; buildStrands(); });
+    document.getElementById('unwrapChk').addEventListener('change', e => {
+        unwrapped = e.target.checked; buildStrands();
+    });
+    function bindSlider(id, valId, fmt, apply) {
+        const el = document.getElementById(id);
+        el.addEventListener('input', () => {
+            document.getElementById(valId).textContent = fmt(el.value);
+            apply(parseFloat(el.value));
+        });
+    }
+    bindSlider('tubeRadRange', 'tubeRadVal', v => (+v).toFixed(3).slice(1),
+               v => { tubeRadius = v; buildStrands(); });
+    bindSlider('tubeResRange', 'tubeResVal', v => v,
+               v => { tubeRes = v; buildStrands(); });
+    bindSlider('radialRange', 'radialVal', v => v,
+               v => { radialSegs = v; buildStrands(); });
+    bindSlider('heightRange', 'heightVal', v => v,
+               v => { colHeight = v; if (braidView === 'column') buildStrands(); });
+    bindSlider('ringRRange', 'ringRVal', v => v,
+               v => { ringRadius = v; if (braidView === 'ring') buildStrands(); });
+    bindSlider('beadSizeRange', 'beadSizeVal', v => v,
+               v => { beadScale = v; });
+    document.getElementById('maxStrandsInput').addEventListener('change', () => buildStrands());
+    document.getElementById('beadChk').addEventListener('change', e => {
+        if (beadMesh) beadMesh.visible = e.target.checked;
+    });
+    document.getElementById('guideChk').addEventListener('change', e => {
+        guideGroup.visible = e.target.checked;
+    });
+    document.getElementById('spinChk').addEventListener('change', e => {
+        controls.autoRotate = e.target.checked;
+    });
+    document.getElementById('menuBtn').addEventListener('click', () => {
+        document.getElementById('sidepanel').classList.toggle('open');
+    });
+    document.getElementById('fsBtn').addEventListener('click', toggleFullscreen);
+    function toggleFullscreen() {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else document.documentElement.requestFullscreen();
+    }
+    addEventListener('keydown', e => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+        if (e.code === 'Space') { e.preventDefault(); playBtn.click(); }
+        if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+    });
+    addEventListener('resize', () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+    });
+
+    let lastFrame = performance.now();
+    function animate() {
+        requestAnimationFrame(animate);
+        const now = performance.now();
+        const dt = (now - lastFrame) / 1000;
+        lastFrame = now;
+        if (playing) {
+            timeFrac = (timeFrac + speed * dt / LOOP_SECONDS) % 1;
+            timeScrub.value = timeFrac;
+        }
+        // keep clear of the endpoints: comoving coords divide by sin(z)
+        const z = Math.PI * (0.004 + 0.992 * timeFrac);
+        updateBeads(z);
+        updateSlice(z);
+        document.getElementById('hudTime').textContent =
+            't = ' + (z / Math.PI).toFixed(3) + 'π';
+        controls.update();
+        renderer.render(scene, camera);
+    }
+    animate();
+    </script>
+</body>
+</html>
