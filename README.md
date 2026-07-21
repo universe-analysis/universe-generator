@@ -116,7 +116,10 @@ The ground-truth summary, current as of 2026-07-20. Full numbers and caveats in
   expansion.
 - **Causal structure.** Reach is set by the wiggle budget, not a null cone:
   ≈1.26 near the Bang → √2 at the turnaround → 2 at the Crunch, all closed
-  forms. No horizon at any epoch.
+  forms. No horizon at any epoch. The phased single-term envelope is the true
+  front: 200k-config random sweeps (k = 2–4 terms) plus a Nelder-Mead
+  adversary never beat it — splitting the budget across terms only dilutes
+  reach, exactly as budget linearity predicts.
 - **Subpaths.** Phase-2 filling never jams; at matched convergence depth a
   high-resolution 2+1 jam retains ~1.5 subpaths per unique worldline.
 - **Braiding (2+1).** Touching means braiding — unique groups are genuinely,
