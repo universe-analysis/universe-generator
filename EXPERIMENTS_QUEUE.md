@@ -126,3 +126,29 @@ Optional stretch (**Experiment 4**): full continuous worldtube intersection in
 **Why backlog.** Bigger engine change than the euclid flag; do after the
 isotropic (euclid) result is in, which calibrates how much the collision shape
 moves things at all.
+
+---
+
+## 5. Prime-T ladder: the sharp arithmetic-ripple test  [small GPU campaign]
+
+**Question.** The 2026-07-20 analysis (`analyze_arithmetic_ripples.py`, lab
+note 2026-07-20) found N(T) residuals carry no imprint of T's arithmetic —
+but every stored T is a multiple of 20, so the sharpest contrast (prime vs
+highly composite T) was never sampled. Does N(T) at prime T sit on the same
+smooth law?
+
+**Design.** One campaign, both dims, cutoff 1e-6, terms=2, ~5 seeds: interleave
+primes with highly-composite neighbors at matched size, e.g.
+T ∈ {113, 120, 127, 144, 149, 168, 173, 180, 191, 210, 227, 240, 251, 264}.
+Pairs differ by ≤6% in T, so the smooth trend nearly cancels within a pair —
+the paired difference is the statistic, far more powerful than regression on a
+coarse grid. Run through the existing analyzer (it computes primality/d(T)
+covariates for arbitrary T; FWL + permutation machinery unchanged).
+
+**Cost.** All T ≤ 264 → fits any 3080 with the sparse engine; 2+1 is cheap.
+Roughly one evening on mother+kitt.
+
+**Why it matters.** A null closes the profinite question cleanly ("the model
+reads T as a length, not an integer" becomes unconditional). A signal —
+prime-T universes packing measurably differently — would be the first
+number-theoretic observable in the model.
