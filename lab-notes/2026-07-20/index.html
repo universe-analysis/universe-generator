@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-07-20</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-07-20</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="arithmetic-ripples">
+      <h2>Arithmetic ripples in N(T): does the &#8484;/T&#8484; lattice's number theory leak into the jam count? No &mdash; the model is archimedean at the sub-percent level</h2>
+      <p class="meta">
+        Analysis of existing stores only (no new campaign; PACK + CONVERGE +
+        FREQ dbs) &middot; analysis module + tests
+        <a href="https://github.com/universe-analysis/universe-generator/commit/a6a1998"><code>a6a1998</code></a>
+      </p>
+      <p>
+        The jam count follows the smooth law N ~ T<sup>2.32</sup>. But the
+        comoving time lattice is &#8484;/T&#8484;, and closed resonances on it
+        care about divisibility &mdash; so if the packing felt the lattice's
+        arithmetic, the residuals around the smooth law should correlate with
+        arithmetic functions of T: divisor count d(T), distinct prime factors
+        &omega;(T), &Omega;(T), largest prime factor, abundance
+        &sigma;(T)/T. Pure noise instead means the profinite structure is
+        irrelevant and only the archimedean size of T matters. New
+        <code>analysis/analyze_arithmetic_ripples.py</code> runs this test on
+        seven ensembles (never pooling across sampler eras: freq3d's smart-era
+        counts run 30&ndash;40% above the uniform ensemble at the same T &mdash;
+        the campaign-hygiene reason pooling was verified store-by-store first).
+        Per ensemble: WLS poly(log T) trend fit, an excess-ripple
+        &chi;&sup2; against the seed-noise floor, a lag-1 autocorrelation
+        separating smooth leftovers from arithmetic spikiness, and a
+        Frisch&ndash;Waugh&ndash;Lovell partial regression of the residuals on
+        each covariate with permutation p-values (the naive regression
+        attenuates a planted signal ~5&times; because the trend fit absorbs the
+        covariate's smooth component &mdash; caught by the planted-signal test
+        in <code>tests/test_arithmetic_ripples.py</code>).
+      </p>
+      <figure class="plot">
+        <img src="arithmetic_ripples.png"
+             alt="Seven rows of two panels, one row per ensemble (3+1 and 2+1, uniform and smart samplers, cutoffs 1e-6 to 1e-8). Left panels: percent residuals in log N versus T with seed-noise error bars — the primary 3+1 ensemble shows a smooth W-shaped wiggle of order 1 percent; the 2+1 panels are flat within errors. Right panels: the same residuals against detrended log divisor count with a dashed partial-regression line — slopes scatter around zero, permutation p-values from 0.03 to 0.98 with no consistent sign across ensembles." />
+        <figcaption>
+          Residuals around the degree-2 log-log trend (left) and against
+          detrended log d(T) (right) for all seven ensembles. No consistent
+          divisor-count alignment; the one p = 0.033 panel is the primary
+          ensemble, dissected below.
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="arithmetic_ripples_degree_scan.png"
+             alt="Divisor-count partial slope versus trend polynomial degree 1 through 4 for the primary 3+1 ensemble, with the permutation-null 95 percent band shaded. The slope flips sign from minus 0.014 at degree 1 to plus 0.013 at degree 2, then collapses toward zero at degrees 3 and 4, hugging the edge of the shrinking null band; the annotation shows chi-squared per dof falling from 2618/15 to 12/12." />
+        <figcaption>
+          The dissection: log d(T) slope vs trend flexibility in the primary
+          3+1 ensemble. A real arithmetic ripple is orthogonal to smooth
+          trends and would hold its slope; this one flips sign (deg 1 &rarr; 2)
+          and melts to zero while the excess &chi;&sup2; collapses from
+          2618/15 to 12/12.
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>No arithmetic covariate correlates with the residuals
+            anywhere.</strong> Across 7 ensembles &times; 6 covariates the
+            permutation p-values are uniform; the two p &asymp; 0.03 entries
+            (log d(T) in the primary 3+1 ensemble, T/20-primality at 1e-7)
+            are the ~2 hits expected by chance in 42 tests, fail to replicate
+            across cutoffs on the same T grid, and are sign-inconsistent
+            between ensembles.</li>
+        <li><strong>The per-T structure that does exist is smooth, not
+            arithmetic.</strong> The primary ensemble beats its seed-noise
+            floor (rms 0.94% vs 0.20% at degree 2) but with lag-1
+            autocorrelation +0.46 (p = 0.001) &mdash; adjacent T alike, the
+            signature of the known slow approach to the asymptotic power law
+            (plus possible small inter-store steps at the pack/converge
+            boundary), the opposite of divisor spikiness. A degree-4 trend
+            absorbs it entirely: &chi;&sup2;/dof = 12.4/12 (p = 0.41), pure
+            seed noise underneath.</li>
+        <li><strong>Bound:</strong> any divisor-count modulation of N is
+            |d ln N / d ln d(T)| &#8818; 0.005 &mdash; under ~0.7% across the
+            full d(T) = 6 &rarr; 24 range of the ladder, while N itself spans
+            a factor ~2600. The packing reads T as a length, not as an
+            integer.</li>
+        <li><strong>Scope caveat, printed by the tool:</strong> every stored T
+            is a multiple of 20, so the sample contains <em>no prime T</em>
+            &mdash; the sharpest version of the question (prime vs highly
+            composite T) is untestable on existing data. T/20-primality is
+            the nearest analog and is null. A cheap decisive campaign would
+            interleave prime T (127, 149, 173, &hellip;) with
+            highly-composite neighbors (120, 144, 168, &hellip;) at matched
+            sizes.</li>
+      </ul>
+      <p>
+        Both dimensions tell the same story (2+1 residuals are consistent with
+        seed noise outright at 1e-6/1e-7, so there is nothing to attribute at
+        all): the jam law is purely archimedean at current precision, and the
+        &#8484;/T&#8484; lattice's prime structure does not leak into the
+        physics.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
