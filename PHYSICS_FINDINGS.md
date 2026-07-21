@@ -293,6 +293,17 @@ does not.
   in the predecessor model; not yet repeated on the torus.
 - **Engine A/Bs:** the sparse-grid engine (`--sparse`, VRAM ~ N·T vs T⁴)
   validates against stored dense runs (`analysis/compare_jamming.py`).
+- **No arithmetic ripples (2026-07-20):** residuals of N(T) around the smooth
+  law carry no imprint of the number theory of the ℤ/Tℤ lattice. Over 7
+  ensembles (both dims, cutoffs 1e-6–1e-8, both sampler eras), divisor count
+  d(T), ω(T), Ω(T), largest prime factor, σ(T)/T and T/20-primality all
+  regress null under Frisch–Waugh–Lovell partial regression with permutation
+  p-values (`analysis/analyze_arithmetic_ripples.py`); any d(T) modulation is
+  bounded at |d ln N / d ln d(T)| ≲ 0.005. The per-T structure that does beat
+  seed noise is smooth in T (the finite-size approach; lag-1 autocorr +0.46,
+  gone under a degree-4 trend), not divisor-spiky. The model reads T as a
+  length, not an integer. Caveat: every stored T is a multiple of 20 — prime
+  T itself is untested (lab note 2026-07-20).
 
 ## 11. Subpaths: no jam, a growth floor, and a ~1.5× capacity ratio (2+1)
 

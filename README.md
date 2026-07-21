@@ -97,7 +97,12 @@ The ground-truth summary, current as of 2026-07-20. Full numbers and caveats in
   extrapolation is **D∞ = 1.434 ± 0.021** (finite-cutoff ladders approach it
   from below). D is invariant under cutoff depth and dictionary size (2–10
   terms), and D/d differs between dimensions (0.774 vs 0.717) — not
-  dimension-universal.
+  dimension-universal. The law is also **purely archimedean**: residuals
+  around it carry no imprint of the number theory of the ℤ/Tℤ lattice —
+  divisor count, prime-factor counts, largest prime factor and abundance all
+  regress null (permutation tests over 7 ensembles; any d(T) modulation is
+  bounded below ~0.7% while N spans a factor ~2600). Caveat: every stored T
+  is a multiple of 20, so strictly prime T is untested.
 - **No geometric carrier.** D is not the fractal dimension of any point set
   the packing produces — box-counting sweeps through it without a plateau. It
   is a capacity exponent of the joint whole-history exclusion.
