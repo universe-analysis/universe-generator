@@ -20,9 +20,16 @@ with no geometric carrier, invariant under cutoff depth and dictionary size;
 matter slices are *exactly* uniform (wrapped D2 = 3.01/2.02); mover speeds
 follow a phase-selected arcsine law; turnaround equation of state **w = 0.145
 (Chebyshev) / 0.193 (Euclidean)**, with jamming cooling w 20–24% below the
-proposal ensemble in both metrics. Full story in `PHYSICS_FINDINGS.md`
-(current knowledge; the paper `paper/main.tex` predates the uniform re-anchor
-and needs revision).
+proposal ensemble in both metrics.
+
+**Documentation ground truth: `README.md`.** The README is the canonical
+statement of the model and its measured results. Whenever a campaign or
+analysis establishes a new result — or disproves a claim the README currently
+makes (including its speculation sections) — update `README.md` as part of
+landing that result. `PHYSICS_FINDINGS.md` is the detailed findings narrative
+layered beneath it and should be kept consistent when convenient, but on any
+disagreement the README wins and the stale doc gets fixed. (The paper
+`paper/main.tex` predates the uniform re-anchor and needs revision.)
 
 ## Layout
 
@@ -142,6 +149,10 @@ run a campaign or make a plot worth keeping, log it:
 5. **Index the day.** On the day's first entry, add a `.day` link at the top
    (newest first) of the list in `docs/lab-notes/index.html`.
 6. **Commit the note + plot(s)** as a second commit, separate from the code.
+7. **Update the ground truth.** If the entry establishes a new result or
+   disproves an existing claim, fold it into `README.md` (and
+   `PHYSICS_FINDINGS.md` when it would otherwise go stale) in the same commit
+   as the note — the lab note is the evidence, the README is the conclusion.
 
 Lab-note plots **are** committed (they're site content) — the exception to the
 "keep figures out of git" rule below, which still applies to top-level `figures/`.
