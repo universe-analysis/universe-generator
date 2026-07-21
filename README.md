@@ -1,12 +1,12 @@
 # Universe Generator
 
-> **Ground truth.** This file is the canonical statement of the model and its
+> **Latest Information.** This file is the canonical statement of the model and its
 > measured results, updated whenever a new result lands or an old idea is
 > disproven. The detailed findings narrative is
 > [`PHYSICS_FINDINGS.md`](PHYSICS_FINDINGS.md); the dated evidence trail
 > (every campaign and figure, tied to the commit that produced it) is the lab
-> notebook under [`docs/lab-notes/`](docs/lab-notes/). If documents disagree,
-> this one wins and the others need fixing.
+> notebook under [`docs/lab-notes/`](docs/lab-notes/). This project uses AI for
+> automated analysis and house-keeping. It's a love hate relationship.
 
 This project is centered around discrete generation and analysis of a model universe. Our model universe has n spatial dimensions, and one dimension for time, it is flat and contains a torus submanifold, therefore describing a slightly modified generalized Minkowski spacetime. Worldlines are defined within this spacetime, and a discrete analysis with a Random-Sequential-Adsorption (RSA) technique is used to pack the universe according to rules of intersection and non-intersection. This model therefore describes n spatial dimensions on an expanding and collapsing n-torus, allowing a cat-map automorphism. The worldlines are 1D paths through time, raising many similarities to string theory as discussed later.
 
@@ -61,16 +61,15 @@ This model describes generic n+1 dimension universes, with n spatial dimensions.
 A single unique group consists of a potentially infinite number of subpaths - paths which only intersect each other while avoiding intersections with every other path from a different unique group across all of time. This allows for a single unique group [particle] to be represented by many different positions and velocities at once. A goal of this project is to study these subpath behaviors to determine if they follow expected Bell inequalities / other tests for quantum behavior.
 
 ### Big bang / crunch / inflation / expansion
-This model naturally embeds an expansion and collapse cycle. The measured equation of state at maximum expansion (t = π/2) is matter-like — w = 0.145 (Chebyshev metric) / 0.193 (Euclidean), cooled 20–24% below the proposal ensemble by jamming's phase selection — so the turnaround region is cold and matter-dominated. The full w(z) history away from the turnaround (including the rapid-cooling inflation-like era seen in a predecessor model, not yet re-measured on the current torus model) is an open measurement. It is of note that this model is not entirely symmetric across pi/2 due to the inclusion of phase components for even frequency components.
+This model naturally embeds an expansion and collapse cycle. The measured equation of state at maximum expansion (t = π/2) is matter-like — w = 0.145 (Chebyshev metric), cooled 20–24% below the proposal ensemble by jamming's phase selection — so the turnaround region is cold and matter-dominated. The full w(z) history away from the turnaround (including the rapid-cooling inflation-like era seen in a predecessor model, not yet re-measured on the current torus model) is an open measurement. It is of note that this model is not entirely symmetric across pi/2 due to the inclusion of phase components for even frequency components.
 
 ### Speculation
 The following below is loose speculation.
 #### Small-scale knots
 The ability to form a stable knot of n unique paths depends on the dimension, therefore a goal of this project is to analyze the unique path knots and attempt to relate them to standard model particles. As far as we understand, the most unique paths that can be knotted in one dimension is one, in two dimensions is four, and in three dimensions is 12, in four is 32 and five is 80. However, the exploration into this has only just begun and these are all tentative findings.
-*Status (2026-07-18, B₃ braid census in 2+1):* touching means braiding — most unique groups are genuinely braided (49% of pairs linked, 69% of triples nontrivial, ~all by n ≈ 10), chirality-balanced, and mostly pure braids. But the braids are hot (~260 crossings per triple), and the minimal Bilson-Thompson fermion template shows no excess over random incidence. Any standard-model correspondence would need a framing (ribbon twist from worldline geometry) or a coarse-graining that cancels the thermal crossings — both open.
+*Status (2026-07-18, B₃ braid census in 2+1): 1+1 and 3+1 possibly are 2 and 24 respectively, unverified still.*
 #### Gravity
-This model follows a string theory approach, gravity arises from closed strings propagating through the larger ambient space. Specifically, due to the flat nature of space, our model invokes the Celestial holography conjecture:<br>
-`The central conjecture is that this correspondence provides a complete boundary description of the gravitational S-matrix in a flat Minkowski spacetime.` [https://en.wikipedia.org/wiki/Holographic_principle#Celestial_holography](https://en.wikipedia.org/wiki/Holographic_principle#Celestial_holography)<br>
+This model follows a string theory approach, gravity arises from closed strings propagating through the larger ambient space. 
 
 #### Strong force
 This may relate to knots, subpaths, and the ability for knots to essentially tangle with each other, as well as knots of knots tangling.
@@ -81,7 +80,9 @@ This model would relate electromagnetic interaction to the general emergent dyna
 
 #### Super-Speculation:
 If this was a model of our universe, we could expect it to imply that the observable universe is the entire universe. This model allows for a description of the fastest paths between two remote points, and the furthest comoving distance a path can travel is dependent on the state of time. At t=0, ~1.2596 comoving units can be travelled. Above 1, allows for wrapping in the torus, which means that looking in one direction, not only can you see the furthest point in that direction, but you can see objects beyond the seam, this means you can see an object near the seams in two different moments in time, on opposite sides of the universe. At the half point in time, π/2, the maximum comoving distance travelled is exactly the square root of two (~1.414) At the end of time, t=π, the maximum comoving distance travelled approaches two. We can interpret this as the effective speed of light at a given point in time. Because this number emerges above 1, the entire universe is always connected. We can pause time and emit light moving backwards in time, rewinding the universe as the light approaches t=0 in time, and use that to build a frame of reference. We can also take into account peculiar speeds to account for doppler / abberation. This is still being tested.
-*Status:* the reach numbers above are now closed forms (2026-07-16 wiggle-budget analysis; see Measured results — no horizon at any epoch), the rewind frame map is implemented as the wrapped viewer's default front (v27+), and multi-term budget splits were checked against the single-term envelope (2026-07-18): they never beat it, so the single-term reach *is* the causal front.
+*Status:* the reach numbers above are now closed forms (2026-07-16 wiggle-budget analysis; see Measured results — no horizon at any epoch), the rewind frame map is implemented as the wrapped viewer's default front (v27+), and multi-term budget splits were checked against the single-term envelope (2026-07-18): they never beat it, so the single-term reach *is* the causal front. 
+
+This will be cleaned up a bit later but what Claude means is that the exact causal reach is a wiggle-front, graph to be included when I rewrite this section.
 
 ## Measured results
 
@@ -120,7 +121,7 @@ The ground-truth summary, current as of 2026-07-20. Full numbers and caveats in
   front: 200k-config random sweeps (k = 2–4 terms) plus a Nelder-Mead
   adversary never beat it — splitting the budget across terms only dilutes
   reach, exactly as budget linearity predicts.
-- **Subpaths.** Phase-2 filling never jams; at matched convergence depth a
+- **Subpaths.** Phase-2 filling never jams; but it does decay to a constant acceptance rate. At matched convergence depth a
   high-resolution 2+1 jam retains ~1.5 subpaths per unique worldline.
 - **Braiding (2+1).** Touching means braiding — unique groups are genuinely,
   chirality-balanced braided, but hot: no selection for minimal
