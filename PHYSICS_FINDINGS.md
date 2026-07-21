@@ -1,5 +1,12 @@
 # Braided Universe — Physics Findings
 
+> **Ground truth lives in [`README.md`](README.md)** (model definition +
+> current measured-results summary, kept accurate as findings land). This file
+> is the detailed findings narrative beneath it — last fully synced
+> 2026-07-14; the wiggle-budget causal-reach result (07-16) and the B₃ braid
+> census (07-18) are summarized in the README and the lab notes but not yet
+> folded in here. If this file and the README disagree, the README wins.
+
 The current state of knowledge, stated as of 2026-07-14. This file describes
 what we know about the model as it is now defined and measured; the
 day-by-day evidence trail (including superseded models, estimators, and

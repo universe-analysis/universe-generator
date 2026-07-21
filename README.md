@@ -1,7 +1,16 @@
 # Universe Generator
+
+> **Ground truth.** This file is the canonical statement of the model and its
+> measured results, updated whenever a new result lands or an old idea is
+> disproven. The detailed findings narrative is
+> [`PHYSICS_FINDINGS.md`](PHYSICS_FINDINGS.md); the dated evidence trail
+> (every campaign and figure, tied to the commit that produced it) is the lab
+> notebook under [`docs/lab-notes/`](docs/lab-notes/). If documents disagree,
+> this one wins and the others need fixing.
+
 This project is centered around discrete generation and analysis of a model universe. Our model universe has n spatial dimensions, and one dimension for time, it is flat and contains a torus submanifold, therefore describing a slightly modified generalized Minkowski spacetime. Worldlines are defined within this spacetime, and a discrete analysis with a Random-Sequential-Adsorption (RSA) technique is used to pack the universe according to rules of intersection and non-intersection. This model therefore describes n spatial dimensions on an expanding and collapsing n-torus, allowing a cat-map automorphism. The worldlines are 1D paths through time, raising many similarities to string theory as discussed later.
 
-## Worldines
+## Worldlines
 A worldline in this model is represented per-axis, using parametric form, as expansion of sine terms. The generic `a * sin(b * T+f) - a * sin(f)` where f is allowed to be between 0 and π if b (the frequency) is even - if b is odd then f must be 0 (or π, but a is already allowed to be inverted which accomplishes the same thing.) The critical constraints on these worldlines are as follows:
 
 ### Closure
@@ -33,14 +42,14 @@ To generate a universe to analyze, we first choose the maximum frequency we will
 This model uses a very robust (but not perfect) method to check for intersection between paths. This method is most fallible in one dimension, however extremely strong in 2 or more spatial dimensions. The method uses a comoving intersection check, where T is equal to the number of discrete timesteps, a comoving intersection distance of 2/T per-axis is used to check for intersection at every discrete timestep. While this can miss intersections, the missed intersections are extremely rare and self-intersecting paths are allowed in this model, meaning that any missed intersection would simply join two unique groups as a single unique group. We believe this missed intersection error rate approaches zero for two or more dimensions in discrete analysis. This algorithim is open for discussion.
 
 ### Comoving visualizer  / n-torus
-Our interactive viewers include a 2+1 generator / visualizer, viewing as a true 2-torus in 3d space. Other viewers are in the works.
+Our interactive viewers include a 2+1 generator / visualizer, viewing as a true 2-torus in 3d space (with a causal frame map whose front is the closed-form wiggle-budget reach), and a braid viewer rendering worldlines as 3D strands. All are published from [`docs/`](docs/) via GitHub Pages.
 
 ### Random-Sequential-Adsorption (RSA)
 Traditional RSA packs objects in a single space, whereas this packs 1D paths across all of time at once. Discussed more in the implementation section.
 
 ### Unique generation -> Subpath Generation
 The generation process follows two RSA stages, the first stage generates only unique paths (potential missed intersections aside.) Once the universe is jammed with unique paths, or earlier if one chooses, the next stage can follow through generation of subpaths, using the unique paths essentially as seeds. During the first stage, non-intersection is the only priority, and no self-intersections are explicitly allowed (although it is possible for some to slip in.)<br><br>
-The second phase still has the previous non-intersection requirement, but only for paths of a different unique group. When a path intersects another, it inherits it's groupID, and if the path never intersects a path with a different groupID, it is a valid subpath. It is technically possible for subpaths to be created in the first stage.<br><br>
+The second phase still has the previous non-intersection requirement, but only for paths of a different unique group. When a path intersects another, it inherits it's groupID, and if the path never intersects a path with a different groupID, it is a valid subpath. It is technically possible for subpaths to be created in the first stage. Unlike phase 1, subpath generation never jams — the admission rate floors at low T and decays only slowly at high T — so any subpath count is conditional on its stop rule (a depth cutoff, not a jam); only the growth/decay laws are portable results.<br><br>
 Note that this discrete method does not explicitly force that two paths ever perfectly intersect or non-intersect, however as frequency and timestep approach infinity, and the comoving intersection box shrinks, the intersections approach true intersections, therefore this analysis is an approximation that can be measured as the limit of the maxfreq (or the timestep resolution, same thing) approaches infinity.
 
 ## Physics
@@ -52,12 +61,13 @@ This model describes generic n+1 dimension universes, with n spatial dimensions.
 A single unique group consists of a potentially infinite number of subpaths - paths which only intersect each other while avoiding intersections with every other path from a different unique group across all of time. This allows for a single unique group [particle] to be represented by many different positions and velocities at once. A goal of this project is to study these subpath behaviors to determine if they follow expected Bell inequalities / other tests for quantum behavior.
 
 ### Big bang / crunch / inflation / expansion
-This model naturally embeds an expansion and collapse cycle, as well as a measured rapid cooling inflation period at the very start, following by a cold - matter dominated region at time t=π/2, leading to a hot collapse. It is of note that this model is not entirely symmetric across pi/2 due to the inclusion of phase components for even frequency components.
+This model naturally embeds an expansion and collapse cycle. The measured equation of state at maximum expansion (t = π/2) is matter-like — w = 0.145 (Chebyshev metric) / 0.193 (Euclidean), cooled 20–24% below the proposal ensemble by jamming's phase selection — so the turnaround region is cold and matter-dominated. The full w(z) history away from the turnaround (including the rapid-cooling inflation-like era seen in a predecessor model, not yet re-measured on the current torus model) is an open measurement. It is of note that this model is not entirely symmetric across pi/2 due to the inclusion of phase components for even frequency components.
 
 ### Speculation
 The following below is loose speculation.
 #### Small-scale knots
 The ability to form a stable knot of n unique paths depends on the dimension, therefore a goal of this project is to analyze the unique path knots and attempt to relate them to standard model particles. As far as we understand, the most unique paths that can be knotted in one dimension is one, in two dimensions is four, and in three dimensions is 12, in four is 32 and five is 80. However, the exploration into this has only just begun and these are all tentative findings.
+*Status (2026-07-18, B₃ braid census in 2+1):* touching means braiding — most unique groups are genuinely braided (49% of pairs linked, 69% of triples nontrivial, ~all by n ≈ 10), chirality-balanced, and mostly pure braids. But the braids are hot (~260 crossings per triple), and the minimal Bilson-Thompson fermion template shows no excess over random incidence. Any standard-model correspondence would need a framing (ribbon twist from worldline geometry) or a coarse-graining that cancels the thermal crossings — both open.
 #### Gravity
 This model follows a string theory approach, gravity arises from closed strings propagating through the larger ambient space. Specifically, due to the flat nature of space, our model invokes the Celestial holography conjecture:<br>
 `The central conjecture is that this correspondence provides a complete boundary description of the gravitational S-matrix in a flat Minkowski spacetime.` [https://en.wikipedia.org/wiki/Holographic_principle#Celestial_holography](https://en.wikipedia.org/wiki/Holographic_principle#Celestial_holography)<br>
@@ -71,9 +81,47 @@ This model would relate electromagnetic interaction to the general emergent dyna
 
 #### Super-Speculation:
 If this was a model of our universe, we could expect it to imply that the observable universe is the entire universe. This model allows for a description of the fastest paths between two remote points, and the furthest comoving distance a path can travel is dependent on the state of time. At t=0, ~1.2596 comoving units can be travelled. Above 1, allows for wrapping in the torus, which means that looking in one direction, not only can you see the furthest point in that direction, but you can see objects beyond the seam, this means you can see an object near the seams in two different moments in time, on opposite sides of the universe. At the half point in time, π/2, the maximum comoving distance travelled is exactly the square root of two (~1.414) At the end of time, t=π, the maximum comoving distance travelled approaches two. We can interpret this as the effective speed of light at a given point in time. Because this number emerges above 1, the entire universe is always connected. We can pause time and emit light moving backwards in time, rewinding the universe as the light approaches t=0 in time, and use that to build a frame of reference. We can also take into account peculiar speeds to account for doppler / abberation. This is still being tested.
+*Status:* the reach numbers above are now closed forms (2026-07-16 wiggle-budget analysis; see Measured results — no horizon at any epoch), the rewind frame map is implemented as the wrapped viewer's default front (v27+), and multi-term budget splits were checked against the single-term envelope (2026-07-18): they never beat it, so the single-term reach *is* the causal front.
 
-## Analysis Methods
-Coming soon, timestep resolution, frequency terms, unique decay rates, subpath decay rates, 2+1 vs 3+1, odd,even, high low analysis, ec.
+## Measured results
+
+The ground-truth summary, current as of 2026-07-20. Full numbers and caveats in
+[`PHYSICS_FINDINGS.md`](PHYSICS_FINDINGS.md); evidence trail in
+[`docs/lab-notes/`](docs/lab-notes/).
+
+- **How much fits.** The jammed unique count is a clean power law `N ~ T^D`.
+  In 3+1 the state exponent is **D = 2.32**, converged and cutoff-invariant
+  over T = 160–520; the process log-growth-rate exponent lands on 7/3 from
+  above, sitting ~0.015 above the state value, and this state-vs-rate gap is
+  real and unexplained (the leading open question). In 2+1 the jamming-limit
+  extrapolation is **D∞ = 1.434 ± 0.021** (finite-cutoff ladders approach it
+  from below). D is invariant under cutoff depth and dictionary size (2–10
+  terms), and D/d differs between dimensions (0.774 vs 0.717) — not
+  dimension-universal.
+- **No geometric carrier.** D is not the fractal dimension of any point set
+  the packing produces — box-counting sweeps through it without a plateau. It
+  is a capacity exponent of the joint whole-history exclusion.
+- **Exact homogeneity.** The jam is exactly uniform in space (wrapped
+  correlation dimension 3.01 / 2.02 at the ladder tops) and in time (rms
+  comoving spread √⅓, flat over the entire loop). Jamming thins the population
+  by orders of magnitude while preserving uniformity exactly.
+- **Parity selection.** Jamming selects against even frequencies (~0.8× per
+  even axis); the packed population splits 23% cold (all-odd, at rest at the
+  turnaround) / 77% movers.
+- **Arcsine speed law.** Per-axis mover speeds at the turnaround follow the
+  arcsine law with its relativistic pile-up at the per-axis speed cap; jamming
+  additionally selects on phase, tilting ⟨v⟩ from 0.637 (proposal) to 0.603.
+- **Equation of state.** Turnaround w = 0.145 (Chebyshev) / 0.193 (Euclidean),
+  cooled 20–24% below the proposal ensemble — matter-like at maximum
+  expansion.
+- **Causal structure.** Reach is set by the wiggle budget, not a null cone:
+  ≈1.26 near the Bang → √2 at the turnaround → 2 at the Crunch, all closed
+  forms. No horizon at any epoch.
+- **Subpaths.** Phase-2 filling never jams; at matched convergence depth a
+  high-resolution 2+1 jam retains ~1.5 subpaths per unique worldline.
+- **Braiding (2+1).** Touching means braiding — unique groups are genuinely,
+  chirality-balanced braided, but hot: no selection for minimal
+  (Bilson-Thompson) braid classes.
 
 ## Live site
 

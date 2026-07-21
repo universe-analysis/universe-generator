@@ -13,6 +13,83 @@
 
     <!-- ENTRIES: chronological, newest appended at the bottom. -->
 
+    <article class="entry" id="braid-census">
+      <h2>Do jammed groups braid like Bilson-Thompson fermions? A B&#8323; census of unique groups</h2>
+      <p class="meta">
+        Analysis of the stored CONVERGE 2+1 subpath dumps (no new campaign)
+        &middot; analysis module + tests
+        <a href="https://github.com/universe-analysis/universe-generator/commit/0c9f1dc"><code>0c9f1dc</code></a>
+        &middot; census figure
+        <a href="https://github.com/universe-analysis/universe-generator/commit/83bbf26"><code>83bbf26</code></a>
+      </p>
+      <p>
+        LQG's preon program (Bilson-Thompson, hep-ph/0503213; with Markopoulou
+        &amp; Smolin, hep-th/0603022) builds every first-generation Standard
+        Model fermion from one 3-strand braiding template &mdash; the minimal
+        2-crossing braid &sigma;&#8321;&sigma;&#8322;&#8315;&sup1; or its
+        mirror &mdash; with charge and color carried by ribbon twists. Our
+        unique groups are clusters of worldlines that touch each other and
+        nothing else, and in 2+1 (exactly where point-strand braiding is
+        topologically meaningful; in 3+1 it is trivial without framing) each
+        n-strand group traces a genuine element of the braid group
+        B<sub>n</sub>. New <code>analysis/analyze_braids.py</code> extracts
+        each group's braid word from the x-projection crossings of the
+        comoving strands and classifies 3-strand groups by a <em>complete</em>
+        B&#8323; invariant (Burau at t&nbsp;=&nbsp;&minus;1 into SL(2,&#8484;)
+        plus exponent sum), over the 40 CONVERGE subpath dumps
+        (T&nbsp;=&nbsp;20&ndash;300, 5 seeds).
+      </p>
+      <figure class="plot">
+        <img src="braids_census.png"
+             alt="Four panels. (a) Unique-group size distribution, log-log, one curve per T from 20 to 300: steep power-law-like decay from about 10^4 singleton groups down to single giant groups of 10^2 to 3x10^4 strands. (b) Signed crossing-sum distribution for 2-strand groups, log counts, symmetric around a dominant spike at zero, with even values clearly more common than odd, decaying tails clipped at plus-minus 24. (c) Horizontal bar census of B3 classes of 3-strand groups: trivial leads with 1160 of 3736, followed by deep classes bucketed by exponent sum, roughly balanced between plus and minus; the appended orange Bilson-Thompson template row shows 3. (d) Fraction of groups with a nontrivial braid versus group size: rises from 0.49 at n=2 through 0.69 at n=3 to about 0.95 by n=10." />
+        <figcaption>
+          Braid census of unique groups: (a) group sizes, (b) 2-strand linking,
+          (c) B&#8323; classes of 3-strand groups with the Bilson-Thompson
+          template row in orange, (d) braided fraction vs group size.
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>Touching means braiding.</strong> 49% of 2-strand groups
+            are genuinely linked (nonzero signed crossing sum), 69% of
+            3-strand groups carry a nontrivial B&#8323; class, and by
+            n&nbsp;&asymp;&nbsp;10 essentially every group is braided
+            (&ge;95%). Packing contact is not incidental adjacency &mdash;
+            the strands wind.</li>
+        <li><strong>But the braids are hot, not minimal.</strong> A typical
+            3-strand group carries ~260 raw crossings (44M crossings across
+            the census); its class is far beyond any short word. The
+            Bilson-Thompson first-generation template appears exactly
+            <strong>3 times in 3,736 triples</strong> (0.08%) &mdash;
+            consistent with random incidence, not selection. Jamming pressure
+            does <em>not</em> preferentially generate minimal fermion braids;
+            it generates deeply wound "molecules".</li>
+        <li><strong>Even-dominance: the groups are mostly pure braids.</strong>
+            The 2-strand crossing-sum distribution (b) alternates strongly
+            &mdash; even sums dominate &mdash; meaning strands usually return
+            to their original x-order: closed-loop worldlines pinned at the
+            Bang/Crunch favor pure (permutation-free) braids.</li>
+        <li><strong>Chirality is balanced.</strong> Sign of the exponent sum:
+            pairs +2323/&minus;2191, triples +1210/&minus;1166 &mdash; no
+            parity violation beyond ~2&sigma;; the packing does not select a
+            handedness.</li>
+        <li><strong>Resolution caveat.</strong> 31% of crossings are
+            "fragile" (strand separation at the crossing below the engine's
+            2/T contact scale), so individual deep classes are provisional
+            even though crossing-count parities and linking sums are robust.
+            Only 87 triples are fragile-free, and 99% of those are trivial:
+            robust braiding and sub-resolution contact go together.</li>
+      </ul>
+      <p>
+        This is inherently a 2+1-only chart &mdash; the 3+1 twin cannot exist
+        for point strands (braids untie in three spatial dimensions; that is
+        precisely why Bilson-Thompson uses framed ribbons, whose twist our
+        worldlines cannot carry). The honest conclusion: packing produces
+        abundant, chirality-balanced, mostly-pure braiding, but no preference
+        for the Standard Model's minimal braid classes. If a correspondence
+        exists it would need either a framing (a ribbon structure from the
+        worldline geometry, e.g. tangent-turning) or a coarse-graining that
+        cancels the thermal crossings &mdash; both open follow-ups.
+
     <article class="entry" id="multiterm-reach">
       <h2>Nobody beats the blue line: multi-term phase combinations stay under the single-term reach envelope</h2>
       <p class="meta">
