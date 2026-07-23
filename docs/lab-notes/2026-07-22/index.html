@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-07-22</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-07-22</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="group-partners">
+      <h2>Partners share a hidden anchor: selection correlations in unique groups, separated from dynamical contact</h2>
+      <p class="meta">
+        Analysis of the stored CONVERGE 2+1 subpath dumps (no new campaign)
+        &middot; analysis module + tests
+        <a href="https://github.com/universe-analysis/universe-generator/commit/dcc6939"><code>dcc6939</code></a>
+      </p>
+      <p>
+        Kevin asked whether co-grouped paths &mdash; which emerge from
+        different comoving regions and only meet later to satisfy the subpath
+        intersection requirement &mdash; amount to "quantum entanglement sort
+        of stuff". The model is a global self-consistency selection over whole
+        histories, so co-grouped strands <em>can</em> carry correlations that
+        no slice-by-slice evolution would explain; this entry quantifies that,
+        as classical groundwork for the README's stated goal of Bell-type
+        tests on subpaths. Strands emerge at
+        X(0)&nbsp;=&nbsp;&Sigma;&nbsp;a&middot;b&middot;cos&nbsp;f&nbsp;+&nbsp;a&#8321;
+        per axis (the z&nbsp;&rarr;&nbsp;0 limit of x/sin&nbsp;z; with the
+        exact unit budget |a&middot;b|&nbsp;=&nbsp;1 this is
+        a&#8321;&nbsp;&plusmn;&nbsp;1 on odd axes, a&#8321;&nbsp;+
+        cos&nbsp;f on even ones), and first contact is computed with the
+        engine's own predicate &mdash; wrapped Chebyshev distance &le; 2/T on
+        the engine z grid &mdash; validated by recovering the
+        admission-guaranteed contact for <strong>9,246 of 9,246</strong>
+        two-strand groups. Nulls are within-dump partner reshuffles
+        (single-strand marginals preserved, co-membership destroyed; features
+        dump-centered), over 40 dumps, 461,917 strands, 59,135 groups
+        (2,359 giant &gt;10-strand groups excluded from pairwise work).
+      </p>
+      <figure class="plot">
+        <img src="group_partners.png"
+             alt="Six panels. (a) Bang-separation histogram: partners spike hard at zero separation then run flat to 1, while the reshuffled null rises toward 1. (b) First-contact histogram peaking at z about a tenth of pi, median 0.10, 3 percent after the turnaround, with a small revival near the Crunch. (c) Partner a1 versus a1 scatter: a razor-thin diagonal plus corner clusters from seam wraps; off-diagonal points colored late. (d) Separation versus meeting time: dense early-contact band at all separations, sparse late contacts mostly at large separation. (e) Cold/mover pair-class bars: ensemble A slightly depleted in same-class pairs versus the independent null; the late-contact ensemble C has essentially no cold+cold pairs and 81 percent mixed. (f) Standardized effects: Bang separation and a1 anchor statistics at 100-220 null standard deviations, class match at minus 10-13, phase alignment and approach rate at zero." />
+        <figcaption>
+          Selection correlations between co-grouped strands (2+1 subpath
+          dumps, T = 20&ndash;300): where partners emerge, when they first
+          touch, the shared a&#8321; anchor, and the statistics vs the
+          reshuffle null.
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>Partners share a hidden anchor.</strong> The free comoving
+            coordinate a&#8321; correlates at <strong>r&nbsp;=&nbsp;+0.95</strong>
+            between the two strands of a 2-group (wrapped anchor gap 0.019 vs
+            0.498 for reshuffled pairs &mdash; 26&times; tighter, z&nbsp;=
+            &minus;224). Meanwhile their <em>visible</em> Bang positions sit a
+            mean 0.33 apart (a third of the half-box, vs null 0.67): partners
+            genuinely emerge from different places while agreeing almost
+            exactly on the timeless parameter that anchors their mid-loop
+            trajectory.</li>
+        <li><strong>Correlation precedes contact.</strong> Contact comes
+            mostly early (median z/&pi; = 0.10, in the endpoint-stretched
+            era), but 242 pairs (2.6%) first touch <em>after the
+            turnaround</em> &mdash; and they still carry r&nbsp;=&nbsp;+0.74
+            anchor correlation (wrapped gap 0.117 vs 0.450 null). Pairs that
+            spent the entire expanding half of the universe without any
+            interaction were already matched at the Bang. Never-touching
+            co-group siblings (6,973 pairs from 3&ndash;10-strand groups)
+            correlate at r&nbsp;=&nbsp;+0.90 with <em>no direct contact
+            ever</em> &mdash; correlation mediated purely by the shared
+            group.</li>
+        <li><strong>The class variable anti-matches.</strong> Partners avoid
+            being alike in the cold/mover classification: same-class rate 47%
+            vs 54% null in 2-groups, collapsing to <strong>19% vs 47%</strong>
+            in the late-contact ensemble, which contains essentially no
+            cold+cold pairs. (Two cold strands with matched anchors co-emerge
+            exactly &mdash; odd-axis displacement is &plusmn;1 mod 2 &mdash;
+            so they either touch immediately or never: surviving late
+            rendezvous requires one mover.) A discrete partner property that
+            is anti-correlated under selection is the closest structural
+            analog here to anticorrelated spins.</li>
+        <li><strong>The rendezvous is not kinematically arranged.</strong>
+            Even-axis phase alignment and the approaching-at-Bang rate are
+            both null &mdash; partners do not aim at each other; the
+            correlation lives in the selection, not the initial
+            velocities.</li>
+        <li><strong>Interpretation, kept honest.</strong> The anchor-sharing
+            is plausibly enforced by <em>exclusivity</em>, not by the meeting
+            itself: a subpath must touch exactly one group, and a strand that
+            strays from its parent's neighbourhood through the crowded epochs
+            hits a foreign group and is rejected &mdash; a monogamy
+            constraint. All of this is classical common-constraint
+            correlation ("Bertlmann's socks with extra steps"): it reproduces
+            the <em>phenomenology</em> that motivates all-at-once/retrocausal
+            accounts of entanglement (correlation without prior interaction,
+            no signalling, set by a global constraint), but a genuine Bell
+            test needs measurement settings and would, in this class of
+            model, run through the measurement-independence loophole. The
+            quantitative surprise is the magnitude: a 26&times; anchor
+            tightening and a class anti-correlation, both invisible to any
+            single-slice observer.</li>
+        <li><strong>Scope.</strong> 2+1 only &mdash; the 3+1 engine has no
+            <code>--subpaths</code> mode yet, so the dimension twin waits on
+            an engine port (queued).</li>
+      </ul>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>

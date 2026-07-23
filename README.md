@@ -60,6 +60,16 @@ This model describes generic n+1 dimension universes, with n spatial dimensions.
 ### Quantum Behavior
 A single unique group consists of a potentially infinite number of subpaths - paths which only intersect each other while avoiding intersections with every other path from a different unique group across all of time. This allows for a single unique group [particle] to be represented by many different positions and velocities at once. A goal of this project is to study these subpath behaviors to determine if they follow expected Bell inequalities / other tests for quantum behavior.
 
+*Status:* the classical groundwork is measured (2026-07-22 partner-correlation
+analysis, 2+1): co-grouped strands emerge a mean 0.33 comoving units apart yet
+share their anchor a₁ at r = +0.95; never-touching co-group siblings correlate
+at +0.90, and pairs whose first contact comes after the turnaround still carry
++0.74 — correlation precedes contact, with the cold/mover class
+*anti*-matching between partners and no phase or velocity aiming at the Bang.
+These are selection (common-constraint) correlations — the all-at-once
+phenomenology, not yet a Bell test, which would additionally need a
+measurement-settings analog.
+
 ### Big bang / crunch / inflation / expansion
 This model naturally embeds an expansion and collapse cycle. The measured equation of state at maximum expansion (t = π/2) is matter-like — w = 0.145 (Chebyshev metric) / 0.193 (Euclidean), cooled 20–24% below the proposal ensemble by jamming's phase selection — so the turnaround region is cold and matter-dominated. The full w(z) history away from the turnaround (including the rapid-cooling inflation-like era seen in a predecessor model, not yet re-measured on the current torus model) is an open measurement. It is of note that this model is not entirely symmetric across pi/2 due to the inclusion of phase components for even frequency components.
 
@@ -127,6 +137,14 @@ The ground-truth summary, current as of 2026-07-20. Full numbers and caveats in
   reach, exactly as budget linearity predicts.
 - **Subpaths.** Phase-2 filling never jams; at matched convergence depth a
   high-resolution 2+1 jam retains ~1.5 subpaths per unique worldline.
+- **Partner correlations (2+1).** Co-grouped strands share their comoving
+  anchor a₁ at r = +0.95 (wrapped anchor gap 26× tighter than reshuffled
+  pairs) while emerging a mean 0.33 apart; never-touching siblings correlate
+  at +0.90 and post-turnaround first-contact pairs at +0.74 — correlation
+  precedes contact. The cold/mover class anti-matches between partners
+  (19% vs 47% for late-contact pairs); phase alignment and Bang approach
+  velocity are null. Selection correlation, not yet entanglement: no
+  measurement-settings analog, hence no Bell statement.
 - **Braiding (2+1).** Touching means braiding — unique groups are genuinely,
   chirality-balanced braided, but hot: no selection for minimal
   (Bilson-Thompson) braid classes.

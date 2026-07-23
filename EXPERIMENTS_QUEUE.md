@@ -152,3 +152,23 @@ Roughly one evening on mother+kitt.
 reads T as a length, not an integer" becomes unconditional). A signal —
 prime-T universes packing measurably differently — would be the first
 number-theoretic observable in the model.
+
+---
+
+## 6. 3+1 subpath port: the dimension twin for groups, braids-adjacent stats, and partner correlations  [engine port + campaign]
+
+**Question.** All group-structure results (braid census 07-18, partner
+correlations 07-22) are 2+1-only because `braid_cuda3d.cu` has no
+`--subpaths` phase. Do the partner correlations (anchor sharing r = 0.95,
+class anti-matching, correlation-precedes-contact) carry to 3+1?
+
+**Work.** Port the phase-2 subpath loop + gid bookkeeping from
+`braid_cuda.cu` (the 2+1 reference: sub-mode `collides_dev`, host re-check,
+gid dump column) into the 3+1 engine; add a `subpath3d` campaign mirroring
+`subpath2d_e6` (T ladder to the dense-grid ceiling, 5 seeds, dump=True).
+`analysis/analyze_group_partners.py` generalizes directly (features are
+per-axis; add the z-axis).
+
+**Why it matters.** The braid census cannot exist in 3+1 (point strands
+untie), but partner correlations can — they are the dimension-portable part
+of the group story, and the dimension-symmetric convention wants the twin.

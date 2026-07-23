@@ -326,6 +326,30 @@ conditional on its stop rule; only growth/decay laws are portable:
 Open: the functional form of the T ≥ 60 rate decay (needs a deeper arm),
 and whether the ~1.5 ratio is an asymptote.
 
+**Partner correlations (2026-07-22, `analysis/analyze_group_partners.py`).**
+Co-grouped strands are strongly selection-correlated, and the correlation is
+separable from dynamical contact (contact = the engine's own wrapped-Chebyshev
+≤ 2/T predicate on the engine z grid; validated 9,246/9,246 on 2-groups):
+
+- **Shared anchor:** partner a₁ correlates at r = +0.95 in 2-strand groups
+  (wrapped anchor gap 0.019 vs 0.498 reshuffled null, z = −224), while Bang
+  positions sit a mean 0.33 apart (null 0.67). With |a·b| = 1 exact, odd axes
+  emerge at a₁ ± 1 and even axes at a₁ + cos f, so matched-anchor cold pairs
+  co-emerge exactly — the separation-zero spike.
+- **Correlation precedes contact:** median first contact z/π = 0.10; the 2.6%
+  of pairs first touching after the turnaround still carry r = +0.74; the
+  6,973 never-touching co-group sibling pairs carry r = +0.90 with no direct
+  contact at any timestep.
+- **Class anti-matching:** partners avoid sharing the cold/mover class (47%
+  vs 54% null; 19% vs 47% in the late-contact subset, which has ~no
+  cold+cold pairs). Even-axis phase alignment and approaching-at-Bang rate
+  are null — the rendezvous is selected, not aimed.
+- Interpretation: exclusivity (touch exactly one group) plausibly enforces
+  anchor-sharing — a monogamy constraint. These are classical
+  common-constraint correlations (the all-at-once phenomenology); a Bell
+  statement additionally needs a measurement-settings analog (see README
+  "Quantum Behavior" status). 2+1 only: the 3+1 engine lacks `--subpaths`.
+
 ## Caveats that bind the current results
 
 - Cutoff states, not literal jamming (section 3: no plateau through 1e-8);
