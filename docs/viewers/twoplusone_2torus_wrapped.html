@@ -268,12 +268,25 @@
             <div class="row" title="Number of observation instants between From and To; a full frame map (rewind fully applied) is built per observer per instant">
                 <span>Frames</span><input type="number" id="animFramesInput" value="150" min="2" max="2000">
             </div>
-            <div class="row" title="Path index of the first observer">
-                <span>Observer A #</span><input type="number" id="animObsAInput" value="0" min="0">
+            <div class="row" title="Observer A: a particle rides its worldline — the sky centre follows its motion; a static comoving point holds the centre fixed (no observer motion, no aberration or wobble)">
+                <span>Observer A</span>
+                <select id="animObsASel" style="width:74px"><option value="path" selected>particle</option><option value="static">point</option></select>
+                <input type="number" id="animObsAInput" value="0" min="0">
             </div>
-            <div class="row" title="Path index of the second observer — uncheck for a single-observer animation">
-                <span>Observer B #</span><input type="number" id="animObsBInput" value="1" min="0">
-                <label style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" id="animObsBChk" checked> on</label>
+            <div class="row" id="animObsAPtRow" style="display:none" title="Comoving coordinates of static point A, in [-1, 1)">
+                <span>A at x, y</span>
+                <input type="number" id="animObsAX" value="0" min="-1" max="1" step="0.1">
+                <input type="number" id="animObsAY" value="0" min="-1" max="1" step="0.1">
+            </div>
+            <div class="row" title="Observer B — particle, static comoving point, or off for a single-observer animation">
+                <span>Observer B</span>
+                <select id="animObsBSel" style="width:74px"><option value="path" selected>particle</option><option value="static">point</option><option value="off">off</option></select>
+                <input type="number" id="animObsBInput" value="1" min="0">
+            </div>
+            <div class="row" id="animObsBPtRow" style="display:none" title="Comoving coordinates of static point B, in [-1, 1) — (1, 1) is the antipode of (0, 0)">
+                <span>B at x, y</span>
+                <input type="number" id="animObsBX" value="1" min="-1" max="1" step="0.1">
+                <input type="number" id="animObsBY" value="1" min="-1" max="1" step="0.1">
             </div>
             <div class="row" title="First observation time, in units of π (kept above the Rewind floor)">
                 <span>From (×π)</span><input type="number" id="animT0Input" value="0.05" min="0.01" max="0.98" step="0.01">
@@ -384,7 +397,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v36';
+    const VIEWER_VERSION = 'v37';
 
     let functions = [];
     let Z_cache = [];
@@ -2045,9 +2058,10 @@
             px[i] = c[0]; py[i] = c[1];
         }
     }
-    function framePathHits(S, O, K, p, px, py, hits){
+    // f is passed alongside its id p (not looked up from functions[]) so the
+    // animation can image phantom marker worldlines with synthetic ids
+    function framePathHits(S, O, K, f, p, px, py, hits){
         const { budget, dist, zAtChi, reachFn, M, zg, chig, chiMax } = S;
-        const f = functions[p];
         for (let nx = -K; nx <= K; nx++) for (let ny = -K; ny <= K; ny++){
             const bx = 2*nx - O.ox, by = 2*ny - O.oy;
             // skip grid rows the front cannot have reached for this image
@@ -2105,7 +2119,7 @@
         const hits = [];
         for (let p = 0; p < functions.length; p++){
             fillPathGrid(S, functions[p], px, py);
-            framePathHits(S, O, K, p, px, py, hits);
+            framePathHits(S, O, K, functions[p], p, px, py, hits);
         }
         // the draw loop stops at the front: conformal modes reveal in χ
         // order, budget mode in rewind (emission-time) order — the reach can
@@ -2535,14 +2549,26 @@
         }
         const F = Math.min(2000, Math.max(2, parseInt(document.getElementById('animFramesInput').value) || 150));
         document.getElementById('animFramesInput').value = F;
+        // an observer is either a particle riding its worldline, or a static
+        // comoving point — a fixed sky centre with zero peculiar velocity
         const clampObs = v => Math.min(Math.max(0, v || 0), functions.length - 1);
-        const obsA = clampObs(parseInt(document.getElementById('animObsAInput').value));
-        document.getElementById('animObsAInput').value = obsA;
-        const obsList = [obsA];
-        if (document.getElementById('animObsBChk').checked){
-            const obsB = clampObs(parseInt(document.getElementById('animObsBInput').value));
-            document.getElementById('animObsBInput').value = obsB;
-            if (obsB !== obsA) obsList.push(obsB);       // same index twice = one pane
+        function readObs(letter){
+            if (document.getElementById('animObs' + letter + 'Sel').value === 'static'){
+                const x = wrapComov(parseFloat(document.getElementById('animObs' + letter + 'X').value) || 0);
+                const y = wrapComov(parseFloat(document.getElementById('animObs' + letter + 'Y').value) || 0);
+                return { kind: 'static', x, y, name: 'pt' + letter,
+                         lbl: 'pt ' + letter + ' (' + x.toFixed(2) + ', ' + y.toFixed(2) + ')' };
+            }
+            const idx = clampObs(parseInt(document.getElementById('animObs' + letter + 'Input').value));
+            document.getElementById('animObs' + letter + 'Input').value = idx;
+            return { kind: 'path', p: idx, name: 'obs' + idx, lbl: 'obs #' + idx };
+        }
+        const obsList = [readObs('A')];
+        if (document.getElementById('animObsBSel').value !== 'off'){
+            const B = readObs('B'), A = obsList[0];
+            const dup = (A.kind === 'path' && B.kind === 'path' && A.p === B.p)
+                     || (A.kind === 'static' && B.kind === 'static' && A.x === B.x && A.y === B.y);
+            if (!dup) obsList.push(B);                   // same observer twice = one pane
         }
         const zMin = Math.max(2e-3, (parseFloat(document.getElementById('frameZminInput').value) || 0.02) * Math.PI);
         let t0 = (parseFloat(document.getElementById('animT0Input').value) || 0.05) * Math.PI;
@@ -2556,9 +2582,16 @@
         // the frames are snapshots of instants: freeze the main playback
         playing = false; playBtn.classList.remove('on'); playBtn.textContent = 'Paused';
         const zList = Array.from({ length: F }, (_, k) => t0 + (t1 - t0)*k/(F - 1));
+        // a static point is also imaged in the other pane, via a phantom
+        // marker worldline: constant comoving coords (x·sin z / sin z) with a
+        // synthetic id above every real path, so it can be tagged and drawn
+        const phantoms = obsList.map(d => d.kind === 'static'
+            ? { ax2: d.x, ay2: d.y, terms: [{ ax: 0, bx: 2, fx: 0, ay: 0, by: 2, fy: 0 }] }
+            : null);
         // front choice and observer mode are snapshotted so a mid-build
         // radio flip cannot mix front laws within one animation
         animBuild = { epoch: genEpoch, F, obsList, zList, zMin,
+                      phantoms, phantomBase: functions.length,
                       front: document.querySelector('input[name=frameFront]:checked').value,
                       obsMode: frameObsMode, frames: obsList.map(() => []), cheb: true,
                       k: 0, p: 0, S: null, K: 0, obsSetups: null, hitsAcc: null,
@@ -2597,7 +2630,10 @@
                 b.S = frameSetup(b.zList[b.k], b.zMin, b.front);
                 if (b.k === 0) b.cheb = b.S.cheb;
                 b.K = frameWrapCap(b.S);
-                b.obsSetups = b.obsList.map(i => frameObsSetup(b.S, i));
+                // static observers: fixed pulse centre, zero peculiar velocity
+                b.obsSetups = b.obsList.map(d => d.kind === 'static'
+                    ? { obsIdx: -1, ox: d.x, oy: d.y, beta: [0, 0], betaMag: 0, betaClamped: false }
+                    : frameObsSetup(b.S, d.p));
                 b.hitsAcc = b.obsList.map(() => []);
                 b.px = new Float64Array(b.S.M + 1);
                 b.py = new Float64Array(b.S.M + 1);
@@ -2606,9 +2642,17 @@
             if (b.p < functions.length){                 // one path, every observer
                 fillPathGrid(b.S, functions[b.p], b.px, b.py);
                 for (let o = 0; o < b.obsList.length; o++)
-                    framePathHits(b.S, b.obsSetups[o], b.K, b.p, b.px, b.py, b.hitsAcc[o]);
+                    framePathHits(b.S, b.obsSetups[o], b.K, functions[b.p], b.p, b.px, b.py, b.hitsAcc[o]);
                 b.p++;
-            } else {                                     // close the instant
+            } else {                                     // close the instant:
+                // image the static-point phantom markers in every pane, then pack
+                for (let o = 0; o < b.obsList.length; o++){
+                    if (!b.phantoms[o]) continue;
+                    fillPathGrid(b.S, b.phantoms[o], b.px, b.py);
+                    for (let o2 = 0; o2 < b.obsList.length; o2++)
+                        framePathHits(b.S, b.obsSetups[o2], b.K, b.phantoms[o],
+                                      b.phantomBase + o, b.px, b.py, b.hitsAcc[o2]);
+                }
                 for (let o = 0; o < b.obsList.length; o++)
                     b.frames[o].push(packAnimFrame(b.S, b.obsSetups[o], b.hitsAcc[o], b.obsMode));
                 b.S = null;
@@ -2628,10 +2672,14 @@
             hitTotal += fd.n;
         }
         anim = { epoch: b.epoch, obsList: b.obsList, F: b.F, zList: b.zList,
-                 chiMax, cheb: b.cheb, frames: b.frames };
-        // fresh tags: the two observers ring each other across the panes
+                 chiMax, cheb: b.cheb, frames: b.frames,
+                 phantomBase: b.phantomBase,
+                 phantomLbls: b.obsList.map((d, i) => d.kind === 'static' ? 'pt' + (i ? 'B' : 'A') : null) };
+        // fresh tags: the two observers ring each other across the panes —
+        // a static point tags its phantom marker instead of a worldline
         animTags.clear();
-        b.obsList.forEach((p, i) => animTags.set(p, ANIM_TAG_COLS[i]));
+        b.obsList.forEach((d, i) =>
+            animTags.set(d.kind === 'path' ? d.p : b.phantomBase + i, ANIM_TAG_COLS[i]));
         animPos = 0; animPlaying = true;
         animPlayBtn.classList.add('on'); animPlayBtn.textContent = 'Play ▶';
         animScrub.max = b.F - 1; animScrub.value = 0;
@@ -2686,12 +2734,17 @@
             }
             for (const [p, spot] of best){
                 ctx.fillStyle = animTags.get(p);
-                ctx.fillText('#' + p, spot.x + r*3.2, spot.y - r*1.5);
+                ctx.fillText(animTagLabel(p), spot.x + r*3.2, spot.y - r*1.5);
             }
         }
         // the observer, always the centre of its own sky
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(cx0 - 2*dpr, cy0 - 2*dpr, 4*dpr, 4*dpr);
+    }
+    // tag labels: real worldlines are '#index', static-point phantoms 'ptA'/'ptB'
+    function animTagLabel(p){
+        return (p >= anim.phantomBase && anim.phantomLbls[p - anim.phantomBase])
+             ? anim.phantomLbls[p - anim.phantomBase] : '#' + p;
     }
     function drawAnim(){
         const k = Math.min(anim.F - 1, Math.floor(animPos));
@@ -2699,7 +2752,7 @@
             const ctx = animCtx[o], cv = animCanvas[o];
             ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv.width,cv.height);
             drawAnimPane(ctx, cv.width, cv.height, hudDPR, o, k);
-            document.getElementById('animObsLbl' + o).textContent = 'obs #' + anim.obsList[o];
+            document.getElementById('animObsLbl' + o).textContent = anim.obsList[o].lbl;
             document.getElementById('animTimeLbl' + o).textContent =
                 't = ' + (anim.frames[o][k].zObs/Math.PI).toFixed(3) + 'π · ' + anim.frames[o][k].n + ' im';
         }
@@ -2740,6 +2793,18 @@
         animScaleMode = e.target.value;
         animDirty = true;
     });
+    // observer rows: particle mode shows the index box, point mode the x,y row
+    function animObsRowsUpdate(){
+        for (const letter of ['A', 'B']){
+            const kind = document.getElementById('animObs' + letter + 'Sel').value;
+            document.getElementById('animObs' + letter + 'Input').style.display =
+                kind === 'path' ? '' : 'none';
+            document.getElementById('animObs' + letter + 'PtRow').style.display =
+                kind === 'static' ? '' : 'none';
+        }
+    }
+    document.getElementById('animObsASel').addEventListener('change', animObsRowsUpdate);
+    document.getElementById('animObsBSel').addEventListener('change', animObsRowsUpdate);
     document.getElementById('animBuildBtn').addEventListener('click', startAnimBuild);
     document.getElementById('animCancelBtn').addEventListener('click', () => {
         if (animBuild) animBuild.cancelled = true;
@@ -2809,7 +2874,7 @@
             ctx.fillStyle = '#aab8cc';
             ctx.font = (11*D) + 'px sans-serif';
             ctx.textAlign = 'left';
-            ctx.fillText('obs #' + anim.obsList[o], 3*D, P + 11*D);
+            ctx.fillText(anim.obsList[o].lbl, 3*D, P + 11*D);
             ctx.textAlign = 'right';
             ctx.fillText('t = ' + (fd.zObs/Math.PI).toFixed(3) + 'π', P - 3*D, P + 11*D);
             if (o === anim.obsList.length - 1){
@@ -2821,8 +2886,11 @@
         }
         ctx.setTransform(1,0,0,1,0,0);
     }
+    function animObsNames(){
+        return anim.obsList.map(d => d.name).join('-');
+    }
     function animExportName(ext){
-        return 'frame_anim_obs' + anim.obsList.join('-') + '_' + anim.F + 'f_'
+        return 'frame_anim_' + animObsNames() + '_' + anim.F + 'f_'
              + animFps + 'fps.' + ext;
     }
     function downloadBlob(blob, name){
@@ -2907,7 +2975,7 @@
         const k = Math.min(anim.F - 1, Math.floor(animPos));
         drawAnimComposite(comp.getContext('2d'), comp.width, comp.height, k);
         comp.toBlob(b => {
-            downloadBlob(b, 'frame_anim_obs' + anim.obsList.join('-') + '_f' + (k+1) + '.png');
+            downloadBlob(b, 'frame_anim_' + animObsNames() + '_f' + (k+1) + '.png');
             statusEl.textContent = `Saved frame ${k+1}/${anim.F} as PNG`;
         }, 'image/png');
     }
