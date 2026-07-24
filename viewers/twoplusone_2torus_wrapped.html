@@ -321,6 +321,8 @@
             <input type="range" id="animScrub" min="0" max="149" step="1" value="0">
             <label title="Playback rate, animation frames per second">fps <input type="number" id="animFpsInput" value="20" min="1" max="60" style="width:48px"></label>
             <span id="animFrameLbl" style="color:#7d8aa6">—</span>
+            <button id="animExportBtn" title="Record the whole animation to a video file at the current fps — both panes side by side at 2×, labels baked in. Recording runs in real time (frames ÷ fps seconds); press again to cancel">⬇ WebM</button>
+            <button id="animSnapBtn" title="Download the current frame as a PNG still (same 2× composite as the video)">⬇ PNG</button>
         </div>
     </div>
 
@@ -376,7 +378,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v34';
+    const VIEWER_VERSION = 'v35';
 
     let functions = [];
     let Z_cache = [];
@@ -2509,6 +2511,7 @@
     }
     function discardAnim(){               // paths were replaced — frames are stale
         anim = null;
+        cancelAnimExport();
         animSetShowing(false);
     }
     function animBuildCleanup(){
@@ -2633,55 +2636,61 @@
         animBuildCleanup();
         animSetShowing(true);
     }
+    // one observer's sky at frame k, into any 2D context. The caller owns the
+    // transform (the export shifts panes around a composite canvas) and the
+    // clear; (0,0)–(W,H) is this pane's area, dpr scales strokes and text.
+    function drawAnimPane(ctx, W, H, dpr, o, k){
+        const fd = anim.frames[o][k];
+        const sc = (Math.min(W,H)/2 - 6*dpr)/anim.chiMax, cx0 = W/2, cy0 = H/2;
+        // lookback rings on the shared scale; this instant's own front
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(120,140,180,0.14)';
+        for (let rr = 1; rr < anim.chiMax; rr++) frameShape(ctx, cx0, cy0, rr*sc, anim.cheb);
+        ctx.lineWidth = 1.3*dpr;
+        ctx.strokeStyle = 'rgba(235,240,255,0.5)';
+        frameShape(ctx, cx0, cy0, fd.chiMax*sc, anim.cheb);
+        ctx.globalCompositeOperation = 'lighter';
+        const r = 1.6*dpr;
+        const byId = animColorMode === 'id';
+        for (let i = 0; i < fd.n; i++){
+            ctx.fillStyle = byId ? idColOf(fd.pid[i])
+                : 'rgb(' + fd.col[i*3] + ',' + fd.col[i*3+1] + ',' + fd.col[i*3+2] + ')';
+            ctx.fillRect(cx0 + fd.pos[i*2]*sc - r, cy0 - fd.pos[i*2+1]*sc - r, r*2, r*2);
+        }
+        ctx.globalCompositeOperation = 'source-over';
+        // tag rings on every image of a tagged path; label the innermost
+        if (animTags.size){
+            ctx.lineWidth = 1.2*dpr;
+            ctx.font = (9*dpr) + 'px sans-serif';
+            const best = new Map();               // pid → its image nearest the observer
+            for (let i = 0; i < fd.n; i++){
+                const tagCol = animTags.get(fd.pid[i]);
+                if (tagCol === undefined) continue;
+                const x = cx0 + fd.pos[i*2]*sc, y = cy0 - fd.pos[i*2+1]*sc;
+                ctx.strokeStyle = tagCol;
+                ctx.beginPath(); ctx.arc(x, y, r*2.6, 0, Math.PI*2); ctx.stroke();
+                const d = Math.hypot(fd.pos[i*2], fd.pos[i*2+1]);
+                const cur = best.get(fd.pid[i]);
+                if (!cur || d < cur.d) best.set(fd.pid[i], { d, x, y });
+            }
+            for (const [p, spot] of best){
+                ctx.fillStyle = animTags.get(p);
+                ctx.fillText('#' + p, spot.x + r*3.2, spot.y - r*1.5);
+            }
+        }
+        // the observer, always the centre of its own sky
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(cx0 - 2*dpr, cy0 - 2*dpr, 4*dpr, 4*dpr);
+    }
     function drawAnim(){
         const k = Math.min(anim.F - 1, Math.floor(animPos));
         for (let o = 0; o < anim.obsList.length; o++){
-            const ctx = animCtx[o], cv = animCanvas[o], fd = anim.frames[o][k];
-            const W = cv.width, H = cv.height;
-            ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,W,H);
-            const sc = (Math.min(W,H)/2 - 6*hudDPR)/anim.chiMax, cx0 = W/2, cy0 = H/2;
-            // lookback rings on the shared scale; this instant's own front
-            ctx.lineWidth = 1;
-            ctx.strokeStyle = 'rgba(120,140,180,0.14)';
-            for (let rr = 1; rr < anim.chiMax; rr++) frameShape(ctx, cx0, cy0, rr*sc, anim.cheb);
-            ctx.lineWidth = 1.3*hudDPR;
-            ctx.strokeStyle = 'rgba(235,240,255,0.5)';
-            frameShape(ctx, cx0, cy0, fd.chiMax*sc, anim.cheb);
-            ctx.globalCompositeOperation = 'lighter';
-            const r = 1.6*hudDPR;
-            const byId = animColorMode === 'id';
-            for (let i = 0; i < fd.n; i++){
-                ctx.fillStyle = byId ? idColOf(fd.pid[i])
-                    : 'rgb(' + fd.col[i*3] + ',' + fd.col[i*3+1] + ',' + fd.col[i*3+2] + ')';
-                ctx.fillRect(cx0 + fd.pos[i*2]*sc - r, cy0 - fd.pos[i*2+1]*sc - r, r*2, r*2);
-            }
-            ctx.globalCompositeOperation = 'source-over';
-            // tag rings on every image of a tagged path; label the innermost
-            if (animTags.size){
-                ctx.lineWidth = 1.2*hudDPR;
-                ctx.font = (9*hudDPR) + 'px sans-serif';
-                const best = new Map();               // pid → its image nearest the observer
-                for (let i = 0; i < fd.n; i++){
-                    const tagCol = animTags.get(fd.pid[i]);
-                    if (tagCol === undefined) continue;
-                    const x = cx0 + fd.pos[i*2]*sc, y = cy0 - fd.pos[i*2+1]*sc;
-                    ctx.strokeStyle = tagCol;
-                    ctx.beginPath(); ctx.arc(x, y, r*2.6, 0, Math.PI*2); ctx.stroke();
-                    const d = Math.hypot(fd.pos[i*2], fd.pos[i*2+1]);
-                    const cur = best.get(fd.pid[i]);
-                    if (!cur || d < cur.d) best.set(fd.pid[i], { d, x, y });
-                }
-                for (const [p, spot] of best){
-                    ctx.fillStyle = animTags.get(p);
-                    ctx.fillText('#' + p, spot.x + r*3.2, spot.y - r*1.5);
-                }
-            }
-            // the observer, always the centre of its own sky
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(cx0 - 2*hudDPR, cy0 - 2*hudDPR, 4*hudDPR, 4*hudDPR);
+            const ctx = animCtx[o], cv = animCanvas[o];
+            ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,cv.width,cv.height);
+            drawAnimPane(ctx, cv.width, cv.height, hudDPR, o, k);
             document.getElementById('animObsLbl' + o).textContent = 'obs #' + anim.obsList[o];
             document.getElementById('animTimeLbl' + o).textContent =
-                't = ' + (fd.zObs/Math.PI).toFixed(3) + 'π · ' + fd.n + ' im';
+                't = ' + (anim.frames[o][k].zObs/Math.PI).toFixed(3) + 'π · ' + anim.frames[o][k].n + ' im';
         }
         animScrub.value = k;
         document.getElementById('animFrameLbl').textContent = (k+1) + '/' + anim.F;
@@ -2741,6 +2750,146 @@
         animTags.clear();
         animDirty = true;
     });
+
+    /* ---- animation export: WebM video or PNG still of the composite ----
+       Both panes are drawn side by side onto an offscreen canvas at 2× the
+       viewport resolution, with the obs/time labels (and frame counter +
+       viewer version) baked into a strip below each pane — colour mode and
+       tags render exactly as on screen. Video: the composite's capture
+       stream is recorded in real time at the viewport fps (F frames at
+       20 fps = F/20 s of video); where the browser supports requestFrame()
+       each drawn animation frame becomes exactly one video frame, elsewhere
+       the fps-rate stream picks the draws up. PNG downloads the current
+       frame's composite as a still. */
+    const ANIM_EXPORT_DPR = 2;
+    const animExportBtn = document.getElementById('animExportBtn');
+    let animExport = null;                // { recorder, interval, cancelled }
+    function animCompositeCanvas(){
+        const panes = anim.obsList.length;
+        const P = 300*ANIM_EXPORT_DPR, L = 15*ANIM_EXPORT_DPR, G = 4*ANIM_EXPORT_DPR;
+        const c = document.createElement('canvas');
+        c.width = panes*P + (panes - 1)*G;
+        c.height = P + L;
+        return c;
+    }
+    function drawAnimComposite(ctx, W, H, k){
+        const P = 300*ANIM_EXPORT_DPR, G = 4*ANIM_EXPORT_DPR, D = ANIM_EXPORT_DPR;
+        ctx.setTransform(1,0,0,1,0,0);
+        ctx.fillStyle = '#04050c';
+        ctx.fillRect(0, 0, W, H);
+        for (let o = 0; o < anim.obsList.length; o++){
+            ctx.setTransform(1, 0, 0, 1, o*(P + G), 0);       // this pane's origin
+            drawAnimPane(ctx, P, P, D, o, k);
+            // label strip under the pane; the last pane also carries the
+            // frame counter + viewer version for provenance
+            const fd = anim.frames[o][k];
+            ctx.fillStyle = '#aab8cc';
+            ctx.font = (11*D) + 'px sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText('obs #' + anim.obsList[o], 3*D, P + 11*D);
+            ctx.textAlign = 'right';
+            ctx.fillText('t = ' + (fd.zObs/Math.PI).toFixed(3) + 'π', P - 3*D, P + 11*D);
+            if (o === anim.obsList.length - 1){
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#5a6880';
+                ctx.fillText((k+1) + '/' + anim.F + ' · ' + VIEWER_VERSION, P/2, P + 11*D);
+            }
+            ctx.textAlign = 'left';
+        }
+        ctx.setTransform(1,0,0,1,0,0);
+    }
+    function animExportName(ext){
+        return 'frame_anim_obs' + anim.obsList.join('-') + '_' + anim.F + 'f_'
+             + animFps + 'fps.' + ext;
+    }
+    function downloadBlob(blob, name){
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    }
+    function cancelAnimExport(){
+        if (!animExport) return;
+        animExport.cancelled = true;
+        clearInterval(animExport.interval);
+        if (animExport.recorder.state !== 'inactive') animExport.recorder.stop();
+    }
+    function startAnimExport(){
+        if (animExport){ cancelAnimExport(); return; }        // the button doubles as Cancel
+        if (!anim){
+            statusEl.textContent = 'No animation yet — press "Build animation" first';
+            return;
+        }
+        if (!window.MediaRecorder){
+            statusEl.textContent = 'This browser has no MediaRecorder — video export unavailable';
+            return;
+        }
+        const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4']
+            .find(m => MediaRecorder.isTypeSupported(m));
+        if (!mime){
+            statusEl.textContent = 'No supported video format for MediaRecorder';
+            return;
+        }
+        animPlaying = false;
+        animPlayBtn.classList.remove('on'); animPlayBtn.textContent = 'Paused';
+        const comp = animCompositeCanvas();
+        const ctx = comp.getContext('2d');
+        // frame-accurate where possible: a zero-fps stream only emits a video
+        // frame when requestFrame() is called, one per drawn animation frame
+        let stream = comp.captureStream(0);
+        let track = stream.getVideoTracks()[0];
+        const canReq = track && typeof track.requestFrame === 'function';
+        if (!canReq){ stream = comp.captureStream(animFps); track = null; }
+        const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8e6 });
+        const chunks = [];
+        recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+        recorder.onstop = () => {
+            const ex = animExport;
+            animExport = null;
+            animExportBtn.textContent = '⬇ WebM';
+            animExportBtn.classList.remove('on');
+            if (!ex || ex.cancelled){ statusEl.textContent = 'Export cancelled'; return; }
+            const ext = mime.startsWith('video/mp4') ? 'mp4' : 'webm';
+            downloadBlob(new Blob(chunks, { type: mime }), animExportName(ext));
+            statusEl.textContent = `Exported ${anim.F} frames at ${animFps} fps (${ext})`;
+        };
+        drawAnimComposite(ctx, comp.width, comp.height, 0);   // frame 0 is never blank
+        recorder.start();
+        if (track) track.requestFrame();
+        let k = 1;
+        const interval = setInterval(() => {
+            if (!anim){ cancelAnimExport(); return; }         // discarded mid-export
+            if (k >= anim.F){
+                clearInterval(interval);
+                recorder.stop();
+                return;
+            }
+            drawAnimComposite(ctx, comp.width, comp.height, k);
+            if (track) track.requestFrame();
+            statusEl.textContent = `Exporting… ${k+1}/${anim.F}`;
+            k++;
+        }, 1000/animFps);
+        animExport = { recorder, interval, cancelled: false };
+        animExportBtn.textContent = 'Cancel';
+        animExportBtn.classList.add('on');
+        statusEl.textContent = `Exporting… 1/${anim.F} (${(anim.F/animFps).toFixed(1)}s of video)`;
+    }
+    function animSnapshot(){
+        if (!anim){
+            statusEl.textContent = 'No animation yet — press "Build animation" first';
+            return;
+        }
+        const comp = animCompositeCanvas();
+        const k = Math.min(anim.F - 1, Math.floor(animPos));
+        drawAnimComposite(comp.getContext('2d'), comp.width, comp.height, k);
+        comp.toBlob(b => {
+            downloadBlob(b, 'frame_anim_obs' + anim.obsList.join('-') + '_f' + (k+1) + '.png');
+            statusEl.textContent = `Saved frame ${k+1}/${anim.F} as PNG`;
+        }, 'image/png');
+    }
+    animExportBtn.addEventListener('click', startAnimExport);
+    document.getElementById('animSnapBtn').addEventListener('click', animSnapshot);
 
     rebuildGrid();
     setTimeout(() => document.getElementById('generateBtn').click(), 60);   // auto-render on load
