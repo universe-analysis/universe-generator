@@ -66,6 +66,30 @@
                     padding:4px 8px; font-size:11px; color:#aab8cc; white-space:nowrap;
                     background:rgba(6,8,16,.92); border-top:1px solid #161c2c; }
         #frameObsLbl { color:#7d8aa6; }
+
+        /* frame-animation build progress (in the Reference frame panel) */
+        #animProgWrap { display:none; height:6px; margin-top:6px; overflow:hidden;
+                        background:#0c1018; border:1px solid #232c40; border-radius:3px; }
+        #animProgBar { height:100%; width:0%; background:#4f7fd0; }
+        #animProgTxt { display:none; font-size:11px; color:#7d8aa6; padding-top:3px; }
+
+        /* frame-animation playback viewport: one pane per observer, side by side */
+        /* centred so it clears both the settings sidepanel and the HUD stack */
+        #animBox { position:fixed; left:50%; transform:translateX(-50%); bottom:12px; z-index:10; display:none;
+                   padding:8px; background:rgba(6,8,16,.93); border:1px solid #222b40;
+                   border-radius:6px; backdrop-filter:blur(6px); }
+        #animHead { display:flex; align-items:center; gap:8px; font-size:12px;
+                    color:#c8d4ea; padding-bottom:6px; }
+        #animHead label { display:inline-flex; align-items:center; gap:5px; }
+        #animCanvases { display:flex; gap:8px; }
+        .animPane canvas { width:300px; height:300px; display:block;
+                           border:1px solid #222b40; border-radius:4px;
+                           background:rgba(2,3,8,0.55); cursor:crosshair; }
+        .animLbl { display:flex; justify-content:space-between; font-size:11px;
+                   color:#aab8cc; padding:3px 2px 0; }
+        #animCtrls { display:flex; align-items:center; gap:8px; padding-top:6px; font-size:12px; }
+        #animCtrls label { display:inline-flex; align-items:center; gap:5px; }
+        #animCtrls input[type=range] { flex:1; width:auto; min-width:0; }
     </style>
 </head>
 <body>
@@ -240,6 +264,30 @@
             <div class="row" title="Scrub the rewind by hand — conformal fronts sweep this fraction of the full pulse radius, the budget front sweeps the rewound time; the readout is the time ζ the front has reached">
                 <span>Rewind</span><input type="range" id="frameRewindRange" min="0" max="1" step="0.001" value="1"><span class="val" id="frameRewindVal" style="width:38px">—</span>
             </div>
+            <div class="group-name" style="padding-top:8px">Animation — one frame per instant, played side by side</div>
+            <div class="row" title="Number of observation instants between From and To; a full frame map (rewind fully applied) is built per observer per instant">
+                <span>Frames</span><input type="number" id="animFramesInput" value="150" min="2" max="2000">
+            </div>
+            <div class="row" title="Path index of the first observer">
+                <span>Observer A #</span><input type="number" id="animObsAInput" value="0" min="0">
+            </div>
+            <div class="row" title="Path index of the second observer — uncheck for a single-observer animation">
+                <span>Observer B #</span><input type="number" id="animObsBInput" value="1" min="0">
+                <label style="display:inline-flex;align-items:center;gap:5px"><input type="checkbox" id="animObsBChk" checked> on</label>
+            </div>
+            <div class="row" title="First observation time, in units of π (kept above the Rewind floor)">
+                <span>From (×π)</span><input type="number" id="animT0Input" value="0.05" min="0.01" max="0.98" step="0.01">
+            </div>
+            <div class="row" title="Last observation time, in units of π">
+                <span>To (×π)</span><input type="number" id="animT1Input" value="0.99" min="0.02" max="1" step="0.01">
+            </div>
+            <div class="row">
+                <button id="animBuildBtn" title="Build every frame now — can take minutes; progress shows below and the page stays live. The Front, Observer-mode and Rewind-floor settings above all apply">Build animation</button>
+                <button id="animCancelBtn" style="display:none">Cancel</button>
+                <button id="animShowBtn" title="Show/hide the side-by-side playback viewport">Viewer</button>
+            </div>
+            <div id="animProgWrap"><div id="animProgBar"></div></div>
+            <div id="animProgTxt"></div>
         </details>
     </div>
 
@@ -251,6 +299,29 @@
     <div id="frameBox">
         <canvas id="frameCanvas" width="240" height="240"></canvas>
         <div id="frameBar"><span id="frameObsLbl">—</span><span id="frameStateLbl">—</span></div>
+    </div>
+
+    <div id="animBox">
+        <div id="animHead">
+            <span>Frame animation</span>
+            <span style="flex:1"></span>
+            <label title="Redshift = the tint each image arrived with; Identity = a stable hue per particle, the SAME hue in both panes">Colour <select id="animColorSel">
+                <option value="red" selected>Redshift</option>
+                <option value="id">Identity — hue per particle</option>
+            </select></label>
+            <button id="animClearTagsBtn" title="Remove all particle tags (click a dot in either pane to tag that worldline in both)">Clear tags</button>
+            <button id="animCloseBtn">✕</button>
+        </div>
+        <div id="animCanvases">
+            <div class="animPane"><canvas id="animCanvas0"></canvas><div class="animLbl"><span id="animObsLbl0">—</span><span id="animTimeLbl0">—</span></div></div>
+            <div class="animPane" id="animPane1"><canvas id="animCanvas1"></canvas><div class="animLbl"><span id="animObsLbl1">—</span><span id="animTimeLbl1">—</span></div></div>
+        </div>
+        <div id="animCtrls">
+            <button id="animPlayBtn" class="on">Play ▶</button>
+            <input type="range" id="animScrub" min="0" max="149" step="1" value="0">
+            <label title="Playback rate, animation frames per second">fps <input type="number" id="animFpsInput" value="20" min="1" max="60" style="width:48px"></label>
+            <span id="animFrameLbl" style="color:#7d8aa6">—</span>
+        </div>
     </div>
 
     <!-- Three.js classic UMD builds — load from file:// without CORS issues -->
@@ -305,7 +376,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v33';
+    const VIEWER_VERSION = 'v34';
 
     let functions = [];
     let Z_cache = [];
@@ -1816,14 +1887,19 @@
         el.textContent = (frameFrontState().zeta/Math.PI).toFixed(2) + 'π';
     }
     // the observer boost at draw time, shared by every frame view:
-    // static → identity, moving → the aberration/Doppler ingredients
-    function frameBoost(){
-        const { beta, betaMag } = frameInfo;
-        const moving = frameObsMode === 'moving' && betaMag > 1e-6;
-        return { moving,
+    // static → identity, moving → the aberration/Doppler ingredients.
+    // boostFrom/apparentFrom take everything as arguments so the frame
+    // ANIMATION can bake boosts per (instant, observer); the frame* wrappers
+    // keep feeding the single-frame views from frameInfo as before.
+    function boostFrom(beta, betaMag, mode){
+        const moving = mode === 'moving' && betaMag > 1e-6;
+        return { moving, beta,
                  gamma: moving ? 1/Math.sqrt(1 - betaMag*betaMag) : 1,
                  ubx: moving ? beta[0]/betaMag : 0,
                  uby: moving ? beta[1]/betaMag : 0 };
+    }
+    function frameBoost(){
+        return boostFrom(frameInfo.beta, frameInfo.betaMag, frameObsMode);
     }
     // apparent (sky) position and extra Doppler shift of one hit. Static
     // observers see the stored offsets unchanged. Moving: n̂ points
@@ -1834,24 +1910,24 @@
     // norm feeds it a vector up to √2 long and diagonal images land outside
     // the front — so for the square metric the aberrated direction is
     // re-projected onto the hit's own square shell (|·|_cheb = χ) afterwards.
-    function frameApparentHit(h, boost){
+    function apparentFrom(h, boost, cheb){
         let ax = h.dx, ay = h.dy, lnDopp = 0;
         const eucl = boost.moving ? Math.hypot(h.dx, h.dy) : 0;
         if (boost.moving && eucl > 0){
-            const { gamma, ubx, uby } = boost;
-            const beta = frameInfo.beta;
+            const { gamma, ubx, uby, beta } = boost;
             const nX = h.dx/eucl, nY = h.dy/eucl;
             const bdotn = beta[0]*nX + beta[1]*nY;
             const udotn = ubx*nX + uby*nY;
             const D = gamma*(1 + bdotn);
             const apx = (nX + gamma*beta[0] + (gamma - 1)*udotn*ubx) / D;
             const apy = (nY + gamma*beta[1] + (gamma - 1)*udotn*uby) / D;
-            const m = frameInfo.cheb ? Math.max(Math.abs(apx), Math.abs(apy)) : 1;  // |n̂'|₂ = 1 already
+            const m = cheb ? Math.max(Math.abs(apx), Math.abs(apy)) : 1;  // |n̂'|₂ = 1 already
             ax = apx*h.chi/m; ay = apy*h.chi/m;
             lnDopp = Math.log(D);
         }
         return { ax, ay, lnDopp };
     }
+    function frameApparentHit(h, boost){ return apparentFrom(h, boost, frameInfo.cheb); }
     function buildFrame(){
         if (!functions.length || Z_cache.length < 2){
             statusEl.textContent = 'No paths — Generate or Import first';
@@ -1871,7 +1947,16 @@
         statusEl.textContent = 'Building frame…';
         setTimeout(() => buildFrameNow(obsIdx, zObs, zMin), 0);   // let the status paint first
     }
-    function buildFrameNow(obsIdx, zObs, zMin){
+    /* Shared frame-build core. frameSetup bakes everything OBSERVER-
+       INDEPENDENT about one observation instant — the front mode, the
+       rewind grid and the χ(ζ) front curve; frameObsSetup adds one
+       observer's pulse centre and boost ingredients; fillPathGrid +
+       framePathHits find one worldline's front crossings for one observer.
+       buildFrameNow composes them for the single-frame build, and the frame
+       ANIMATION reuses them per (instant, observer) — the path grid is
+       filled once per instant and shared by every observer, so a second
+       observer is nearly free. */
+    function frameSetup(zObs, zMin, frontOverride){
         const etaObs = etaOf(zObs);
         // Three front choices. "budget": the front radius at rewound time ζ
         // is the wiggle-budget reach R(ζ, z_obs) — the model's own causal
@@ -1881,7 +1966,8 @@
         // η(π−z) = −η(z), one full lap (χ=2) at the Crunch mirror π−floor.
         // "speed": conformal front at the Light cones Speed scalar. The
         // conformal modes take the metric from the Light cones shape choice.
-        const front = document.querySelector('input[name=frameFront]:checked').value;
+        const front = frontOverride ||
+                      document.querySelector('input[name=frameFront]:checked').value;
         const budget = front === 'budget';
         const cheb = budget || U.uConeSquare.value === 1;
         // budget mode has no single signal speed; it keeps the floor-fit
@@ -1899,17 +1985,6 @@
             if (t.by > bMax) bMax = t.by;
         }
         const reachFn = budget ? makeReachFn(zObs, bMax) : null;
-        const [ox, oy] = comovXY(functions[obsIdx], zObs);              // pulse centre, held fixed
-        // proper peculiar velocity of the observer at reception, in units of
-        // the SAME effective light speed as the front; capped below 1 so the
-        // boost exists (worldlines aren't enforced subluminal)
-        const vel = comovVelXY(functions[obsIdx], zObs);
-        let beta = [Math.sin(zObs)*vel[0]/spd, Math.sin(zObs)*vel[1]/spd];
-        const betaRaw = Math.hypot(beta[0], beta[1]);
-        const betaClamped = betaRaw > FRAME_BETA_CAP;
-        if (betaClamped){
-            beta = [beta[0]*FRAME_BETA_CAP/betaRaw, beta[1]*FRAME_BETA_CAP/betaRaw];
-        }
         // grid: conformal modes march χ uniformly (constant front step and
         // map resolution), inverting η for z — that samples z ever finer
         // toward the Bang on its own. Budget mode marches z uniformly (the
@@ -1932,89 +2007,121 @@
                 zg[i] = zAtChi(chig[i]);
             }
         }
+        return { zObs, zMin, etaObs, front, budget, cheb, spd, dist, zAtChi,
+                 bMax, reachFn, M, zg, chig, chiMax };
+    }
+    function frameWrapCap(S){
         // wrap images: unwrapped comoving coords stay within ±2, so the image
         // shifted by 2·max|n| cannot meet the front before χ = 2·max|n| − 4
-        const autoK = Math.ceil((chiMax + 4) / 2);
-        const K = Math.min(autoK, Math.max(0, parseInt(document.getElementById('frameWrapsInput').value) || 0));
-        const px = new Float64Array(M+1), py = new Float64Array(M+1);
+        const autoK = Math.ceil((S.chiMax + 4) / 2);
+        return Math.min(autoK, Math.max(0, parseInt(document.getElementById('frameWrapsInput').value) || 0));
+    }
+    function frameObsSetup(S, obsIdx){
+        const [ox, oy] = comovXY(functions[obsIdx], S.zObs);   // pulse centre, held fixed
+        // proper peculiar velocity of the observer at reception, in units of
+        // the SAME effective light speed as the front; capped below 1 so the
+        // boost exists (worldlines aren't enforced subluminal)
+        const vel = comovVelXY(functions[obsIdx], S.zObs);
+        let beta = [Math.sin(S.zObs)*vel[0]/S.spd, Math.sin(S.zObs)*vel[1]/S.spd];
+        const betaRaw = Math.hypot(beta[0], beta[1]);
+        const betaClamped = betaRaw > FRAME_BETA_CAP;
+        if (betaClamped){
+            beta = [beta[0]*FRAME_BETA_CAP/betaRaw, beta[1]*FRAME_BETA_CAP/betaRaw];
+        }
+        return { obsIdx, ox, oy, beta,
+                 betaMag: Math.min(betaRaw, FRAME_BETA_CAP), betaClamped };
+    }
+    function fillPathGrid(S, f, px, py){
+        for (let i = 0; i <= S.M; i++){
+            const c = comovXY(f, S.zg[i]);
+            px[i] = c[0]; py[i] = c[1];
+        }
+    }
+    function framePathHits(S, O, K, p, px, py, hits){
+        const { budget, dist, zAtChi, reachFn, M, zg, chig, chiMax } = S;
+        const f = functions[p];
+        for (let nx = -K; nx <= K; nx++) for (let ny = -K; ny <= K; ny++){
+            const bx = 2*nx - O.ox, by = 2*ny - O.oy;
+            // skip grid rows the front cannot have reached for this image
+            const dmin = Math.max(0, 2*Math.max(Math.abs(nx), Math.abs(ny)) - 4);
+            if (dmin >= chiMax) continue;
+            // conformal grids are χ-uniform, so unreachable rows skip by
+            // index; the budget grid just starts at 1 (χ bounded by ~2)
+            const i0 = budget ? 1 : Math.max(1, Math.ceil(dmin*M/chiMax));
+            if (i0 > M) continue;
+            let prev = dist(px[i0-1] + bx, py[i0-1] + by) - chig[i0-1];
+            // the observer itself sits exactly ON the front at χ = 0; nudge
+            // it inside so the trivial self-contact isn't recorded (a path
+            // starting exactly on the front counts as an image at χ ≈ 0)
+            if (prev === 0) prev = (p === O.obsIdx && nx === 0 && ny === 0) ? -1e-12 : 1e-12;
+            for (let i = i0; i <= M; i++){
+                const g = dist(px[i] + bx, py[i] + by) - chig[i];
+                if ((prev < 0) !== (g < 0)){
+                    // refine the crossing with fresh worldline evals (not
+                    // the grid): conformal modes bisect in χ, budget in z
+                    const insidePrev = prev < 0;
+                    let chi, zEmit;
+                    if (budget){
+                        let lo = zg[i-1], hi = zg[i];
+                        for (let it = 0; it < FRAME_BISECT; it++){
+                            const mid = (lo + hi) / 2;
+                            const q = comovXY(f, mid);
+                            const gm = dist(q[0] + bx, q[1] + by) - reachFn(mid);
+                            if ((gm < 0) === insidePrev) lo = mid; else hi = mid;
+                        }
+                        zEmit = (lo + hi) / 2;
+                        chi = reachFn(zEmit);
+                    } else {
+                        let lo = chig[i-1], hi = chig[i];
+                        for (let it = 0; it < FRAME_BISECT; it++){
+                            const mid = (lo + hi) / 2;
+                            const q = comovXY(f, zAtChi(mid));
+                            const gm = dist(q[0] + bx, q[1] + by) - mid;
+                            if ((gm < 0) === insidePrev) lo = mid; else hi = mid;
+                        }
+                        chi = (lo + hi) / 2;
+                        zEmit = zAtChi(chi);
+                    }
+                    const q = comovXY(f, zEmit);
+                    hits.push({ dx: q[0] + bx, dy: q[1] + by, chi, zEmit, p });
+                }
+                prev = g;
+            }
+        }
+    }
+    function buildFrameNow(obsIdx, zObs, zMin){
+        const S = frameSetup(zObs, zMin);
+        const K = frameWrapCap(S);
+        const O = frameObsSetup(S, obsIdx);
+        const px = new Float64Array(S.M + 1), py = new Float64Array(S.M + 1);
         const hits = [];
         for (let p = 0; p < functions.length; p++){
-            const f = functions[p];
-            for (let i = 0; i <= M; i++){
-                const c = comovXY(f, zg[i]);
-                px[i] = c[0]; py[i] = c[1];
-            }
-            for (let nx = -K; nx <= K; nx++) for (let ny = -K; ny <= K; ny++){
-                const bx = 2*nx - ox, by = 2*ny - oy;
-                // skip grid rows the front cannot have reached for this image
-                const dmin = Math.max(0, 2*Math.max(Math.abs(nx), Math.abs(ny)) - 4);
-                if (dmin >= chiMax) continue;
-                // conformal grids are χ-uniform, so unreachable rows skip by
-                // index; the budget grid just starts at 1 (χ bounded by ~2)
-                const i0 = budget ? 1 : Math.max(1, Math.ceil(dmin*M/chiMax));
-                if (i0 > M) continue;
-                let prev = dist(px[i0-1] + bx, py[i0-1] + by) - chig[i0-1];
-                // the observer itself sits exactly ON the front at χ = 0; nudge
-                // it inside so the trivial self-contact isn't recorded (a path
-                // starting exactly on the front counts as an image at χ ≈ 0)
-                if (prev === 0) prev = (p === obsIdx && nx === 0 && ny === 0) ? -1e-12 : 1e-12;
-                for (let i = i0; i <= M; i++){
-                    const g = dist(px[i] + bx, py[i] + by) - chig[i];
-                    if ((prev < 0) !== (g < 0)){
-                        // refine the crossing with fresh worldline evals (not
-                        // the grid): conformal modes bisect in χ, budget in z
-                        const insidePrev = prev < 0;
-                        let chi, zEmit;
-                        if (budget){
-                            let lo = zg[i-1], hi = zg[i];
-                            for (let it = 0; it < FRAME_BISECT; it++){
-                                const mid = (lo + hi) / 2;
-                                const q = comovXY(f, mid);
-                                const gm = dist(q[0] + bx, q[1] + by) - reachFn(mid);
-                                if ((gm < 0) === insidePrev) lo = mid; else hi = mid;
-                            }
-                            zEmit = (lo + hi) / 2;
-                            chi = reachFn(zEmit);
-                        } else {
-                            let lo = chig[i-1], hi = chig[i];
-                            for (let it = 0; it < FRAME_BISECT; it++){
-                                const mid = (lo + hi) / 2;
-                                const q = comovXY(f, zAtChi(mid));
-                                const gm = dist(q[0] + bx, q[1] + by) - mid;
-                                if ((gm < 0) === insidePrev) lo = mid; else hi = mid;
-                            }
-                            chi = (lo + hi) / 2;
-                            zEmit = zAtChi(chi);
-                        }
-                        const q = comovXY(f, zEmit);
-                        hits.push({ dx: q[0] + bx, dy: q[1] + by, chi, zEmit, p });
-                    }
-                    prev = g;
-                }
-            }
+            fillPathGrid(S, functions[p], px, py);
+            framePathHits(S, O, K, p, px, py, hits);
         }
         // the draw loop stops at the front: conformal modes reveal in χ
         // order, budget mode in rewind (emission-time) order — the reach can
         // dip as z rewinds, so χ order and z order differ there
-        if (budget) hits.sort((a, b) => b.zEmit - a.zEmit);
+        if (S.budget) hits.sort((a, b) => b.zEmit - a.zEmit);
         else hits.sort((a, b) => a.chi - b.chi);
         frameHits = hits;
-        frameInfo = { zObs, zMin, chiMax, etaObs, obsIdx, cheb, spd, budget, reachFn,
-                      ox, oy, sinObs: Math.sin(zObs),
-                      beta, betaMag: Math.min(betaRaw, FRAME_BETA_CAP), betaClamped };
+        frameInfo = { zObs, zMin, chiMax: S.chiMax, etaObs: S.etaObs, obsIdx,
+                      cheb: S.cheb, spd: S.spd, budget: S.budget, reachFn: S.reachFn,
+                      ox: O.ox, oy: O.oy, sinObs: Math.sin(zObs),
+                      beta: O.beta, betaMag: O.betaMag, betaClamped: O.betaClamped };
         frameEpochAt = genEpoch;
         frameRewind = 1; frameRewindRange.value = 1; frameAnimOn = false;
         updateRewindVal();
         setFrameVisible(true);
         hudDirty = true;                   // the slice overlay reflects the new frame
         let frontLbl;
-        if (budget) frontLbl = `budget reach, bmax ${bMax}`;
-        else if (front === 'fit') frontLbl = `c=${spd.toFixed(3)} fit`;
-        else frontLbl = `c=${spd}`;
+        if (S.budget) frontLbl = `budget reach, bmax ${S.bMax}`;
+        else if (S.front === 'fit') frontLbl = `c=${S.spd.toFixed(3)} fit`;
+        else frontLbl = `c=${S.spd}`;
         statusEl.textContent = `Frame built: observer #${obsIdx} at t=${(zObs/Math.PI).toFixed(3)}π · `
                              + `${hits.length} images to ζ=${(zMin/Math.PI).toFixed(2)}π `
-                             + `(${frontLbl} ${cheb ? 'square' : 'circle'}, `
-                             + `χmax ${chiMax.toFixed(2)})`;
+                             + `(${frontLbl} ${S.cheb ? 'square' : 'circle'}, `
+                             + `χmax ${S.chiMax.toFixed(2)})`;
     }
     function frameShape(ctx, x, y, r, square){
         if (square) ctx.strokeRect(x - r, y - r, r*2, r*2);
@@ -2336,6 +2443,305 @@
         frameAnimT0 = performance.now();
     });
 
+    /* ---- FRAME ANIMATION: a frame sequence across observation time ----
+       Build: the From→To span is cut into `Frames` observation instants and
+       a full past-light-cone frame (rewind fully applied) is computed at
+       each one, for one or two observers. frameSetup and the per-path
+       position grid are computed once per instant and shared by both
+       observers, and the whole build is chunked into ~14 ms slices so the
+       page stays live — a progress bar with ETA runs in the panel and
+       Cancel stops it. Each finished frame is packed to flat typed arrays
+       (apparent position, redshift tint, path index); the Observer mode
+       boost is baked in at build time.
+       Playback: a side-by-side viewport, one pane per observer, driven by a
+       SHARED clock — one play/pause, frame scrub and fps control. Colour is
+       the stored redshift tint, or Identity mode: a stable hue per path
+       index, the SAME hue in both panes, so a particle can be matched by
+       eye. Clicking a dot tags its worldline — every image of that path
+       gets a ring in BOTH panes and its innermost image a #index label —
+       and the two observers auto-tag each other on build. */
+    const ANIM_TAG_COLS = ['#ffd24a', '#4ae0ff', '#ff6ad5', '#8dff6a',
+                           '#ff9d4a', '#b48aff', '#6affc8', '#ff5c5c'];
+    let anim = null;          // built animation: { epoch, obsList, F, zList, chiMax, cheb, frames }
+    let animBuild = null;     // in-progress build state (see startAnimBuild)
+    let animPos = 0, animPlaying = true, animFps = 20, animDirty = false, animShowing = false;
+    let animColorMode = 'red';
+    const animTags = new Map();          // path index → tag colour
+    const animIdCols = [];               // identity-mode colour strings, cached per path index
+    const animBox = document.getElementById('animBox');
+    const animCanvas = [document.getElementById('animCanvas0'), document.getElementById('animCanvas1')];
+    const animCtx = animCanvas.map(c => {
+        c.width = 300*hudDPR; c.height = 300*hudDPR;
+        return c.getContext('2d');
+    });
+    const animScrub = document.getElementById('animScrub');
+    const animPlayBtn = document.getElementById('animPlayBtn');
+    const animProgWrap = document.getElementById('animProgWrap');
+    const animProgBar = document.getElementById('animProgBar');
+    const animProgTxt = document.getElementById('animProgTxt');
+
+    function idColOf(p){
+        if (!animIdCols[p]){
+            const c = hsv2rgb((((p*0.61803399)%1)+1)%1, 0.7, 1.0);
+            animIdCols[p] = 'rgb(' + ((c[0]*255)|0) + ',' + ((c[1]*255)|0) + ',' + ((c[2]*255)|0) + ')';
+        }
+        return animIdCols[p];
+    }
+    // one observer's finished frame → flat arrays the draw loop can stream
+    function packAnimFrame(S, O, hits, obsMode){
+        const boost = boostFrom(O.beta, O.betaMag, obsMode);
+        const n = hits.length, sinObs = Math.sin(S.zObs);
+        const pos = new Float32Array(n*2), col = new Uint8ClampedArray(n*3), pid = new Uint32Array(n);
+        for (let i = 0; i < n; i++){
+            const h = hits[i];
+            const a = apparentFrom(h, boost, S.cheb);
+            pos[i*2] = a.ax; pos[i*2+1] = a.ay;
+            const c = redshiftRGB(sinObs, h.zEmit, a.lnDopp);
+            col[i*3] = c[0]*255; col[i*3+1] = c[1]*255; col[i*3+2] = c[2]*255;
+            pid[i] = h.p;
+        }
+        return { n, pos, col, pid, chiMax: S.chiMax, zObs: S.zObs };
+    }
+    function animSetShowing(v){
+        animShowing = v && !!anim;
+        animBox.style.display = animShowing ? 'block' : 'none';
+        if (animShowing) animDirty = true;
+    }
+    function discardAnim(){               // paths were replaced — frames are stale
+        anim = null;
+        animSetShowing(false);
+    }
+    function animBuildCleanup(){
+        animBuild = null;
+        animProgWrap.style.display = 'none';
+        animProgTxt.style.display = 'none';
+        document.getElementById('animCancelBtn').style.display = 'none';
+    }
+    function startAnimBuild(){
+        if (animBuild){ statusEl.textContent = 'Animation build already running'; return; }
+        if (!functions.length || Z_cache.length < 2){
+            statusEl.textContent = 'No paths — Generate or Import first';
+            return;
+        }
+        const F = Math.min(2000, Math.max(2, parseInt(document.getElementById('animFramesInput').value) || 150));
+        document.getElementById('animFramesInput').value = F;
+        const clampObs = v => Math.min(Math.max(0, v || 0), functions.length - 1);
+        const obsA = clampObs(parseInt(document.getElementById('animObsAInput').value));
+        document.getElementById('animObsAInput').value = obsA;
+        const obsList = [obsA];
+        if (document.getElementById('animObsBChk').checked){
+            const obsB = clampObs(parseInt(document.getElementById('animObsBInput').value));
+            document.getElementById('animObsBInput').value = obsB;
+            if (obsB !== obsA) obsList.push(obsB);       // same index twice = one pane
+        }
+        const zMin = Math.max(2e-3, (parseFloat(document.getElementById('frameZminInput').value) || 0.02) * Math.PI);
+        let t0 = (parseFloat(document.getElementById('animT0Input').value) || 0.05) * Math.PI;
+        let t1 = (parseFloat(document.getElementById('animT1Input').value) || 0.99) * Math.PI;
+        t0 = Math.max(t0, zMin + 0.01);      // every instant needs rewind room below it
+        t1 = Math.min(t1, Math.PI - 1e-3);
+        if (t1 <= t0){
+            statusEl.textContent = 'Animation span is empty — raise To above From (and the rewind floor)';
+            return;
+        }
+        // the frames are snapshots of instants: freeze the main playback
+        playing = false; playBtn.classList.remove('on'); playBtn.textContent = 'Paused';
+        const zList = Array.from({ length: F }, (_, k) => t0 + (t1 - t0)*k/(F - 1));
+        // front choice and observer mode are snapshotted so a mid-build
+        // radio flip cannot mix front laws within one animation
+        animBuild = { epoch: genEpoch, F, obsList, zList, zMin,
+                      front: document.querySelector('input[name=frameFront]:checked').value,
+                      obsMode: frameObsMode, frames: obsList.map(() => []), cheb: true,
+                      k: 0, p: 0, S: null, K: 0, obsSetups: null, hitsAcc: null,
+                      px: null, py: null, t0: performance.now(), lastProg: 0, cancelled: false };
+        animProgWrap.style.display = 'block';
+        animProgTxt.style.display = 'block';
+        document.getElementById('animCancelBtn').style.display = '';
+        statusEl.textContent = `Building animation: ${F} frames × ${obsList.length} observer${obsList.length > 1 ? 's' : ''}…`;
+        setTimeout(animStep, 0);
+    }
+    function animProgressUI(){
+        const b = animBuild, N = Math.max(1, functions.length);
+        const done = b.k*N + b.p, total = b.F*N;
+        const secs = (performance.now() - b.t0)/1000;
+        const eta = done > 0 ? secs*(total - done)/done : 0;
+        const mmss = s => Math.floor(s/60) + ':' + String(Math.floor(s%60)).padStart(2, '0');
+        animProgBar.style.width = (100*done/total).toFixed(1) + '%';
+        animProgTxt.textContent = `frame ${Math.min(b.k+1, b.F)}/${b.F} · ${(100*done/total).toFixed(0)}%`
+                                + ` · ${mmss(secs)} elapsed · ~${mmss(eta)} left`;
+    }
+    // the chunked build loop: ~14 ms of work, then yield to the renderer.
+    // One "instant" = frameSetup once, then every path — each path's grid
+    // positions are computed once and scanned for every observer.
+    function animStep(){
+        const b = animBuild;
+        if (!b) return;
+        if (b.cancelled || b.epoch !== genEpoch){
+            statusEl.textContent = b.cancelled ? 'Animation build cancelled'
+                                               : 'Animation build dropped — paths were replaced';
+            animBuildCleanup();
+            return;
+        }
+        const t0 = performance.now();
+        while (performance.now() - t0 < 14){
+            if (!b.S){                                   // open the next instant
+                b.S = frameSetup(b.zList[b.k], b.zMin, b.front);
+                if (b.k === 0) b.cheb = b.S.cheb;
+                b.K = frameWrapCap(b.S);
+                b.obsSetups = b.obsList.map(i => frameObsSetup(b.S, i));
+                b.hitsAcc = b.obsList.map(() => []);
+                b.px = new Float64Array(b.S.M + 1);
+                b.py = new Float64Array(b.S.M + 1);
+                b.p = 0;
+            }
+            if (b.p < functions.length){                 // one path, every observer
+                fillPathGrid(b.S, functions[b.p], b.px, b.py);
+                for (let o = 0; o < b.obsList.length; o++)
+                    framePathHits(b.S, b.obsSetups[o], b.K, b.p, b.px, b.py, b.hitsAcc[o]);
+                b.p++;
+            } else {                                     // close the instant
+                for (let o = 0; o < b.obsList.length; o++)
+                    b.frames[o].push(packAnimFrame(b.S, b.obsSetups[o], b.hitsAcc[o], b.obsMode));
+                b.S = null;
+                if (++b.k >= b.F){ finishAnimBuild(); return; }
+            }
+        }
+        if (performance.now() - b.lastProg > 150){ b.lastProg = performance.now(); animProgressUI(); }
+        setTimeout(animStep, 0);
+    }
+    function finishAnimBuild(){
+        const b = animBuild;
+        // one shared sky scale — the largest front of the whole sequence —
+        // so the panes don't rescale ("breathe") frame to frame
+        let chiMax = 0, hitTotal = 0;
+        for (const obsFrames of b.frames) for (const fd of obsFrames){
+            if (fd.chiMax > chiMax) chiMax = fd.chiMax;
+            hitTotal += fd.n;
+        }
+        anim = { epoch: b.epoch, obsList: b.obsList, F: b.F, zList: b.zList,
+                 chiMax, cheb: b.cheb, frames: b.frames };
+        // fresh tags: the two observers ring each other across the panes
+        animTags.clear();
+        b.obsList.forEach((p, i) => animTags.set(p, ANIM_TAG_COLS[i]));
+        animPos = 0; animPlaying = true;
+        animPlayBtn.classList.add('on'); animPlayBtn.textContent = 'Play ▶';
+        animScrub.max = b.F - 1; animScrub.value = 0;
+        document.getElementById('animPane1').style.display = b.obsList.length > 1 ? '' : 'none';
+        const secs = ((performance.now() - b.t0)/1000).toFixed(0);
+        statusEl.textContent = `Animation built: ${b.F} frames × ${b.obsList.length}`
+                             + ` observer${b.obsList.length > 1 ? 's' : ''}`
+                             + ` · ${hitTotal.toLocaleString()} images · ${secs}s`;
+        animBuildCleanup();
+        animSetShowing(true);
+    }
+    function drawAnim(){
+        const k = Math.min(anim.F - 1, Math.floor(animPos));
+        for (let o = 0; o < anim.obsList.length; o++){
+            const ctx = animCtx[o], cv = animCanvas[o], fd = anim.frames[o][k];
+            const W = cv.width, H = cv.height;
+            ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,W,H);
+            const sc = (Math.min(W,H)/2 - 6*hudDPR)/anim.chiMax, cx0 = W/2, cy0 = H/2;
+            // lookback rings on the shared scale; this instant's own front
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = 'rgba(120,140,180,0.14)';
+            for (let rr = 1; rr < anim.chiMax; rr++) frameShape(ctx, cx0, cy0, rr*sc, anim.cheb);
+            ctx.lineWidth = 1.3*hudDPR;
+            ctx.strokeStyle = 'rgba(235,240,255,0.5)';
+            frameShape(ctx, cx0, cy0, fd.chiMax*sc, anim.cheb);
+            ctx.globalCompositeOperation = 'lighter';
+            const r = 1.6*hudDPR;
+            const byId = animColorMode === 'id';
+            for (let i = 0; i < fd.n; i++){
+                ctx.fillStyle = byId ? idColOf(fd.pid[i])
+                    : 'rgb(' + fd.col[i*3] + ',' + fd.col[i*3+1] + ',' + fd.col[i*3+2] + ')';
+                ctx.fillRect(cx0 + fd.pos[i*2]*sc - r, cy0 - fd.pos[i*2+1]*sc - r, r*2, r*2);
+            }
+            ctx.globalCompositeOperation = 'source-over';
+            // tag rings on every image of a tagged path; label the innermost
+            if (animTags.size){
+                ctx.lineWidth = 1.2*hudDPR;
+                ctx.font = (9*hudDPR) + 'px sans-serif';
+                const best = new Map();               // pid → its image nearest the observer
+                for (let i = 0; i < fd.n; i++){
+                    const tagCol = animTags.get(fd.pid[i]);
+                    if (tagCol === undefined) continue;
+                    const x = cx0 + fd.pos[i*2]*sc, y = cy0 - fd.pos[i*2+1]*sc;
+                    ctx.strokeStyle = tagCol;
+                    ctx.beginPath(); ctx.arc(x, y, r*2.6, 0, Math.PI*2); ctx.stroke();
+                    const d = Math.hypot(fd.pos[i*2], fd.pos[i*2+1]);
+                    const cur = best.get(fd.pid[i]);
+                    if (!cur || d < cur.d) best.set(fd.pid[i], { d, x, y });
+                }
+                for (const [p, spot] of best){
+                    ctx.fillStyle = animTags.get(p);
+                    ctx.fillText('#' + p, spot.x + r*3.2, spot.y - r*1.5);
+                }
+            }
+            // the observer, always the centre of its own sky
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(cx0 - 2*hudDPR, cy0 - 2*hudDPR, 4*hudDPR, 4*hudDPR);
+            document.getElementById('animObsLbl' + o).textContent = 'obs #' + anim.obsList[o];
+            document.getElementById('animTimeLbl' + o).textContent =
+                't = ' + (fd.zObs/Math.PI).toFixed(3) + 'π · ' + fd.n + ' im';
+        }
+        animScrub.value = k;
+        document.getElementById('animFrameLbl').textContent = (k+1) + '/' + anim.F;
+    }
+    // click a dot to tag its worldline (ringed in BOTH panes); click again to untag
+    function animCanvasClick(o, ev){
+        if (!anim || o >= anim.obsList.length) return;
+        const cv = animCanvas[o], rect = cv.getBoundingClientRect();
+        const X = (ev.clientX - rect.left) * (cv.width / rect.width);
+        const Y = (ev.clientY - rect.top) * (cv.height / rect.height);
+        const W = cv.width, H = cv.height;
+        const sc = (Math.min(W,H)/2 - 6*hudDPR)/anim.chiMax;
+        const fd = anim.frames[o][Math.min(anim.F - 1, Math.floor(animPos))];
+        const ax = (X - W/2)/sc, ay = (H/2 - Y)/sc;
+        let bestI = -1, bestD = 8*hudDPR/sc;             // pick radius, in sky units
+        for (let i = 0; i < fd.n; i++){
+            const d = Math.hypot(fd.pos[i*2] - ax, fd.pos[i*2+1] - ay);
+            if (d < bestD){ bestD = d; bestI = i; }
+        }
+        if (bestI < 0) return;
+        const p = fd.pid[bestI];
+        if (animTags.has(p)) animTags.delete(p);
+        else animTags.set(p, ANIM_TAG_COLS[animTags.size % ANIM_TAG_COLS.length]);
+        animDirty = true;
+    }
+    animCanvas.forEach((cv, o) => cv.addEventListener('click', ev => animCanvasClick(o, ev)));
+    document.getElementById('animBuildBtn').addEventListener('click', startAnimBuild);
+    document.getElementById('animCancelBtn').addEventListener('click', () => {
+        if (animBuild) animBuild.cancelled = true;
+    });
+    document.getElementById('animShowBtn').addEventListener('click', () => {
+        if (!anim){
+            statusEl.textContent = 'No animation yet — press "Build animation" first';
+            return;
+        }
+        animSetShowing(!animShowing);
+    });
+    document.getElementById('animCloseBtn').addEventListener('click', () => animSetShowing(false));
+    animPlayBtn.addEventListener('click', () => {
+        animPlaying = !animPlaying;
+        animPlayBtn.classList.toggle('on', animPlaying);
+        animPlayBtn.textContent = animPlaying ? 'Play ▶' : 'Paused';
+    });
+    animScrub.addEventListener('input', e => {
+        animPlaying = false; animPlayBtn.classList.remove('on'); animPlayBtn.textContent = 'Paused';
+        animPos = parseInt(e.target.value) || 0;
+        animDirty = true;
+    });
+    document.getElementById('animFpsInput').addEventListener('input', e => {
+        animFps = Math.min(60, Math.max(1, parseInt(e.target.value) || 20));
+    });
+    document.getElementById('animColorSel').addEventListener('change', e => {
+        animColorMode = e.target.value;
+        animDirty = true;
+    });
+    document.getElementById('animClearTagsBtn').addEventListener('click', () => {
+        animTags.clear();
+        animDirty = true;
+    });
+
     rebuildGrid();
     setTimeout(() => document.getElementById('generateBtn').click(), 60);   // auto-render on load
 
@@ -2374,6 +2780,15 @@
         }
         if (showFrame && frameDirty){ drawFrame(); frameDirty = false; }
         frame3DUpdate();                   // frame painted onto the 3D torus
+        // frame animation: one clock drives both panes in lockstep
+        if (anim && anim.epoch !== genEpoch) discardAnim();
+        if (anim && animShowing){
+            if (animPlaying){
+                animPos = (animPos + animFps*dt/60) % anim.F;   // dt is in 60 Hz frames
+                animDirty = true;
+            }
+            if (animDirty){ drawAnim(); animDirty = false; }
+        }
         renderer.render(scene, camera);
     }
     tick();
