@@ -113,6 +113,10 @@ class Campaign:
     sparse: bool = False
     #: Sinusoid term counts per axis to sweep (--terms; 2 = legacy model).
     terms_values: tuple[int, ...] = (2,)
+    #: Full-spectrum mode: every job runs with terms = its own T, i.e. every
+    #: axis carries the whole frequency pool [2, T]. Mutually exclusive with a
+    #: non-default ``terms_values``.
+    terms_track_t: bool = False
     #: Second-phase subpath packing (2+1 only). Off by default.
     subpaths: bool = False
     #: Fixed phase-2 attempt budget (0 = rate-stop only); see Job.sub_attempts.
@@ -127,6 +131,8 @@ class Campaign:
             raise ValueError("accept_rate must be > 0")
         if any(k < 2 for k in self.terms_values):
             raise ValueError(f"terms_values must all be >= 2, got {self.terms_values}")
+        if self.terms_track_t and self.terms_values != (2,):
+            raise ValueError("terms_track_t and terms_values are mutually exclusive")
         if self.subpaths and self.dim != 2:
             raise ValueError("subpaths is a 2+1 engine feature (dim must be 2)")
 
@@ -141,7 +147,7 @@ class Campaign:
                 max_attempts=self.max_attempts,
                 euclid=self.euclid,
                 sparse=self.sparse,
-                terms=k,
+                terms=t if self.terms_track_t else k,
                 subpaths=self.subpaths,
                 sub_attempts=self.sub_attempts,
                 tag=self.tag,

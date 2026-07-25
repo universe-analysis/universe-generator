@@ -14,10 +14,15 @@ ARCH ?= sm_86
 NVCCFLAGS ?= -O3 -arch=$(ARCH) -Xcompiler -pthread
 
 BINARIES := braid_cuda braid_cuda3d
+# Full-spectrum variants (terms = T campaigns): same sources built with a
+# larger Path cap. Not part of `all`; the orchestrator builds them on demand.
+WIDE := braid_cuda_w150 braid_cuda3d_w150
 
-.PHONY: all clean
+.PHONY: all wide clean
 
 all: $(BINARIES)
+
+wide: $(WIDE)
 
 braid_cuda: braid_cuda.cu
 	$(NVCC) $(NVCCFLAGS) -o $@ $<
@@ -25,5 +30,11 @@ braid_cuda: braid_cuda.cu
 braid_cuda3d: braid_cuda3d.cu
 	$(NVCC) $(NVCCFLAGS) -o $@ $<
 
+braid_cuda_w150: braid_cuda.cu
+	$(NVCC) $(NVCCFLAGS) -DKMAX_WIGGLE=149 -o $@ $<
+
+braid_cuda3d_w150: braid_cuda3d.cu
+	$(NVCC) $(NVCCFLAGS) -DKMAX_WIGGLE=149 -o $@ $<
+
 clean:
-	rm -f $(BINARIES) *.o
+	rm -f $(BINARIES) $(WIDE) *.o

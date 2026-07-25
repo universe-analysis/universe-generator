@@ -94,6 +94,13 @@ Notes:
 - **Never copy a binary between hosts.** They have different glibc; a binary
   built on host3 fails on host1 with a `GLIBC_2.xx not found` error.
   Always build per host.
+- **Wide binaries** (`braid_cuda_w150` / `braid_cuda3d_w150`): jobs whose term
+  count exceeds the default binaries' compiled Path cap (kMaxWiggle = 9, i.e.
+  terms > 10) run a variant built from the same source with
+  `-DKMAX_WIGGLE=149`. `deploy()` builds whichever of the default/wide
+  binaries the pending jobs need; the engines make an over-cap `--terms`
+  fatal, so a stale default binary fails loudly instead of silently running a
+  smaller model.
 
 ## SSH / launch gotchas
 

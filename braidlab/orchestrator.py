@@ -18,7 +18,12 @@ import time
 from pathlib import Path
 
 from braidlab.config import Job
-from braidlab.engine import binary_name, build_command
+from braidlab.engine import (
+    binary_build_flags,
+    binary_name,
+    binary_source,
+    build_command,
+)
 from braidlab.notify import DiscordNotifier
 from braidlab.store import Store
 
@@ -129,7 +134,7 @@ def render_runner(
         "}",
     ]
     for job in jobs:
-        binary = f"{remote_dir}/{binary_name(job.dim)}"
+        binary = f"{remote_dir}/{binary_name(job.dim, job.terms)}"
         argv = build_command(job, binary, f"curves/{job.name}.csv")
         # build_command appends --curve; drop it (run() supplies its own)
         argv = argv[: argv.index("--curve")]
@@ -196,8 +201,13 @@ class Fleet:
             return False
         return res.returncode == 0
 
-    def deploy(self, host: str, dims: set[int]) -> None:
-        """Push engine sources and build the needed binaries on `host`."""
+    def deploy(self, host: str, binaries: set[str]) -> None:
+        """Push engine sources and build the needed binaries on `host`.
+
+        ``binaries`` are engine binary names from :func:`binary_name` -- the
+        defaults and/or their wide (``_w150``) variants, which build from the
+        same source with an extra ``-DKMAX_WIGGLE`` flag.
+        """
         rdir = self._dir(host)
         self._ssh(host, f"mkdir -p {rdir}")
         cap = self._ssh(
@@ -205,10 +215,11 @@ class Fleet:
             "nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1",
         ).strip()
         arch = "sm_" + cap.replace(".", "") if cap else "sm_86"
-        for dim in dims:
-            b = binary_name(dim)
-            src = self.source / "cuda" / f"{b}.cu"
-            self._scp_to(host, src, f"{rdir}/{b}.cu")
+        for b in sorted(binaries):
+            src_name = binary_source(b)
+            src = self.source / "cuda" / src_name
+            self._scp_to(host, src, f"{rdir}/{src_name}")
+            flags = binary_build_flags(b)
             # Heterogeneous fleet: nvcc may not be on PATH and the right CUDA /
             # host-compiler pairing differs per host (the 3090 needs an older
             # CUDA than its newest). Try every candidate nvcc x {default,
@@ -219,7 +230,8 @@ class Fleet:
                 "for NVCC in $(command -v nvcc) "
                 "$(ls /usr/local/cuda*/bin/nvcc 2>/dev/null | sort -rV); do "
                 'for CC in "" "-ccbin g++-11"; do '
-                f"if $NVCC -O3 -arch={arch} -Xcompiler -pthread $CC -o {b} {b}.cu "
+                f"if $NVCC -O3 -arch={arch} -Xcompiler -pthread {flags} $CC "
+                f"-o {b} {src_name} "
                 f"2>{b}_build.err; "
                 "then break 2; fi; "
                 f"done; done; test -x {b}",
@@ -321,7 +333,7 @@ def run_campaign(
         return
     by_name = {j.name: j for j in jobs}
     assignment = plan_assignment(pending, hosts, host_max_t)
-    dims = {j.dim for j in pending}
+    binaries = {binary_name(j.dim, j.terms) for j in pending}
     total = len(pending)
 
     fields = dict(start_fields or {})
@@ -334,7 +346,7 @@ def run_campaign(
             continue
         try:
             if deploy:
-                fleet.deploy(host, dims)
+                fleet.deploy(host, binaries)
             if not fleet.runner_alive(host):
                 fleet.launch(host, host_jobs, dump=dump)
         except Exception as exc:  # surface to Discord, then abort as before

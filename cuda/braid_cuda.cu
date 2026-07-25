@@ -132,7 +132,12 @@ constexpr double kPi = 3.14159265358979323846;
 
 // Compile-time cap on wiggle terms per axis (--terms K uses K-1 of them).
 // Bounds the fixed-size Path struct that rides through the survivor buffers.
-constexpr int kMaxWiggle = 9;
+// Overridable at build time (-DKMAX_WIGGLE=149) for the full-spectrum
+// (terms = T) campaigns; the default keeps the legacy binary's Path small.
+#ifndef KMAX_WIGGLE
+#define KMAX_WIGGLE 9
+#endif
+constexpr int kMaxWiggle = KMAX_WIGGLE;
 
 // One candidate worldline: the parameters of the header formula
 //     x(z) = sum_j ax[j] * [sin(bx[j]*z + fx[j]) - sin(fx[j])] + ax2*sin(z)
@@ -175,6 +180,23 @@ __host__ __device__ inline void draw_unique_freqs(Rng& r,
                                                   uint32_t modmax,
                                                   int nw,
                                                   uint32_t* out) {
+    if ((uint32_t)nw == modmax) {
+        // Full-pool case (terms = T): the unique set is forced -- every
+        // frequency in [2, modmax+1] appears exactly once -- and the
+        // rejection loop below degenerates into coupon collecting. Fill
+        // sequentially and Fisher-Yates shuffle so the slot order stays
+        // uniform. No stored campaign hits this branch (legacy nw <= 9 is
+        // always below the pool), so their RNG streams are unchanged.
+        for (int j = 0; j < nw; j++)
+            out[j] = (uint32_t)j + 2;
+        for (int j = nw - 1; j > 0; j--) {
+            int k = (int)rng_below(r, (uint32_t)(j + 1));
+            uint32_t tmp = out[j];
+            out[j] = out[k];
+            out[k] = tmp;
+        }
+        return;
+    }
     for (int j = 0; j < nw; j++) {
         uint32_t b = 0;
         bool dup = true;
@@ -205,6 +227,21 @@ __host__ __device__ inline void draw_unique_freqs(Rng& r,
 // the parts are the gaps between consecutive cuts. Used to divide the unit
 // slope budget across an axis's wiggle terms.
 __host__ __device__ inline void split_unit(Rng& r, int nw, double* w) {
+    if (nw > 9) {
+        // Exponential-spacings Dirichlet(1,...,1) draw: the same uniform
+        // simplex distribution as the sorted-cuts method, without its
+        // O(nw^2) insertion sort. Gated to nw > 9 so every stored campaign
+        // (nw <= 9 under the historical cap) keeps its exact RNG stream.
+        double sum = 0.0;
+        for (int j = 0; j < nw; j++) {
+            // rng_f64 is in [0, 1), so the argument of log stays positive.
+            w[j] = -log(1.0 - rng_f64(r));
+            sum += w[j];
+        }
+        for (int j = 0; j < nw; j++)
+            w[j] /= sum;
+        return;
+    }
     double cuts[kMaxWiggle + 1];
     cuts[0] = 0.0;
     for (int j = 1; j < nw; j++)
@@ -543,30 +580,35 @@ int main(int argc, char** argv) {
     }
     double cell = 2.0 / T;
     uint32_t modmax = (uint32_t)(T - 1 > 2 ? T - 1 : 2);
-    // Wiggle-term count: --terms counts sin1, so nw = terms-1. Capped by the
-    // Path struct (kMaxWiggle) and by the pool of unique frequencies (modmax).
+    // Wiggle-term count: --terms counts sin1, so nw = terms-1. Bounded by the
+    // Path struct (kMaxWiggle) and by the pool of unique frequencies (modmax);
+    // exceeding either is fatal -- an orchestrated job must never silently
+    // run a smaller model than the store records (clamping used to do that).
     if (terms < 2)
         terms = 2;
     if (terms - 1 > kMaxWiggle) {
-        fprintf(stderr, "--terms %d exceeds compiled cap %d, clamping\n", terms,
-                kMaxWiggle + 1);
-        terms = kMaxWiggle + 1;
+        fprintf(stderr,
+                "error: --terms %d exceeds compiled cap %d (rebuild with "
+                "-DKMAX_WIGGLE>=%d)\n",
+                terms, kMaxWiggle + 1, terms - 1);
+        return 1;
     }
     if ((uint32_t)(terms - 1) > modmax) {
-        fprintf(stderr, "--terms %d exceeds unique-frequency pool %u, clamping\n", terms,
-                modmax);
-        terms = (int)modmax + 1;
+        fprintf(stderr, "error: --terms %d exceeds unique-frequency pool %u (max terms %u)\n",
+                terms, modmax, modmax + 1);
+        return 1;
     }
     int nw = terms - 1;
-    // Sub-phase term count (--sub-terms), clamped like --terms.
+    // Sub-phase term count (--sub-terms), validated like --terms.
     int nwSub = nw;
     if (subTerms > 0) {
         if (subTerms < 2)
             subTerms = 2;
-        if (subTerms - 1 > kMaxWiggle)
-            subTerms = kMaxWiggle + 1;
-        if ((uint32_t)(subTerms - 1) > modmax)
-            subTerms = (int)modmax + 1;
+        if (subTerms - 1 > kMaxWiggle || (uint32_t)(subTerms - 1) > modmax) {
+            fprintf(stderr, "error: --sub-terms %d exceeds compiled cap %d or pool %u\n",
+                    subTerms, kMaxWiggle + 1, modmax);
+            return 1;
+        }
         nwSub = subTerms - 1;
     }
     // Torus grid: exactly T cells of width CELL span [-1, 1), so the modular
@@ -684,8 +726,12 @@ int main(int argc, char** argv) {
     auto gix = [&](double v) -> int { return (int)floor((v + 1.0) / cell); };
 
     // survivor buffers (the multi-term Path is ~350 B, so the cap is kept at a
-    // level that still dwarfs the ~256-survivors/round adaptation target)
-    int survCap = 1 << 18;
+    // level that still dwarfs the ~256-survivors/round adaptation target).
+    // Under the full-spectrum cap (KMAX_WIGGLE > 16, Path ~7 KB) the buffer
+    // shrinks to the initial batch size -- still an upper bound on any
+    // round's survivor count until the batch grows, which only happens once
+    // the acceptance rate is far below cap/batch.
+    int survCap = kMaxWiggle > 16 ? 1 << 16 : 1 << 18;
     Path* dSurv;
     int* dSurvCount;
     CK(cudaMalloc(&dSurv, survCap * sizeof(Path)));

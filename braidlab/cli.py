@@ -18,7 +18,7 @@ from braidlab.analyze import measure_d
 from braidlab.notify import COLORS, ENV_WEBHOOK, DiscordNotifier
 from braidlab.orchestrator import Fleet, plan_assignment, run_campaign
 from braidlab.report import build_report
-from braidlab.store import Store
+from braidlab.store import RunResult, Store
 
 
 def _parse_host_max(text: str) -> dict[str, int]:
@@ -137,6 +137,16 @@ def _cmd_leaderboard(args: argparse.Namespace) -> None:
             raise SystemExit(1)
 
 
+def match_terms(r: RunResult, spec: str | int | None) -> bool:
+    """Row filter for ``--terms``: None keeps every row, ``'t'`` keeps the
+    full-spectrum rows (terms == T), anything else is an exact term count."""
+    if spec is None:
+        return True
+    if spec == "t":
+        return r.terms == r.t
+    return r.terms == int(spec)
+
+
 def _cmd_corrdim(args: argparse.Namespace) -> None:
     store = Store(args.db)
     # Variant campaigns share a dumps dir; restrict aggregation to the jobs this
@@ -147,7 +157,7 @@ def _cmd_corrdim(args: argparse.Namespace) -> None:
     names = {
         Path(r.curve_path).stem
         for r in store.results(args.dim, args.band)
-        if r.curve_path and (args.terms is None or r.terms == args.terms)
+        if r.curve_path and match_terms(r, args.terms)
     }
     stats = corrdim.aggregate(
         store.dumps_dir, dim=args.dim, band=args.band, names=names or None
@@ -176,17 +186,26 @@ def _cmd_analyze(args: argparse.Namespace) -> None:
             if len(results) < 2:
                 continue
             # A terms-sweep store holds several term counts; fit each
-            # separately so the N ~ T^D exponent never blends models.
+            # separately so the N ~ T^D exponent never blends models. A
+            # full-spectrum store (terms == T on every row) is one model
+            # whose term count varies with T by construction -- fit it whole.
             term_counts = sorted({r.terms for r in results})
-            for terms in term_counts:
-                subset = [r for r in results if r.terms == terms]
+            if len(term_counts) > 1 and all(r.terms == r.t for r in results):
+                groups = [(" terms=T", results)]
+            elif len(term_counts) > 1:
+                groups = [
+                    (f" terms={k}", [r for r in results if r.terms == k])
+                    for k in term_counts
+                ]
+            else:
+                groups = [("", results)]
+            for label, subset in groups:
                 if len(subset) < 2:
                     continue
                 try:
                     r = measure_d(subset, dim, band)
                 except ValueError:
                     continue
-                label = f" terms={terms}" if len(term_counts) > 1 else ""
                 print(
                     f"{dim}+1 band={band:7s}{label}  D = {r.d:.3f} ± {r.d_err:.3f}  "
                     f"(D/d={r.d / dim:.3f}, slope-spread={r.local_slope_std:.3f}, "
@@ -235,9 +254,9 @@ def main(argv: list[str] | None = None) -> None:
     sc.add_argument("--out", default="corrdim_convergence.png")
     sc.add_argument(
         "--terms",
-        type=int,
         default=None,
-        help="restrict to one term count (terms-sweep stores)",
+        help="restrict to one term count (terms-sweep stores); "
+        "'t' selects the full-spectrum rows (terms == T)",
     )
     sc.add_argument(
         "--labels", action="store_true", help="annotate each point with its value"

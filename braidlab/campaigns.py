@@ -69,6 +69,19 @@ PACK2D_T = tuple(range(20, 301, 40))  # 20, 60, ..., 300
 PACKTERMS3D_T = (80, 160)
 PACKTERMS2D_T = (140, 300)
 
+#: FULLSPEC campaigns (2026-07-25): the full-spectrum limit terms = T. With
+#: maxfreq = T the frequency pool is [2, T] (T-1 frequencies) and an axis
+#: draws terms-1 unique ones, so terms = T puts EVERY allowed frequency on
+#: every axis exactly once -- only the simplex amplitude split, signs, and
+#: even-frequency phases stay random. Per-attempt cost grows ~linearly with
+#: the term count, so the ladders stop well below the legacy campaigns' tops
+#: (trimmed further in plan review, 2026-07-25); the wide engine binaries
+#: (-DKMAX_WIGGLE=149) carry the ~T*9-coefficient worldlines. 1e-6 cutoff,
+#: no subpaths.
+FULLSPEC_SEEDS = tuple(range(1, 9))  # 8 seeds
+FULLSPEC3D_T = tuple(range(5, 76, 5))  # 5, 10, ..., 75
+FULLSPEC2D_T = tuple(range(5, 101, 5))  # 5, 10, ..., 100
+
 #: CONVERGE campaigns (2026-07-10): pin both headline exponents. 3+1 extends
 #: the T ladder past the dense-grid VRAM ceiling with the sparse engine (does
 #: the local slope converge on D/d = 3/4, i.e. D = 2.25?); 2+1 instead
@@ -255,6 +268,29 @@ CAMPAIGNS: dict[str, Campaign] = {
     "pack2d_e7": _pack(2, 1e-7, "e7"),
     "packterms3d_e6": _pack_terms(3),
     "packterms2d_e6": _pack_terms(2),
+    # FULLSPEC: the terms = T limit (see the FULLSPEC_* constants above).
+    "fullspec3d_e6": Campaign(
+        name="fullspec3d_e6",
+        dim=3,
+        t_values=FULLSPEC3D_T,
+        seeds=FULLSPEC_SEEDS,
+        accept_rate=1e-6,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        terms_track_t=True,
+        tag="fs3e6",
+    ),
+    "fullspec2d_e6": Campaign(
+        name="fullspec2d_e6",
+        dim=2,
+        t_values=FULLSPEC2D_T,
+        seeds=FULLSPEC_SEEDS,
+        accept_rate=1e-6,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        terms_track_t=True,
+        tag="fs2e6",
+    ),
     # SUBPATH: post-jam filling by paths that join existing groups (engine
     # --subpaths, 2+1 only). Mirrors pack2d_e6 exactly (same ladder, seeds,
     # cutoff) so the subpath capacity of a jam reads off as an A/B against

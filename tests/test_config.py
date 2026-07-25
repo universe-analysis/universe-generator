@@ -208,3 +208,93 @@ def test_command_is_always_uniform() -> None:
         "curve.csv",
     )
     assert "--uniform" in plain and "--smart" not in plain
+
+
+def test_terms_track_t_expansion() -> None:
+    """Full-spectrum campaigns run every job at terms = its own T."""
+    c = Campaign(
+        name="t",
+        dim=3,
+        t_values=(20, 40),
+        seeds=(1, 2),
+        accept_rate=1e-6,
+        terms_track_t=True,
+        tag="fs3e6",
+    )
+    jobs = c.jobs()
+    assert len(jobs) == 4
+    assert all(j.terms == j.t for j in jobs)
+    assert {j.name for j in jobs if j.t == 40} == {
+        "d3_nyq_T40_s1_ph_tm40_fs3e6",
+        "d3_nyq_T40_s2_ph_tm40_fs3e6",
+    }
+
+
+def test_terms_track_t_excludes_terms_values() -> None:
+    with pytest.raises(ValueError):
+        Campaign(
+            name="t",
+            dim=2,
+            t_values=(20,),
+            seeds=(1,),
+            accept_rate=1e-6,
+            terms_track_t=True,
+            terms_values=(2, 3),
+        )
+
+
+def test_wide_binary_variant_selection() -> None:
+    """Jobs beyond the default binaries' Path cap run the _w150 variant,
+    built from the same source with -DKMAX_WIGGLE=149."""
+    from braidlab.engine import binary_build_flags, binary_name, binary_source
+
+    # terms=10 is nw=9, exactly the default cap -- still the default binary.
+    assert binary_name(2) == "braid_cuda"
+    assert binary_name(3, terms=10) == "braid_cuda3d"
+    assert binary_name(3, terms=11) == "braid_cuda3d_w150"
+    assert binary_name(2, terms=100) == "braid_cuda_w150"
+    assert binary_source("braid_cuda3d_w150") == "braid_cuda3d.cu"
+    assert binary_source("braid_cuda") == "braid_cuda.cu"
+    assert binary_build_flags("braid_cuda_w150") == "-DKMAX_WIGGLE=149"
+    assert binary_build_flags("braid_cuda3d") == ""
+
+
+def test_fullspec_campaigns() -> None:
+    """The FULLSPEC ladders: terms = T, 1e-6 cutoff, no subpaths, dumps on."""
+    from braidlab.campaigns import get
+
+    c3 = get("fullspec3d_e6")
+    assert c3.t_values == tuple(range(5, 76, 5))
+    c2 = get("fullspec2d_e6")
+    assert c2.t_values == tuple(range(5, 101, 5))
+    for c in (c3, c2):
+        assert c.terms_track_t and c.dump and not c.subpaths
+        assert c.accept_rate == 1e-6
+        assert c.seeds == tuple(range(1, 9))
+
+
+def test_match_terms_selector() -> None:
+    """--terms: None = all rows, 't' = full-spectrum rows, int = exact."""
+    from braidlab.cli import match_terms
+    from braidlab.store import RunResult
+
+    def row(t: int, terms: int) -> RunResult:
+        return RunResult(
+            dim=3,
+            band="nyq",
+            t=t,
+            seed=1,
+            accept_rate=1e-6,
+            terms=terms,
+            status="done",
+            n_final=1,
+            attempts=1,
+            curve_path="x.csv",
+            host=None,
+        )
+
+    assert match_terms(row(40, 10), None)
+    assert match_terms(row(40, 40), "t")
+    assert not match_terms(row(40, 10), "t")
+    assert match_terms(row(40, 10), "10")
+    assert not match_terms(row(40, 10), "2")

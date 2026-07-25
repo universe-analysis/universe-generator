@@ -14,9 +14,37 @@ from braidlab.config import Job
 _DONE_RE = re.compile(r"done:\s*N=(\d+)\s+in\s+(\d+)\s+attempts")
 
 
-def binary_name(dim: int) -> str:
-    """Engine binary for a spatial dimension."""
-    return "braid_cuda" if dim == 2 else "braid_cuda3d"
+#: Wiggle-term cap compiled into the default engine binaries (kMaxWiggle).
+DEFAULT_MAX_WIGGLE = 9
+#: Cap compiled into the wide (full-spectrum) variant -- terms up to 150.
+WIDE_MAX_WIGGLE = 149
+#: Filename suffix of the wide variant binaries (braid_cuda_w150, ...).
+WIDE_SUFFIX = "_w150"
+
+
+def binary_name(dim: int, terms: int = 2) -> str:
+    """Engine binary for a spatial dimension.
+
+    Jobs whose term count exceeds the default binaries' compiled Path cap
+    (kMaxWiggle = 9) run the wide variant, built from the same source with
+    ``-DKMAX_WIGGLE=149``.
+    """
+    base = "braid_cuda" if dim == 2 else "braid_cuda3d"
+    if terms - 1 > DEFAULT_MAX_WIGGLE:
+        return base + WIDE_SUFFIX
+    return base
+
+
+def binary_source(binary: str) -> str:
+    """The .cu source file a binary (default or wide variant) is built from."""
+    return binary.removesuffix(WIDE_SUFFIX) + ".cu"
+
+
+def binary_build_flags(binary: str) -> str:
+    """Extra nvcc flags for a binary variant (empty for the defaults)."""
+    if binary.endswith(WIDE_SUFFIX):
+        return f"-DKMAX_WIGGLE={WIDE_MAX_WIGGLE}"
+    return ""
 
 
 def build_command(job: Job, binary: str, curve_path: str) -> list[str]:
