@@ -46,6 +46,73 @@ def wrap_unit(x: np.ndarray) -> np.ndarray:
     return x - 2.0 * np.floor((x + 1.0) * 0.5)
 
 
+@dataclass(frozen=True)
+class AxisTerms:
+    """One spatial axis of a dump as per-term arrays.
+
+    ``a``/``b``/``f`` are (N, nw) wiggle amplitudes / integer frequencies /
+    phases (zero on odd frequencies and in pre-phase dumps); ``a2`` is the
+    (N,) sin1 amplitude. The physical coordinate is
+    x(z) = sum_j a[:, j] * (sin(b[:, j] z + f[:, j]) - sin f[:, j]) + a2 sin z.
+    """
+
+    a: np.ndarray
+    b: np.ndarray
+    f: np.ndarray
+    a2: np.ndarray
+
+
+def load_axis_terms(path: str | Path) -> list[AxisTerms]:
+    """Load a dump as per-axis term arrays (x, y[, w] in order).
+
+    The multi-term generalization of :func:`load_turnaround_cloud`'s field
+    handling, for kinematics analyses that need the raw terms rather than the
+    turnaround positions. Handles the legacy single-wiggle layout (nw = 1)
+    and the multi-term ``--terms`` layout; dimension is inferred from the
+    presence of the w axis.
+    """
+    rows = list(csv.DictReader(open(path)))
+    fields = set(rows[0].keys()) if rows else set()
+
+    def col(k: str) -> np.ndarray:
+        return np.array([float(r[k]) for r in rows])
+
+    def phase_col(k: str) -> np.ndarray:
+        if k in fields:
+            return col(k)
+        return np.zeros(len(rows))
+
+    axes = []
+    if "ax_1" in fields:  # multi-term (--terms) layout
+        axis_names = ("x", "y", "w") if "aw_1" in fields else ("x", "y")
+        for n in axis_names:
+            nw = 1
+            while f"a{n}_{nw + 1}" in fields:
+                nw += 1
+            axes.append(
+                AxisTerms(
+                    a=np.column_stack([col(f"a{n}_{j}") for j in range(1, nw + 1)]),
+                    b=np.column_stack([col(f"b{n}_{j}") for j in range(1, nw + 1)]),
+                    f=np.column_stack([col(f"f{n}_{j}") for j in range(1, nw + 1)]),
+                    a2=col(f"a{n}2"),
+                )
+            )
+    else:  # legacy single-wiggle layout
+        quads = [("ax", "bx", "ax2", "fx"), ("ay", "by", "ay2", "fy")]
+        if "aw" in fields:  # 3+1 dump
+            quads.append(("aw", "bw", "aw2", "fw"))
+        for a, b, a2, f in quads:
+            axes.append(
+                AxisTerms(
+                    a=col(a)[:, None],
+                    b=col(b)[:, None],
+                    f=phase_col(f)[:, None],
+                    a2=col(a2),
+                )
+            )
+    return axes
+
+
 def load_turnaround_cloud(path: str | Path, wrap: bool = False) -> np.ndarray:
     """Load a parameter dump and return its z=pi/2 comoving cloud (N, d).
 

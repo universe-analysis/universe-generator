@@ -2,11 +2,13 @@
 
 In the phase model the peculiar velocity of a worldline at the turnaround has
 a closed form. Per axis, the comoving position is
-X(z) = a[sin(bz + f) - sin f]/sin z + a2, and at z = pi/2 (where sin z = 1 and
-cos z = 0) the peculiar speed collapses to |a b cos(b pi/2 + f)| = |cos(b pi/2
-+ f)| under the rapidity constraint |ab| = 1. Odd frequencies (f = 0) are
-exactly at rest; the (at most one, by coprimality) even axis moves at
-|cos f|. With f ~ U[0, pi), the mover speed is therefore arcsine-distributed,
+X(z) = sum_j a_j [sin(b_j z + f_j) - sin f_j]/sin z + a2, and at z = pi/2
+(where sin z = 1 and cos z = 0) the peculiar speed collapses to
+|sum_j a_j b_j cos(b_j pi/2 + f_j)|. In the legacy single-wiggle model the
+rapidity constraint |ab| = 1 makes that |cos(b pi/2 + f)|: odd frequencies
+(f = 0) are exactly at rest and the (at most one, by coprimality) even axis
+moves at |cos f|. With f ~ U[0, pi), the mover speed is then
+arcsine-distributed,
 
     P(v) = 2 / (pi sqrt(1 - v^2)),   v in [0, 1),
 
@@ -15,11 +17,13 @@ integrable divergence at the speed cap v = 1. The turnaround equation of
 state follows: w = (1/3) <E v^2>/<E> = (1/6) x (mobile fraction) whenever the
 energy dictionary is parity-blind.
 
-This script measures both against the packed dumps:
-  * the mover speed distribution at one T, with the arcsine law overlaid;
-  * w vs T under E ~ sum(b) ("wave" dictionary), with the (1/6) x mobile
-    fraction prediction, and the E ~ arc-length ("string") dictionary
-    cross-checked at the largest T.
+Multi-term dumps (--terms, including the full-spectrum terms = T model) are
+handled by the same estimator: the speed sums over every wiggle term, the
+mobile set is "any even frequency on any axis", and the wave-dictionary
+energy is the total frequency sum(b) over all terms. For terms = T every
+worldline carries even frequencies, so the mobile fraction is 1 by
+construction and the arcsine overlay probes whether the multi-term speed sum
+keeps the single-term law.
 
 Usage::
 
@@ -30,59 +34,60 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import csv
 import glob
 import re
 from pathlib import Path
 
 import numpy as np
 
+from braidlab.corrdim import AxisTerms, load_axis_terms
+
 _NAME_RE = re.compile(r"_T(?P<t>\d+)_s(?P<seed>\d+)")
 HALF_PI = np.pi / 2.0
 
 
-def load_params(path: str | Path) -> dict[str, np.ndarray]:
-    rows = list(csv.DictReader(open(path)))
-    return {k: np.array([float(r[k]) for r in rows]) for k in rows[0]}
+def turnaround_speed(axes: list[AxisTerms]) -> np.ndarray:
+    """Peculiar speed |dx_pec/dz| at z = pi/2 per worldline (Euclidean norm).
 
-
-def axes_of(cols: dict[str, np.ndarray], dim: int) -> list[tuple[str, str, str, str]]:
-    quads = [("ax", "bx", "ax2", "fx"), ("ay", "by", "ay2", "fy")]
-    if dim == 3:
-        quads.append(("aw", "bw", "aw2", "fw"))
-    return quads
-
-
-def turnaround_speed(cols: dict[str, np.ndarray], dim: int) -> np.ndarray:
-    """Peculiar speed |dx_pec/dz| at z = pi/2 per worldline (Euclidean norm)."""
-    v2 = np.zeros(len(cols["ax"]))
-    for a, b, _a2, f in axes_of(cols, dim):
-        fv = cols.get(f, np.zeros(len(cols[a])))
-        v_axis = cols[a] * cols[b] * np.cos(cols[b] * HALF_PI + fv)
+    The sin1 term's physical velocity a2 cos z vanishes at the turnaround, so
+    only the wiggle terms contribute.
+    """
+    v2 = np.zeros(len(axes[0].a2))
+    for ax in axes:
+        v_axis = (ax.a * ax.b * np.cos(ax.b * HALF_PI + ax.f)).sum(axis=1)
         v2 += v_axis**2
     return np.sqrt(v2)
 
 
-def mobile_mask(cols: dict[str, np.ndarray], dim: int) -> np.ndarray:
+def mobile_mask(axes: list[AxisTerms]) -> np.ndarray:
     """Worldlines carrying an even frequency (the kinematically mobile set)."""
-    mask = np.zeros(len(cols["ax"]), dtype=bool)
-    for _a, b, _a2, _f in axes_of(cols, dim):
-        mask |= cols[b].astype(np.int64) % 2 == 0
+    mask = np.zeros(len(axes[0].a2), dtype=bool)
+    for ax in axes:
+        mask |= (ax.b.astype(np.int64) % 2 == 0).any(axis=1)
     return mask
 
 
-def arc_length(cols: dict[str, np.ndarray], dim: int, nz: int = 400) -> np.ndarray:
+def wave_energy(axes: list[AxisTerms]) -> np.ndarray:
+    """E ~ total frequency: sum of b over every axis and term."""
+    return np.sum([ax.b.sum(axis=1) for ax in axes], axis=0)
+
+
+def arc_length(axes: list[AxisTerms], nz: int = 400) -> np.ndarray:
     """Physical arc length of each worldline's spatial path over the loop."""
     z = np.linspace(1e-3, np.pi - 1e-3, nz)
     dz = z[1] - z[0]
-    speed2 = np.zeros((len(cols["ax"]), nz))
-    for a, b, a2, f in axes_of(cols, dim):
-        fv = cols.get(f, np.zeros(len(cols[a])))
-        # physical x(z) = a[sin(bz+f) - sin f] + a2 sin z; the -a sin f offset
-        # is constant and differentiates away
-        dx = cols[a][:, None] * cols[b][:, None] * np.cos(
-            np.outer(cols[b], z) + fv[:, None]
-        ) + cols[a2][:, None] * np.cos(z)
+    speed2 = np.zeros((len(axes[0].a2), nz))
+    for ax in axes:
+        # physical x(z) = sum_j a_j[sin(b_j z + f_j) - sin f_j] + a2 sin z;
+        # the constant -a sin f offsets differentiate away. Terms accumulate
+        # one at a time to keep the (N, nz) working set flat in nw.
+        dx = ax.a2[:, None] * np.cos(z)
+        for j in range(ax.a.shape[1]):
+            dx += (
+                ax.a[:, j : j + 1]
+                * ax.b[:, j : j + 1]
+                * np.cos(np.outer(ax.b[:, j], z) + ax.f[:, j : j + 1])
+            )
         speed2 += dx**2
     return np.sqrt(speed2).sum(axis=1) * dz
 
@@ -114,12 +119,11 @@ def main() -> None:
     )
     speeds, w_wave_t, w_string_t = [], [], []
     for p in paths_t:
-        cols = load_params(p)
-        v = turnaround_speed(cols, args.dim)
-        speeds.append(v[mobile_mask(cols, args.dim)])
-        e_wave = np.sum([cols[b] for _a, b, _a2, _f in axes_of(cols, args.dim)], axis=0)
-        w_wave_t.append(eos_w(e_wave, v))
-        w_string_t.append(eos_w(arc_length(cols, args.dim), v))
+        axes = load_axis_terms(p)
+        v = turnaround_speed(axes)
+        speeds.append(v[mobile_mask(axes)])
+        w_wave_t.append(eos_w(wave_energy(axes), v))
+        w_string_t.append(eos_w(arc_length(axes), v))
     movers = np.concatenate(speeds)
     print(
         f"T={args.t}: {len(paths_t)} seeds, {len(movers):,} movers; "
@@ -137,11 +141,10 @@ def main() -> None:
         m = _NAME_RE.search(Path(p).name)
         if not m:
             continue
-        cols = load_params(p)
-        v = turnaround_speed(cols, args.dim)
-        e_wave = np.sum([cols[b] for _a, b, _a2, _f in axes_of(cols, args.dim)], axis=0)
-        frac = float(mobile_mask(cols, args.dim).mean())
-        by_t.setdefault(int(m["t"]), []).append((eos_w(e_wave, v), frac))
+        axes = load_axis_terms(p)
+        v = turnaround_speed(axes)
+        frac = float(mobile_mask(axes).mean())
+        by_t.setdefault(int(m["t"]), []).append((eos_w(wave_energy(axes), v), frac))
     ts = sorted(by_t)
     w_mean = [float(np.mean([x[0] for x in by_t[t]])) for t in ts]
     frac_mean = [float(np.mean([x[1] for x in by_t[t]])) for t in ts]

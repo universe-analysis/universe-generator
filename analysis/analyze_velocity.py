@@ -1,62 +1,73 @@
 """Warm-fraction-vs-T (step 1) and the moving-component speed distribution (step 2).
 
 From the dumped parameters, at z=pi/2:
-  - a worldline is "at rest" iff all three frequencies are odd (symmetric about
-    the turnaround); "moving" iff it has an even frequency (anti-symmetric, swings
-    through). Coprimality => at most one even, so movers move along a single axis.
-  - speed |dX/dz| = |a_even * b_even| = (1 - |a2_even|), the slope-1 budget.
+  - a worldline is "at rest" iff all its frequencies are odd (symmetric about
+    the turnaround); "moving" iff it has an even frequency (anti-symmetric,
+    swings through). In the legacy model coprimality => at most one even
+    frequency, so movers move along a single axis with speed
+    |a_even * b_even| = (1 - |a2_even|), the slope-1 budget. Multi-term dumps
+    sum every term: speed per axis = |sum_j a_j b_j cos(b_j pi/2 + f_j)|.
 
 Left panel:  moving ("warm") fraction vs T -- does it converge or keep growing?
 Right panel: speed distribution of the moving component at the largest T.
 
 Usage::
 
-    python analyze_velocity.py --out velocity.png
+    python -m analysis.analyze_velocity --params "data/params/params_T*.csv" \
+        --out velocity.png
 """
 
 from __future__ import annotations
 
 import argparse
-import csv
 import glob
 import re
 from pathlib import Path
 
 import numpy as np
 
+from braidlab.corrdim import load_axis_terms
+
 PARAMS = Path("data/params")
 HALF_PI = np.pi / 2.0
+_T_RE = re.compile(r"_T(\d+)")
 
 
-def load(path: str) -> dict[str, np.ndarray]:
-    rows = list(csv.DictReader(open(path)))
-    return {k: np.array([float(r[k]) for r in rows]) for k in rows[0]}
+def _t_of(path: str) -> int:
+    m = _T_RE.search(path)
+    if m is None:
+        raise ValueError(f"no _T<N> in dump name: {path}")
+    return int(m.group(1))
 
 
 def stats(path: str) -> tuple[int, float, np.ndarray]:
     """Return (N, moving_fraction, moving_speeds) for one packing."""
-    c = load(path)
-    freq = np.stack([c["bx"], c["by"], c["bw"]], axis=1).astype(int)
-    moving = (freq % 2 == 0).any(axis=1)
-    vx = c["ax"] * c["bx"] * np.cos(c["bx"] * HALF_PI)
-    vy = c["ay"] * c["by"] * np.cos(c["by"] * HALF_PI)
-    vw = c["aw"] * c["bw"] * np.cos(c["bw"] * HALF_PI)
-    speed = np.sqrt(vx**2 + vy**2 + vw**2)
-    return len(freq), float(moving.mean()), speed[moving]
+    axes = load_axis_terms(path)
+    moving = np.zeros(len(axes[0].a2), dtype=bool)
+    v2 = np.zeros(len(axes[0].a2))
+    for ax in axes:
+        moving |= (ax.b.astype(np.int64) % 2 == 0).any(axis=1)
+        v2 += (ax.a * ax.b * np.cos(ax.b * HALF_PI + ax.f)).sum(axis=1) ** 2
+    speed = np.sqrt(v2)
+    return len(moving), float(moving.mean()), speed[moving]
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--params",
+        default=str(PARAMS / "params_T*.csv"),
+        help="glob of parameter dumps (legacy or multi-term layout)",
+    )
     parser.add_argument("--out", type=Path, default=Path("velocity.png"))
     args = parser.parse_args()
     import matplotlib.pyplot as plt
 
-    files = sorted(glob.glob(str(PARAMS / "params_T*.csv")),
-                   key=lambda p: int(re.search(r"_T(\d+)", p).group(1)))
+    files = sorted(glob.glob(args.params), key=_t_of)
     ts, fracs, speed_sets = [], [], {}
     print(f"{'T':>4} {'N':>7} {'moving %':>9}")
     for f in files:
-        t = int(re.search(r"_T(\d+)", f).group(1))
+        t = _t_of(f)
         n, frac, speeds = stats(f)
         ts.append(t)
         fracs.append(frac)
@@ -78,8 +89,9 @@ def main() -> None:
         ax_s.hist(speed_sets[tmax], bins=40, color="tab:purple", alpha=0.8)
         ax_s.set_xlabel("speed |dX/dz| at z=pi/2  (slope-1 capped at 1)")
         ax_s.set_ylabel("count")
-        ax_s.set_title(f"Moving-component speeds, T={tmax} "
-                       f"({len(speed_sets[tmax])} movers)")
+        ax_s.set_title(
+            f"Moving-component speeds, T={tmax} ({len(speed_sets[tmax])} movers)"
+        )
         ax_s.grid(True, alpha=0.3)
 
     fig.tight_layout()

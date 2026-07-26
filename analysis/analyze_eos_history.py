@@ -1,32 +1,44 @@
 """Equation-of-state history w(z) across the expand-contract cycle.
 
-For the fixed T=120 packing, evaluate the kinetic pressure at every conformal
+For one fixed packing, evaluate the kinetic pressure at every conformal
 time z in (0, pi):
 
-    v_i^2(z) = sum_axis (a*b*cos(b z) + a2*cos(z))^2     (physical velocity dx/dz)
+    v_i^2(z) = sum_axis (sum_j a_j b_j cos(b_j z + f_j) + a2 cos z)^2
     w(z)     = P/rho = (1/3) * sum_n E_n v_n^2(z) / sum_n E_n
 
-under both mass dictionaries (E ~ b and E ~ proper length), to see whether the
-dictionary-robustness found at the turnaround holds across the whole history.
+(physical velocity dx/dz, summed over every wiggle term -- the legacy
+single-wiggle dumps are the nw = 1 case) under both mass dictionaries
+(E ~ sum(b) and E ~ proper length), to see whether the dictionary-robustness
+found at the turnaround holds across the whole history.
 
 Expectation: fast (stiff/relativistic) near the bang/crunch z->0, pi; slow
 (matter-like) at the turnaround z=pi/2.
 
 Usage::
 
-    python analyze_eos_history.py --out eos_history.png
+    python -m analysis.analyze_eos_history --params <dump.csv> --out out.png
 """
 
 from __future__ import annotations
 
 import argparse
-import csv
 from pathlib import Path
 
 import numpy as np
 
+from braidlab.corrdim import AxisTerms, load_axis_terms
+
 PARAMS = Path("data/params")
 HALF_PI = np.pi / 2.0
+
+
+def velocity2(axes: list[AxisTerms], z: float) -> np.ndarray:
+    """Physical speed^2 (dx/dz)^2 per worldline at conformal time z."""
+    v2 = np.zeros(len(axes[0].a2))
+    for ax in axes:
+        v_axis = (ax.a * ax.b * np.cos(ax.b * z + ax.f)).sum(axis=1)
+        v2 += (v_axis + ax.a2 * np.cos(z)) ** 2
+    return v2
 
 
 def main() -> None:
@@ -36,29 +48,24 @@ def main() -> None:
     args = parser.parse_args()
     import matplotlib.pyplot as plt
 
-    rows = list(csv.DictReader(open(args.params)))
-    g = lambda k: np.array([float(r[k]) for r in rows])
-    a = [g("ax"), g("ay"), g("aw")]
-    b = [g("bx"), g("by"), g("bw")]
-    a2 = [g("ax2"), g("ay2"), g("aw2")]
+    axes = load_axis_terms(args.params)
 
     # mass weights
-    E_b = b[0] + b[1] + b[2]
+    E_b = np.sum([ax.b.sum(axis=1) for ax in axes], axis=0)
     zs_L = np.linspace(0.0, HALF_PI, 600)
     dz_L = zs_L[1] - zs_L[0]
     E_L = np.zeros(len(E_b))
     for z in zs_L:
-        s = sum((a[i] * b[i] * np.cos(b[i] * z) + a2[i] * np.cos(z)) ** 2 for i in range(3))
-        E_L += np.sqrt(s) * dz_L
+        E_L += np.sqrt(velocity2(axes, float(z))) * dz_L
 
     # w(z) under each dictionary
     zgrid = np.linspace(0.01, np.pi - 0.01, 240)
-    w_b, w_L = [], []
+    w_b_list, w_L_list = [], []
     for z in zgrid:
-        v2 = sum((a[i] * b[i] * np.cos(b[i] * z) + a2[i] * np.cos(z)) ** 2 for i in range(3))
-        w_b.append((E_b * v2).sum() / E_b.sum() / 3.0)
-        w_L.append((E_L * v2).sum() / E_L.sum() / 3.0)
-    w_b, w_L = np.array(w_b), np.array(w_L)
+        v2 = velocity2(axes, float(z))
+        w_b_list.append((E_b * v2).sum() / E_b.sum() / 3.0)
+        w_L_list.append((E_L * v2).sum() / E_L.sum() / 3.0)
+    w_b, w_L = np.array(w_b_list), np.array(w_L_list)
 
     fig, ax = plt.subplots(figsize=(9, 5.5))
     ax.plot(zgrid, w_b, color="tab:blue", lw=2, label="E ~ b (Quantum Wave)")
@@ -68,7 +75,7 @@ def main() -> None:
     ax.axvline(HALF_PI, color="black", ls="--", lw=1, label="turnaround z=pi/2")
     ax.set_xlabel("conformal time z  (bang 0 -> turnaround pi/2 -> crunch pi)")
     ax.set_ylabel("equation of state  w = P/rho")
-    ax.set_title("Equation-of-state history of the braided universe (T=120)")
+    ax.set_title(f"Equation-of-state history ({Path(args.params).stem})")
     ax.legend(loc="upper center", fontsize=9)
     ax.grid(True, alpha=0.3)
     fig.tight_layout()

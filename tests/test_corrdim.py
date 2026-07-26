@@ -186,3 +186,35 @@ def test_load_turnaround_cloud_missing_phase_columns_is_zero_phase(
     assert np.allclose(
         corrdim.load_turnaround_cloud(old), corrdim.load_turnaround_cloud(new)
     )
+
+
+def test_load_axis_terms_both_layouts(tmp_path) -> None:
+    """The per-term loader handles legacy and multi-term dumps and agrees
+    with load_turnaround_cloud on the turnaround positions."""
+    import numpy as np
+
+    from braidlab.corrdim import load_axis_terms, load_turnaround_cloud
+
+    legacy = tmp_path / "legacy.csv"
+    legacy.write_text(
+        "ax,ay,aw,bx,by,bw,ax2,ay2,aw2,fx,fy,fw\n"
+        "0.25,0.5,-0.1,4,2,3,0.7,-0.2,0.1,1.1,0.4,0\n"
+    )
+    multi = tmp_path / "multi.csv"
+    multi.write_text(
+        "ax2,ay2,aw2,ax_1,bx_1,fx_1,ay_1,by_1,fy_1,aw_1,bw_1,fw_1,"
+        "ax_2,bx_2,fx_2,ay_2,by_2,fy_2,aw_2,bw_2,fw_2\n"
+        "0.7,-0.2,0.1,0.25,4,1.1,0.5,2,0.4,-0.1,3,0,"
+        "0.05,5,0,0.1,6,0.9,0.2,7,0\n"
+    )
+    for path, nw in ((legacy, 1), (multi, 2)):
+        axes = load_axis_terms(path)
+        assert len(axes) == 3
+        assert all(ax.a.shape == (1, nw) for ax in axes)
+        half_pi = np.pi / 2.0
+        cloud = load_turnaround_cloud(path)
+        for k, ax in enumerate(axes):
+            x = ax.a2 + (
+                ax.a * (np.sin(ax.b * half_pi + ax.f) - np.sin(ax.f))
+            ).sum(axis=1)
+            assert np.allclose(x, cloud[:, k])
