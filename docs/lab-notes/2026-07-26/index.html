@@ -89,6 +89,69 @@
       </ul>
     </article>
 
+    <article class="entry" id="deficit-resolved">
+      <h2>The &ldquo;~3% D&#8322; deficit&rdquo; resolved: an unwrapped-estimator artifact shared by the baseline &mdash; full-spectrum slices are exactly uniform</h2>
+      <p class="meta">
+        Wrapped (minimum-image) correlation dimension on the FULLSPEC top
+        rungs (3+1 T&nbsp;=&nbsp;80&ndash;100 &times; 8 seeds, 2+1
+        T&nbsp;=&nbsp;125/150 from the new fullspec2d_e6ext store) + the
+        matched-estimator baseline control (pack2d_e6) &middot; no new code
+        &mdash; <code>analysis/analyze_periodic_corrdim.py</code> as-is on
+        the multi-term loader from
+        <a href="https://github.com/universe-analysis/universe-generator/commit/ad6968b"><code>ad6968b</code></a>
+      </p>
+      <p>
+        The 07-25 note reported fullspec wrapped D&#8322; ~3% under the space
+        dimension and left it open. Two controls close it. First, the
+        <em>baseline</em> terms&nbsp;=&nbsp;2 model, measured with the same
+        <code>braidlab corrdim</code> estimator that produced the fullspec
+        numbers, reads 1.93&ndash;1.96 at its own ladder top &mdash;
+        statistically identical to fullspec's 1.94&ndash;1.97. The deficit
+        was never fullspec-specific. Second, that estimator loads clouds
+        <em>unwrapped</em> (open boundary, edge depletion); the genuinely
+        periodic minimum-image estimator &mdash; the self-consistent
+        measurement on the torus, and the one behind the README's baseline
+        3.01/2.02 &mdash; reads, on fullspec:
+      </p>
+      <figure class="plot">
+        <img src="fullspec_periodic_corrdim_3d.png"
+             alt="Periodic (minimum-image) correlation dimension of fullspec 3+1 turnaround clouds, T=80-100: sphere 3.048 down to 3.026, cube 3.026 to 3.014, both converging to 3 from above; the non-periodic sphere reference sits near 2.90." />
+        <figcaption>
+          3+1: wrapped D&#8322; = 3.05&nbsp;&rarr;&nbsp;3.03 (sphere) /
+          3.03&nbsp;&rarr;&nbsp;3.01 (cube) over T&nbsp;=&nbsp;80&ndash;100,
+          converging to 3 from above &mdash; the same signature as the
+          baseline's 3.01. The unwrapped reference (gray) shows the ~0.1
+          edge-bias gap that produced the spurious deficit.
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="fullspec_periodic_corrdim_2d.png"
+             alt="Periodic correlation dimension of fullspec 2+1 turnaround clouds at T=125 and 150: sphere 2.054 and 2.040, cube 2.042 and 2.032, converging to 2 from above; non-periodic reference near 1.95." />
+        <figcaption>
+          2+1 twin (T&nbsp;=&nbsp;125/150 from the deficit-probe extension):
+          wrapped D&#8322; = 2.05&nbsp;&rarr;&nbsp;2.04, converging to 2 from
+          above.
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>Verdict: exact uniformity carries over to the
+            full-spectrum model.</strong> Wrapped D&#8322; converges to the
+            space dimension from above in both dimensions, precisely as the
+            baseline does. README, PHYSICS_FINDINGS &sect;12, and the open
+            question have been corrected; the 07-25 deficit claim is
+            withdrawn.</li>
+        <li><strong>Estimator lesson.</strong> <code>braidlab corrdim</code>
+            measures unwrapped clouds; on a torus-model packing its
+            open-boundary edge depletion depresses D&#8322; by ~0.1 (3+1) /
+            ~0.07 (2+1) at these N, for <em>every</em> model. Cross-model
+            uniformity comparisons must use the periodic estimator.</li>
+        <li><strong>Still running.</strong> fullspec3d_e6ext2
+            (T&nbsp;=&nbsp;110/120) now serves the exponent-plateau question
+            only; its wrapped-D&#8322; points will be added as further
+            confirmation when it lands.</li>
+      </ul>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>

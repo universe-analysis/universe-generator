@@ -369,11 +369,15 @@ the amplitude signs, and the even-frequency phases. Campaigns:
   ~2.53 ± 0.05 over T = 75–100; 2+1 fits 1.58 (baseline 1.38, matched
   window). Same slow crawl phenomenology as the terms = 2 ladders, around a
   distinctly higher plateau; the jamming-limit value is open.
-- **Uniformity.** Wrapped turnaround D₂ climbs to 2.93/2.86 (T = 75, 3+1)
-  then flattens at 2.90/2.84 through T = 100; 2+1 peaks 2.03 (T = 60) and
-  eases to 1.97/1.94 (T = 100). Uniform to ~3% but short of the baseline's
-  3.01/2.02 (measured there at N ~ 90k vs 46k here); whether the deficit is
-  finite-N or real is open.
+- **Uniformity.** Exactly uniform, same as the baseline. The genuinely
+  wrapped (minimum-image) estimator reads D₂ = 3.05 → 3.03 over T = 80–100
+  (3+1, sphere; cube 3.03 → 3.01) and 2.05 → 2.04 at T = 125/150 (2+1),
+  converging to the space dimension from above exactly as the baseline's
+  3.01/2.02 did. An earlier "~3% deficit" (07-25) was an estimator artifact:
+  `braidlab corrdim` loads clouds unwrapped, and its open-boundary edge bias
+  depresses D₂ identically for the baseline (pack2d reads 1.93 at its top
+  under it) — resolved 07-26 with the periodic estimator, which is the
+  self-consistent measurement on the torus.
 - **Kinematics: cold dust, parameter-free.** Every worldline carries even
   frequencies, so the cold/mover split and the arcsine premise dissolve.
   The turnaround velocity is a many-term incoherent sum: odd terms freeze,
@@ -447,5 +451,6 @@ the amplitude signs, and the even-frequency phases. Campaigns:
    law (section 7) and the spectrum edge terms = T has the w = d/(6T) dust
    law (section 12); the crossover between them (terms ~ 3–10) is unmeasured.
 10. **Full-spectrum follow-ups** — does the ~2.53 exponent plateau converge
-    (larger T on the sparse grid), and is the ~3% wrapped-D₂ deficit at the
-    ladder tops finite-N or a real sub-uniformity (section 12)?
+    at larger T (T = 110/120 rungs running 2026-07-26; beyond that needs the
+    sparse grid)? (The 07-25 wrapped-D₂ "deficit" question is closed: it was
+    the unwrapped estimator's edge bias, section 12.)

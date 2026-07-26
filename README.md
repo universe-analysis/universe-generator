@@ -119,10 +119,12 @@ The ground-truth summary, current as of 2026-07-20. Full numbers and caveats in
   once, only the simplex budget split, signs, and even phases random — breaks
   the exponent invariance: **N ~ T^2.53** (3+1; T ≤ 100 plateau, windowed
   fits 2.52–2.55 and still crawling like the baseline did toward 2.32) and
-  **T^1.58** (2+1), both steeper and denser than the 2-term law. Slices stay
-  uniform to ~3% (wrapped D₂ 2.90/1.97 at the ladder tops vs the baseline's
-  3.01/2.02 at larger N; whether the small deficit closes with N is open).
-  The kinematics change phase
+  **T^1.58** (2+1), both steeper and denser than the 2-term law. Slices are
+  exactly uniform, same as the baseline: the wrapped (minimum-image)
+  estimator reads D₂ = 3.03/2.04 at the ladder tops, converging to 3/2 from
+  above (an earlier "~3% deficit" was the unwrapped estimator's edge bias,
+  shared identically by the baseline — lab notes 2026-07-26). The kinematics
+  change phase
   entirely: every worldline is mobile, the arcsine law collapses into a
   central-limit bell (⟨v⟩ ≈ 0.13 at 3+1 T = 75), and the turnaround equation
   of state obeys the parameter-free law **w = d/(6T) → 0** (measured 0.0066

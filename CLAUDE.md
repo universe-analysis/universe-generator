@@ -19,8 +19,8 @@ a packing-number exponent
 with no geometric carrier, invariant under cutoff depth and small dictionary
 size (2–10 terms) but steeper at the full-spectrum edge (terms = T: **T^2.53
 / T^1.58**, FULLSPEC 2026-07-25); matter slices are *exactly* uniform
-(wrapped D2 = 3.01/2.02; 2.90/1.97 at the full-spectrum ladder tops, small
-deficit open); mover speeds
+(wrapped D2 = 3.01/2.02 baseline, 3.03/2.04 full-spectrum — uniformity holds
+in both models); mover speeds
 follow a phase-selected arcsine law (few-term) that collapses to a
 central-limit bell with **w = d/(6T) → 0** at terms = T; few-term turnaround
 equation of state **w = 0.145 (Chebyshev) / 0.193 (Euclidean)**, with
