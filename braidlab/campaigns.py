@@ -81,6 +81,11 @@ PACKTERMS2D_T = (140, 300)
 FULLSPEC_SEEDS = tuple(range(1, 9))  # 8 seeds
 FULLSPEC3D_T = tuple(range(5, 76, 5))  # 5, 10, ..., 75
 FULLSPEC2D_T = tuple(range(5, 101, 5))  # 5, 10, ..., 100
+#: Ladder extension (approved 2026-07-25 after the base campaign showed the
+#: 3+1 local slope still climbing at T=75): the rungs trimmed from the base
+#: plan, run on rented 4090s + the fleet. Separate campaign (converge3d_e6ext
+#: pattern) so base-campaign resumes can never dispatch these tiers.
+FULLSPEC3DEXT_T = tuple(range(80, 101, 5))  # 80, 85, ..., 100
 
 #: CONVERGE campaigns (2026-07-10): pin both headline exponents. 3+1 extends
 #: the T ladder past the dense-grid VRAM ceiling with the sparse engine (does
@@ -279,6 +284,17 @@ CAMPAIGNS: dict[str, Campaign] = {
         dump=True,
         terms_track_t=True,
         tag="fs3e6",
+    ),
+    "fullspec3d_e6ext": Campaign(
+        name="fullspec3d_e6ext",
+        dim=3,
+        t_values=FULLSPEC3DEXT_T,
+        seeds=FULLSPEC_SEEDS,
+        accept_rate=1e-6,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        terms_track_t=True,
+        tag="fs3e6x",
     ),
     "fullspec2d_e6": Campaign(
         name="fullspec2d_e6",
