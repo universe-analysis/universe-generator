@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-07-25</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-07-25</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="fullspec">
+      <h2>FULLSPEC: the terms&nbsp;=&nbsp;T limit &mdash; a steeper packing law, uniform slices, and a cold w&nbsp;=&nbsp;d/6T universe</h2>
+      <p class="meta">
+        Campaigns <code>fullspec3d_e6</code> (T&nbsp;=&nbsp;5&ndash;75, step 5),
+        <code>fullspec2d_e6</code> (T&nbsp;=&nbsp;5&ndash;100),
+        <code>fullspec3d_e6ext</code> (T&nbsp;=&nbsp;80&ndash;100), 8 seeds each,
+        1e-6 cutoff, no subpaths, on mother + kitt + two rented 4090s
+        &middot; engine/braidlab support
+        <a href="https://github.com/universe-analysis/universe-generator/commit/02593a5"><code>02593a5</code></a>
+        &middot; multi-term kinematics
+        <a href="https://github.com/universe-analysis/universe-generator/commit/a8e00fa"><code>a8e00fa</code></a>
+        &middot; charts
+        <a href="https://github.com/universe-analysis/universe-generator/commit/6ecf543"><code>6ecf543</code></a>,
+        <a href="https://github.com/universe-analysis/universe-generator/commit/96ddf1b"><code>96ddf1b</code></a>
+        &middot; extension leg
+        <a href="https://github.com/universe-analysis/universe-generator/commit/3e83758"><code>3e83758</code></a>
+      </p>
+      <p>
+        The FREQ/PACK sweeps varied the sinusoid term count as a small fixed
+        knob (terms&nbsp;&isin;&nbsp;{2..10}) and found the packing law
+        indifferent to it. This campaign takes the knob to the limit the
+        model allows: <strong>terms&nbsp;=&nbsp;T</strong>. Since the
+        frequency pool is [2,&nbsp;T] (maxfreq&nbsp;=&nbsp;T, pool size
+        T&minus;1) and an axis draws terms&minus;1 unique frequencies,
+        terms&nbsp;=&nbsp;T means every axis carries <em>every allowed
+        frequency exactly once</em> &mdash; a full-spectrum worldline whose
+        only randomness is the simplex split of the unit slope budget across
+        terms, the amplitude signs, and the even-frequency phases (~900
+        coefficients per worldline at T&nbsp;=&nbsp;100 vs the legacy ~12).
+        Engine support: the Path cap became a build knob
+        (<code>-DKMAX_WIGGLE=149</code> "wide" binaries, built on demand by
+        the orchestrator; over-cap <code>--terms</code> is now fatal instead
+        of silently clamping), the full-pool frequency draw got an O(nw)
+        fill-and-shuffle fast path, and the simplex split an O(nw)
+        exponential-spacings draw &mdash; all gated so every stored
+        campaign's RNG stream is untouched (verified by A/B against stored
+        pack runs).
+      </p>
+      <figure class="plot">
+        <img src="fullspec_nvt_3d.png"
+             alt="Log-log jam count N versus T. The full-spectrum arm (red, T=5-100) runs above the terms=2 baseline (blue, T=20-160) and visibly steeper: fitted N ~ T^2.45 vs T^2.20." />
+        <figcaption>
+          3+1 jam count: full-spectrum (terms&nbsp;=&nbsp;T, red) vs the
+          2-term baseline (pack3d_e6, blue). The invariance that held for
+          terms&nbsp;&le;&nbsp;10 breaks: the full-spectrum model packs more
+          worldlines and along a steeper law.
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="fullspec_nvt_2d.png"
+             alt="Log-log jam count N versus T for 2+1: full-spectrum arm (red, T=5-100) steeper than the terms=2 baseline (blue): N ~ T^1.58 vs T^1.38." />
+        <figcaption>
+          The 2+1 twin: N&nbsp;~&nbsp;T<sup>1.58</sup> (terms&nbsp;=&nbsp;T)
+          vs T<sup>1.38</sup> (baseline, matched window).
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>The packing exponent steepens &mdash; the terms
+            invariance breaks at the spectrum edge.</strong> 3+1: whole-ladder
+            fit D&nbsp;=&nbsp;2.44, windowed fits crawling upward
+            (T&nbsp;&ge;&nbsp;30: 2.52, T&nbsp;&ge;&nbsp;50: 2.53,
+            T&nbsp;&ge;&nbsp;75: 2.55), adjacent-rung local slopes flat at
+            ~2.53&nbsp;&plusmn;&nbsp;0.05 across T&nbsp;=&nbsp;75&ndash;100.
+            2+1: 1.58 vs the baseline 1.38. The same slow upward crawl the
+            terms&nbsp;=&nbsp;2 model shows toward its 2.32 plateau, but
+            around a distinctly higher value &mdash; the T&nbsp;&le;&nbsp;100
+            plateau sits near <strong>2.53</strong> (above 5/2; the
+            jamming-limit value is an open question, as it was for the
+            baseline's 7/3 chase).</li>
+        <li><strong>Matter slices stay uniform to a few percent &mdash; with
+            a small unexplained deficit.</strong> Wrapped turnaround
+            D<sub>2</sub> climbs to 2.93 (sphere) / 2.86 (cube) by
+            T&nbsp;=&nbsp;75 in 3+1 and then flattens at
+            2.90&ndash;2.92&nbsp;/&nbsp;2.84&ndash;2.85 through
+            T&nbsp;=&nbsp;100; 2+1 peaks near 2.03 (T&nbsp;=&nbsp;60) and
+            eases to 1.97&nbsp;/&nbsp;1.94 at T&nbsp;=&nbsp;100. That is
+            uniform to ~3%, but visibly short of the baseline's exact
+            3.01&nbsp;/&nbsp;2.02 &mdash; measured there at larger clouds
+            (N&nbsp;~&nbsp;90k vs 46k here). Whether the deficit closes with
+            N or is a real sub-uniform signature of the full-spectrum jam is
+            an open question for a larger-T run.</li>
+      </ul>
+      <figure class="plot">
+        <img src="fullspec_kinematics_3d.png"
+             alt="Left: mover speed distribution at T=100 is a narrow bell peaked near v=0.11, nothing like the arcsine law which diverges at v=1. Right: measured w falls as 1/T from 0.088 at T=5 to 0.005 at T=100 while the arcsine prediction stays flat at 1/6." />
+        <figcaption>
+          3+1 full-spectrum kinematics (T&nbsp;=&nbsp;5&ndash;100). The
+          arcsine mover law is gone: speeds are a narrow central-limit bell,
+          and w(T) falls as 1/(2T).
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="fullspec_kinematics_2d.png"
+             alt="The 2+1 twin: narrow mover-speed bell at T=100 and w falling as 1/T to 0.0034 at T=100." />
+        <figcaption>
+          The 2+1 twin: w&nbsp;=&nbsp;0.0034 at T&nbsp;=&nbsp;100 vs the
+          d/(6T)&nbsp;=&nbsp;1/300 prediction.
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>The full-spectrum universe is cold: w&nbsp;=&nbsp;d/(6T)
+            &rarr; dust.</strong> With the unit budget split over ~T terms,
+            the turnaround velocity is a sum of many incoherent contributions:
+            odd terms freeze (cos(b&pi;/2)&nbsp;=&nbsp;0), even-term phases
+            average &lang;cos&sup2;f&rang;&nbsp;=&nbsp;&frac12;, and the
+            simplex shares give
+            &lang;w<sub>j</sub>&sup2;&rang;&nbsp;=&nbsp;2/(nw(nw+1)) &mdash;
+            combining to a parameter-free per-axis
+            &lang;v&sup2;&rang;&nbsp;=&nbsp;1/(2T), i.e.
+            <strong>w&nbsp;=&nbsp;d/(6T)</strong>. Measured: 0.0066 vs
+            predicted 0.00667 (3+1, T&nbsp;=&nbsp;75), 0.0050 vs 0.0050
+            (3+1, T&nbsp;=&nbsp;100), 0.0034 vs 0.00333 (2+1,
+            T&nbsp;=&nbsp;100) &mdash; identical under both energy
+            dictionaries (E&nbsp;~&nbsp;b and E&nbsp;~&nbsp;arc length agree
+            to 4 decimals). Every worldline is mobile (all carry even
+            frequencies), so the arcsine law's premise dissolves; the
+            replacement is a Maxwell-like bell with
+            &lang;v&rang;&nbsp;&asymp;&nbsp;0.13&nbsp;(T&nbsp;=&nbsp;75).
+            Where the few-term model equilibrates to w&nbsp;&asymp;&nbsp;0.15
+            independent of resolution, the full-spectrum model is
+            <em>exact dust in the continuum limit</em>.</li>
+        <li><strong>Provenance / ops.</strong> Pilot: T&nbsp;=&nbsp;75
+            terms&nbsp;=&nbsp;75 ran 8.4&nbsp;min at 5.5&nbsp;GB on a 3080
+            (the T&sup5; cost model over-predicted 2.5&times;). kitt needed a
+            driver-mismatch reboot mid-campaign; two vast.ai 4090s
+            ($1.72 total) took the extension's top rungs and were destroyed
+            on completion. Stores + dumps in <code>data/fullspec/</code>;
+            resume commands in the campaign memory.</li>
+      </ul>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
