@@ -23,44 +23,32 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import csv
 import glob
 from pathlib import Path
 
 import numpy as np
 
-from braidlab.corrdim import wrap_unit
+from braidlab.corrdim import comoving_trajectories, load_axis_terms
 
 COUNT_D = 2.46  # default count-scaling packing dimension (hard-wall model)
 
 
-def load_params(path: str) -> dict[str, np.ndarray]:
-    rows = list(csv.DictReader(open(path)))
-    return {k: np.array([float(r[k]) for r in rows]) for k in rows[0]}
-
-
 def trajectories(
-    cols: dict[str, np.ndarray], t: int, torus: bool = False, phase: bool = False
+    path: str, t: int, torus: bool = False, phase: bool = False
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return (snapshot Nx3 at turnaround, pooled (N*T)x3 over all timesteps)."""
+    """Return (snapshot Nx3 at turnaround, pooled (N*T)x3 over all timesteps).
+
+    Handles the legacy single-wiggle and multi-term (--terms, incl.
+    full-spectrum) dump layouts via the shared per-term loader.
+    """
     if phase:
         step = np.pi / (t + 1)
         z = step + np.arange(t) * step
     else:
         z = 0.01 + np.arange(t) * (np.pi - 0.02) / (t - 1)
-    sinz = np.sin(z)
     half = int(np.argmin(np.abs(z - np.pi / 2)))
-    n = len(cols["ax"])
 
-    def axis(a, b, a2, f):  # X(z) = a*[sin(b*z + f) - sin f]/sin(z) + a2
-        fv = cols.get(f, np.zeros(n))
-        wig = np.sin(np.outer(b, z) + fv[:, None]) - np.sin(fv)[:, None]
-        out = a[:, None] * wig / sinz + a2[:, None]
-        return wrap_unit(out) if torus else out
-
-    x = axis(cols["ax"], cols["bx"], cols["ax2"], "fx")
-    y = axis(cols["ay"], cols["by"], cols["ay2"], "fy")
-    w = axis(cols["aw"], cols["bw"], cols["aw2"], "fw")
+    x, y, w = comoving_trajectories(load_axis_terms(path), z, wrap=torus)
     snap = np.stack([x[:, half], y[:, half], w[:, half]], axis=1)
     pooled = np.stack([x.ravel(), y.ravel(), w.ravel()], axis=1)
     return snap, pooled
@@ -119,9 +107,7 @@ def main() -> None:
 
     snap_counts, pool_counts = [], []
     for p in paths:
-        snap, pooled = trajectories(
-            load_params(p), args.t, torus=args.torus, phase=args.phase
-        )
+        snap, pooled = trajectories(p, args.t, torus=args.torus, phase=args.phase)
         snap_counts.append(box_count(snap, sizes))
         pool_counts.append(box_count(pooled, sizes))
         print(f"  {Path(p).name}: snapshot {len(snap):,}  pooled {len(pooled):,}")

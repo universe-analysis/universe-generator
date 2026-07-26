@@ -27,22 +27,16 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import csv
 import glob
 from pathlib import Path
 
 import numpy as np
 
-from braidlab.corrdim import wrap_unit
+from braidlab.corrdim import comoving_trajectories, load_axis_terms
 
 # Coarse spatial window for the per-slice box-counting slope (avoids the packing
 # cell at the fine end and the box boundary at the coarse end).
 SLICE_SIZES = np.array([0.05, 0.075, 0.1125, 0.169])
-
-
-def load_params(path: str) -> dict[str, np.ndarray]:
-    rows = list(csv.DictReader(open(path)))
-    return {k: np.array([float(r[k]) for r in rows]) for k in rows[0]}
 
 
 def slice_boxdim(pts3: np.ndarray) -> float:
@@ -95,26 +89,15 @@ def main() -> None:
         z = step + np.arange(args.t) * step
     else:
         z = 0.01 + np.arange(args.t) * (np.pi - 0.02) / (args.t - 1)
-    sinz = np.sin(z)
     pattern = f"{args.dumps}/d3_nyq_T{args.t}_s*{args.suffix}.csv"
     paths = sorted(glob.glob(pattern))[: args.seeds]
     print(f"T={args.t}, {len(paths)} seeds ({pattern})")
 
-    def axis(cols, a, b, a2, f):  # (N, T)
-        # Phase-schema components carry a free phase on the wiggle term and an
-        # a*sin(f) offset re-pinning them to zero at the endpoints; f = 0 (and
-        # absent from pre-phase dumps) reduces to the original expression.
-        fv = cols.get(f, np.zeros(len(cols[a])))
-        wig = np.sin(np.outer(cols[b], z) + fv[:, None]) - np.sin(fv)[:, None]
-        out = cols[a][:, None] * wig / sinz + cols[a2][:, None]
-        return wrap_unit(out) if args.torus else out
-
     rms_all, dim_all = [], []
     for p in paths:
-        cols = load_params(p)
-        x = axis(cols, "ax", "bx", "ax2", "fx")
-        y = axis(cols, "ay", "by", "ay2", "fy")
-        w = axis(cols, "aw", "bw", "aw2", "fw")
+        # Legacy single-wiggle and multi-term (incl. full-spectrum) dumps both
+        # load through the shared per-term reconstruction.
+        x, y, w = comoving_trajectories(load_axis_terms(p), z, wrap=args.torus)
         rms_all.append(np.sqrt((x**2 + y**2 + w**2).mean(axis=0) / 3.0))
         dim_all.append(
             np.array(

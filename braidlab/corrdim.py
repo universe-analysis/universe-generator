@@ -113,6 +113,30 @@ def load_axis_terms(path: str | Path) -> list[AxisTerms]:
     return axes
 
 
+def comoving_trajectories(
+    axes: list[AxisTerms], z: np.ndarray, wrap: bool = True
+) -> list[np.ndarray]:
+    """Reconstruct each axis's comoving trajectory as an (N, len(z)) array.
+
+    X(z) = sum_j a_j (sin(b_j z + f_j) - sin f_j) / sin z + a2, accumulated
+    one term at a time so the working set stays flat in the term count
+    (full-spectrum dumps carry ~T terms per axis). ``wrap`` applies the torus
+    wrap onto [-1, 1) (required for torus-model dumps).
+    """
+    sinz = np.sin(z)
+    out = []
+    for ax in axes:
+        acc = np.zeros((len(ax.a2), len(z)))
+        for j in range(ax.a.shape[1]):
+            fj = ax.f[:, j : j + 1]
+            acc += ax.a[:, j : j + 1] * (
+                np.sin(np.outer(ax.b[:, j], z) + fj) - np.sin(fj)
+            )
+        x = acc / sinz + ax.a2[:, None]
+        out.append(wrap_unit(x) if wrap else x)
+    return out
+
+
 def load_turnaround_cloud(path: str | Path, wrap: bool = False) -> np.ndarray:
     """Load a parameter dump and return its z=pi/2 comoving cloud (N, d).
 

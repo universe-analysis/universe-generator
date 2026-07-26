@@ -214,7 +214,32 @@ def test_load_axis_terms_both_layouts(tmp_path) -> None:
         half_pi = np.pi / 2.0
         cloud = load_turnaround_cloud(path)
         for k, ax in enumerate(axes):
-            x = ax.a2 + (
-                ax.a * (np.sin(ax.b * half_pi + ax.f) - np.sin(ax.f))
-            ).sum(axis=1)
+            x = ax.a2 + (ax.a * (np.sin(ax.b * half_pi + ax.f) - np.sin(ax.f))).sum(
+                axis=1
+            )
             assert np.allclose(x, cloud[:, k])
+
+
+def test_comoving_trajectories_matches_turnaround(tmp_path) -> None:
+    """At z = pi/2 the trajectory reconstruction reduces to the turnaround
+    cloud (sin z = 1), for both dump layouts."""
+    import numpy as np
+
+    from braidlab.corrdim import (
+        comoving_trajectories,
+        load_axis_terms,
+        load_turnaround_cloud,
+    )
+
+    multi = tmp_path / "multi.csv"
+    multi.write_text(
+        "ax2,ay2,aw2,ax_1,bx_1,fx_1,ay_1,by_1,fy_1,aw_1,bw_1,fw_1,"
+        "ax_2,bx_2,fx_2,ay_2,by_2,fy_2,aw_2,bw_2,fw_2\n"
+        "0.7,-0.2,0.1,0.25,4,1.1,0.5,2,0.4,-0.1,3,0,"
+        "0.05,5,0,0.1,6,0.9,0.2,7,0\n"
+    )
+    z = np.array([np.pi / 2.0])
+    axes = comoving_trajectories(load_axis_terms(multi), z, wrap=False)
+    cloud = load_turnaround_cloud(multi)
+    for k, x in enumerate(axes):
+        assert np.allclose(x[:, 0], cloud[:, k])

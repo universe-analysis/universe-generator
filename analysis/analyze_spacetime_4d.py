@@ -29,50 +29,38 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import csv
 import glob
 from pathlib import Path
 
 import numpy as np
 
-from braidlab.corrdim import wrap_unit
+from braidlab.corrdim import comoving_trajectories, load_axis_terms
 
 COUNT_D = 2.46  # default count-scaling packing dimension (hard-wall model)
 
 
-def load_params(path: str) -> dict[str, np.ndarray]:
-    rows = list(csv.DictReader(open(path)))
-    return {k: np.array([float(r[k]) for r in rows]) for k in rows[0]}
-
-
 def pooled_4d(
-    cols: dict[str, np.ndarray],
+    path: str,
     t: int,
     packed: bool,
     torus: bool = False,
     phase: bool = False,
 ) -> np.ndarray:
-    """Return the pooled (N*T)x4 (x, y, w, z) cloud for one dump."""
+    """Return the pooled (N*T)x4 (x, y, w, z) cloud for one dump.
+
+    Handles the legacy single-wiggle and multi-term (--terms, incl.
+    full-spectrum) dump layouts via the shared per-term loader.
+    """
     if phase:
         step = np.pi / (t + 1)
         z = step + np.arange(t) * step
     else:
         z = 0.01 + np.arange(t) * (np.pi - 0.02) / (t - 1)
-    sinz = np.sin(z)
-    n = len(cols["ax"])
 
-    def axis(a, b, a2, f):  # X(z) = a*[sin(b*z + f) - sin f]/sin(z) + a2, shape (N, T)
-        fv = cols.get(f, np.zeros(n))
-        wig = np.sin(np.outer(b, z) + fv[:, None]) - np.sin(fv)[:, None]
-        out = a[:, None] * wig / sinz + a2[:, None]
-        return wrap_unit(out) if torus else out
-
-    x = axis(cols["ax"], cols["bx"], cols["ax2"], "fx").ravel()
-    y = axis(cols["ay"], cols["by"], cols["ay2"], "fy").ravel()
-    w = axis(cols["aw"], cols["bw"], cols["aw2"], "fw").ravel()
-    zt = np.tile(z, n)
+    x, y, w = comoving_trajectories(load_axis_terms(path), z, wrap=torus)
+    zt = np.tile(z, x.shape[0])
     zc = zt * (2.0 / np.pi) if packed else zt
-    return np.stack([x, y, w, zc], axis=1)
+    return np.stack([x.ravel(), y.ravel(), w.ravel(), zc], axis=1)
 
 
 def box_count_4d(pts: np.ndarray, sizes: np.ndarray) -> np.ndarray:
@@ -130,9 +118,7 @@ def main() -> None:
     for packed in (False, True):
         counts = []
         for p in paths:
-            cloud = pooled_4d(
-                load_params(p), args.t, packed, torus=args.torus, phase=args.phase
-            )
+            cloud = pooled_4d(p, args.t, packed, torus=args.torus, phase=args.phase)
             counts.append(box_count_4d(cloud, sizes))
         n = np.mean(counts, axis=0)
         curves["packed" if packed else "native"] = (
