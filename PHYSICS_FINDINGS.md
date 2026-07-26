@@ -287,7 +287,9 @@ does not.
 - **Cutoff:** exponents are depth-robust in 3+1 (≤ 0.02/decade) and
   cutoff-conditional in 2+1 (~0.03–0.05/decade); the cutoff otherwise shifts
   only prefactors (section 3).
-- **Terms:** exponent and N both dictionary-insensitive (sections 2–3).
+- **Terms:** exponent and N both dictionary-insensitive for small
+  dictionaries (2–10 terms; sections 2–3). The invariance breaks at the
+  spectrum edge terms = T (section 12).
 - **Collision shape:** re-packing with spherical (L2) instead of cubic
   (Chebyshev) exclusion left the dimension estimators unchanged (Δ ≤ 0.004)
   in the predecessor model; not yet repeated on the torus.
@@ -350,6 +352,44 @@ separable from dynamical contact (contact = the engine's own wrapped-Chebyshev
   statement additionally needs a measurement-settings analog (see README
   "Quantum Behavior" status). 2+1 only: the 3+1 engine lacks `--subpaths`.
 
+## 12. The full-spectrum limit: terms = T (FULLSPEC, 2026-07-25)
+
+With maxfreq = T the frequency pool is [2, T] (T−1 frequencies) and an axis
+draws terms−1 unique ones, so terms = T is the largest dictionary the model
+admits: **every axis carries every allowed frequency exactly once**, and the
+only randomness left is the uniform-simplex split of the unit slope budget,
+the amplitude signs, and the even-frequency phases. Campaigns:
+`fullspec3d_e6` (T = 5–75) + `fullspec3d_e6ext` (T = 80–100) and
+`fullspec2d_e6` (T = 5–100), 8 seeds, 1e-6 cutoff, no subpaths
+(lab notes 2026-07-25; stores in `data/fullspec/`).
+
+- **Packing law.** The exponent invariance of the small-dictionary sweeps
+  breaks: 3+1 fits N ~ T^2.44 whole-ladder with windowed fits crawling
+  2.52 → 2.55 (T ≥ 30 / T ≥ 75) and adjacent-rung slopes flat at
+  ~2.53 ± 0.05 over T = 75–100; 2+1 fits 1.58 (baseline 1.38, matched
+  window). Same slow crawl phenomenology as the terms = 2 ladders, around a
+  distinctly higher plateau; the jamming-limit value is open.
+- **Uniformity.** Wrapped turnaround D₂ climbs to 2.93/2.86 (T = 75, 3+1)
+  then flattens at 2.90/2.84 through T = 100; 2+1 peaks 2.03 (T = 60) and
+  eases to 1.97/1.94 (T = 100). Uniform to ~3% but short of the baseline's
+  3.01/2.02 (measured there at N ~ 90k vs 46k here); whether the deficit is
+  finite-N or real is open.
+- **Kinematics: cold dust, parameter-free.** Every worldline carries even
+  frequencies, so the cold/mover split and the arcsine premise dissolve.
+  The turnaround velocity is a many-term incoherent sum: odd terms freeze,
+  even-term phases average ⟨cos²f⟩ = ½, simplex shares give
+  ⟨w_j²⟩ = 2/(nw(nw+1)), hence per-axis ⟨v²⟩ = 1/(2T) and
+  **w = d/(6T) → 0**. Measured: 0.0066 vs 0.00667 (3+1, T = 75) and
+  0.0034 vs 0.00333 (2+1, T = 100), identical under E ~ b and E ~ arc
+  length. Mover speeds form a narrow bell (⟨v⟩ ≈ 0.13 at 3+1 T = 75) in
+  place of the arcsine pile-up at the speed cap.
+- **Engine/measurement support.** Wide binaries (`-DKMAX_WIGGLE=149`) built
+  on demand; over-cap `--terms` fatal (was a silent clamp); O(nw) full-pool
+  frequency shuffle and exponential-spacings simplex draw, both gated so
+  stored campaigns' RNG streams are unchanged (A/B-verified against stored
+  pack cells). Kinematics analyses generalized to multi-term dumps via
+  `braidlab.corrdim.load_axis_terms` (regression-identical on legacy dumps).
+
 ## Caveats that bind the current results
 
 - Cutoff states, not literal jamming (section 3: no plateau through 1e-8);
@@ -403,5 +443,9 @@ separable from dynamical contact (contact = the engine's own wrapped-Chebyshev
    iteration RSA approximates.
 8. **Knot selection and g(r)** — re-measure on the current model (the old
    measurements predate the torus + uniform-proposal definition).
-9. **Kinematics at terms > 2** — the arcsine/phase-selection story is only
-   measured in the 2-term sector.
+9. **Kinematics at intermediate terms** — the 2-term sector has the arcsine
+   law (section 7) and the spectrum edge terms = T has the w = d/(6T) dust
+   law (section 12); the crossover between them (terms ~ 3–10) is unmeasured.
+10. **Full-spectrum follow-ups** — does the ~2.53 exponent plateau converge
+    (larger T on the sparse grid), and is the ~3% wrapped-D₂ deficit at the
+    ladder tops finite-N or a real sub-uniformity (section 12)?

@@ -71,7 +71,7 @@ phenomenology, not yet a Bell test, which would additionally need a
 measurement-settings analog.
 
 ### Big bang / crunch / inflation / expansion
-This model naturally embeds an expansion and collapse cycle. The measured equation of state at maximum expansion (t = π/2) is matter-like — w = 0.145 (Chebyshev metric) / 0.193 (Euclidean), cooled 20–24% below the proposal ensemble by jamming's phase selection — so the turnaround region is cold and matter-dominated. The full w(z) history away from the turnaround (including the rapid-cooling inflation-like era seen in a predecessor model, not yet re-measured on the current torus model) is an open measurement. It is of note that this model is not entirely symmetric across pi/2 due to the inclusion of phase components for even frequency components.
+This model naturally embeds an expansion and collapse cycle. The measured equation of state at maximum expansion (t = π/2) is matter-like — w = 0.145 (Chebyshev metric) / 0.193 (Euclidean), cooled 20–24% below the proposal ensemble by jamming's phase selection — so the turnaround region is cold and matter-dominated. In the full-spectrum limit (terms = T) the turnaround goes all the way to dust: w = d/(6T) → 0, a parameter-free central-limit law, identical under both energy dictionaries. The full w(z) history away from the turnaround (including the rapid-cooling inflation-like era seen in a predecessor model, not yet re-measured on the current torus model) is an open measurement. It is of note that this model is not entirely symmetric across pi/2 due to the inclusion of phase components for even frequency components.
 
 ### Speculation
 The following below is loose speculation.
@@ -105,14 +105,30 @@ The ground-truth summary, current as of 2026-07-20. Full numbers and caveats in
   above, sitting ~0.015 above the state value, and this state-vs-rate gap is
   real and unexplained (the leading open question). In 2+1 the jamming-limit
   extrapolation is **D∞ = 1.434 ± 0.021** (finite-cutoff ladders approach it
-  from below). D is invariant under cutoff depth and dictionary size (2–10
-  terms), and D/d differs between dimensions (0.774 vs 0.717) — not
-  dimension-universal. The law is also **purely archimedean**: residuals
+  from below). D is invariant under cutoff depth and dictionary size for
+  small dictionaries (2–10 terms) — but not at the spectrum edge (see the
+  full-spectrum bullet below) — and D/d differs between dimensions (0.774 vs
+  0.717) — not dimension-universal. The law is also **purely archimedean**: residuals
   around it carry no imprint of the number theory of the ℤ/Tℤ lattice —
   divisor count, prime-factor counts, largest prime factor and abundance all
   regress null (permutation tests over 7 ensembles; any d(T) modulation is
   bounded below ~0.7% while N spans a factor ~2600). Caveat: every stored T
   is a multiple of 20, so strictly prime T is untested.
+- **The full-spectrum limit (terms = T).** Pushing the dictionary to its
+  Nyquist edge — every axis carries the whole frequency pool [2, T] exactly
+  once, only the simplex budget split, signs, and even phases random — breaks
+  the exponent invariance: **N ~ T^2.53** (3+1; T ≤ 100 plateau, windowed
+  fits 2.52–2.55 and still crawling like the baseline did toward 2.32) and
+  **T^1.58** (2+1), both steeper and denser than the 2-term law. Slices stay
+  uniform to ~3% (wrapped D₂ 2.90/1.97 at the ladder tops vs the baseline's
+  3.01/2.02 at larger N; whether the small deficit closes with N is open).
+  The kinematics change phase
+  entirely: every worldline is mobile, the arcsine law collapses into a
+  central-limit bell (⟨v⟩ ≈ 0.13 at 3+1 T = 75), and the turnaround equation
+  of state obeys the parameter-free law **w = d/(6T) → 0** (measured 0.0066
+  vs 0.00667 at 3+1 T = 75; 0.0034 vs 0.00333 at 2+1 T = 100; identical
+  under E ~ b and E ~ length) — the full-spectrum universe is exact dust in
+  the continuum limit. (FULLSPEC campaigns, lab notes 2026-07-25.)
 - **No geometric carrier.** D is not the fractal dimension of any point set
   the packing produces — box-counting sweeps through it without a plateau. It
   is a capacity exponent of the joint whole-history exclusion.
@@ -128,7 +144,8 @@ The ground-truth summary, current as of 2026-07-20. Full numbers and caveats in
   additionally selects on phase, tilting ⟨v⟩ from 0.637 (proposal) to 0.603.
 - **Equation of state.** Turnaround w = 0.145 (Chebyshev) / 0.193 (Euclidean),
   cooled 20–24% below the proposal ensemble — matter-like at maximum
-  expansion.
+  expansion. In the full-spectrum limit this becomes w = d/(6T) → 0 (exact
+  dust; see above).
 - **Causal structure.** Reach is set by the wiggle budget, not a null cone:
   ≈1.26 near the Bang → √2 at the turnaround → 2 at the Crunch, all closed
   forms. No horizon at any epoch. The phased single-term envelope is the true
