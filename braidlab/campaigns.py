@@ -86,6 +86,13 @@ FULLSPEC2D_T = tuple(range(5, 101, 5))  # 5, 10, ..., 100
 #: plan, run on rented 4090s + the fleet. Separate campaign (converge3d_e6ext
 #: pattern) so base-campaign resumes can never dispatch these tiers.
 FULLSPEC3DEXT_T = tuple(range(80, 101, 5))  # 80, 85, ..., 100
+#: Deficit probe (2026-07-26): the wrapped turnaround D2 sits ~3% under the
+#: space dimension at the ladder tops (2.90/1.97 vs the baseline's 3.01/2.02
+#: measured at larger clouds). A few larger-T rungs per dimension test
+#: whether the deficit closes with N (Kevin's request, lab note 07-25
+#: follow-up).
+FULLSPEC3DEXT2_T = (110, 120)
+FULLSPEC2DEXT_T = (125, 150)
 
 #: CONVERGE campaigns (2026-07-10): pin both headline exponents. 3+1 extends
 #: the T ladder past the dense-grid VRAM ceiling with the sparse engine (does
@@ -295,6 +302,28 @@ CAMPAIGNS: dict[str, Campaign] = {
         dump=True,
         terms_track_t=True,
         tag="fs3e6x",
+    ),
+    "fullspec3d_e6ext2": Campaign(
+        name="fullspec3d_e6ext2",
+        dim=3,
+        t_values=FULLSPEC3DEXT2_T,
+        seeds=FULLSPEC_SEEDS,
+        accept_rate=1e-6,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        terms_track_t=True,
+        tag="fs3e6x2",
+    ),
+    "fullspec2d_e6ext": Campaign(
+        name="fullspec2d_e6ext",
+        dim=2,
+        t_values=FULLSPEC2DEXT_T,
+        seeds=FULLSPEC_SEEDS,
+        accept_rate=1e-6,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        terms_track_t=True,
+        tag="fs2e6x",
     ),
     "fullspec2d_e6": Campaign(
         name="fullspec2d_e6",
