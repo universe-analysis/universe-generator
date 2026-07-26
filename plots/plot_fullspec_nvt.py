@@ -26,21 +26,23 @@ from braidlab.store import Store
 
 
 def seed_stats(
-    db_path: Path, dim: int, band: str, fullspec: bool
+    db_paths: list[Path], dim: int, band: str, fullspec: bool
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Per-T seed mean and SEM of the jam count.
+    """Per-T seed mean and SEM of the jam count across one or more stores
+    (e.g. a base ladder plus its extension leg).
 
     ``fullspec`` selects the terms == T rows; otherwise the 2-term baseline.
     """
     by_t: dict[int, list[int]] = defaultdict(list)
-    for r in Store(db_path).results(dim, band):
-        if r.n_final is None:
-            continue
-        if (fullspec and r.terms == r.t) or (not fullspec and r.terms == 2):
-            by_t[r.t].append(r.n_final)
+    for db_path in db_paths:
+        for r in Store(db_path).results(dim, band):
+            if r.n_final is None:
+                continue
+            if (fullspec and r.terms == r.t) or (not fullspec and r.terms == 2):
+                by_t[r.t].append(r.n_final)
     if not by_t:
         kind = "fullspec" if fullspec else "2-term"
-        raise SystemExit(f"no completed {kind} runs for dim={dim} in {db_path}")
+        raise SystemExit(f"no completed {kind} runs for dim={dim} in {db_paths}")
     t = np.array(sorted(by_t))
     mean = np.array([np.mean(by_t[v]) for v in t])
     sem = np.array([np.std(by_t[v], ddof=1) / np.sqrt(len(by_t[v])) for v in t])
@@ -48,13 +50,17 @@ def seed_stats(
 
 
 def plot(
-    db_fullspec: Path, db_baseline: Path, out_path: Path, dim: int, band: str = "nyq"
+    db_fullspec: list[Path],
+    db_baseline: Path,
+    out_path: Path,
+    dim: int,
+    band: str = "nyq",
 ) -> None:
     import matplotlib.pyplot as plt
 
     arms = [
         ("terms = T (full spectrum)", db_fullspec, True, "tab:red", "o"),
-        ("terms = 2 (baseline)", db_baseline, False, "tab:blue", "s"),
+        ("terms = 2 (baseline)", [db_baseline], False, "tab:blue", "s"),
     ]
     fig, ax = plt.subplots(figsize=(8.5, 6))
     for label, db, fullspec, color, marker in arms:
@@ -100,7 +106,13 @@ def plot(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--db-fullspec", type=Path, required=True)
+    parser.add_argument(
+        "--db-fullspec",
+        type=Path,
+        nargs="+",
+        required=True,
+        help="fullspec store(s): base ladder plus any extension legs",
+    )
     parser.add_argument("--db-baseline", type=Path, required=True)
     parser.add_argument("--dim", type=int, default=3, choices=(2, 3))
     parser.add_argument("--band", default="nyq")
