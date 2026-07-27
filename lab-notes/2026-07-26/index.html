@@ -152,6 +152,60 @@
       </ul>
     </article>
 
+    <article class="entry" id="turnaround-dent">
+      <h2>Kevin's dent is real: the full-spectrum turnaround slice is measurably anomalous &mdash; in box-occupancy only</h2>
+      <p class="meta">
+        Follow-up on the uniformity chart above (Kevin spotted a small notch
+        at z/&pi;&nbsp;=&nbsp;0.5 that the baseline chart lacks) &middot;
+        analysis module
+        <a href="https://github.com/universe-analysis/universe-generator/commit/c86c407"><code>c86c407</code></a>
+      </p>
+      <p>
+        Quantified with a paired statistic (control band at
+        z/&pi;&nbsp;&approx;&nbsp;0.30/0.70 minus the mid slice, per seed):
+        the dip is <strong>+0.0089&nbsp;&plusmn;&nbsp;0.0003
+        (paired-t&nbsp;=&nbsp;30)</strong> at 3+1 T&nbsp;=&nbsp;100, grows
+        with T (+0.0021 at T&nbsp;=&nbsp;60, +0.0076 at T&nbsp;=&nbsp;80),
+        and has a significant 2+1 twin (+0.0116 at T&nbsp;=&nbsp;100,
+        t&nbsp;=&nbsp;13). The baseline model shows the opposite &mdash; its
+        trace has a broad <em>maximum</em> at the turnaround.
+      </p>
+      <figure class="plot">
+        <img src="fullspec_turnaround_dent.png"
+             alt="Two panels of slice box-dimension vs conformal time, centered on the control band. Left, 3+1: T=60, 80, 100 traces overlay a broad dome with a sharp V notch at z/pi = 0.5 that deepens with T. Right, 2+1: T=100 and 150 traces show a broader, noisier depression around the turnaround." />
+        <figcaption>
+          The turnaround dent, control-band centered: 3+1 (left, sharp V
+          deepening with T) and the 2+1 twin (right, broader and noisier).
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>What it is not.</strong> Not the
+            b&nbsp;&equiv;&nbsp;0&nbsp;(mod&nbsp;4) term silencing (those
+            terms contribute exactly zero at z&nbsp;=&nbsp;&pi;/2, but
+            removing them from a control slice leaves its box-dim unchanged
+            &mdash; ~75 incoherent terms don't miss 19). Not an estimator
+            boundary artifact (positions are wrapped). Not a scaling change:
+            the <em>wrapped correlation dimension is identical</em> at
+            z&nbsp;=&nbsp;0.3&pi;, &pi;/2, and 0.7&pi;
+            (3.0263&nbsp;/&nbsp;3.0259&nbsp;/&nbsp;3.0257), and the rms
+            comoving spread stays at the exact &radic;&#8531;. The dent
+            lives purely in coarse box <em>occupancy</em> &mdash; a ~0.3%
+            clustering rearrangement of the turnaround slice.</li>
+        <li><strong>Consequences for stored results: none.</strong> This was
+            the audit trigger &mdash; all correlation-dimension results are
+            measured at the turnaround slice, but D&#8322; is
+            slice-independent, so no re-analysis is needed; kinematics use
+            no distance estimator; N(T) is a pure count.</li>
+        <li><strong>Mechanism open; leading suspect: velocity
+            freeze-out.</strong> The full-spectrum turnaround is nearly
+            static (w&nbsp;=&nbsp;d/6T), so the exclusion constraint binds
+            an almost frozen configuration across many adjacent timesteps
+            there, while the baseline's arcsine-fast movers smear it &mdash;
+            and the baseline indeed shows no dent. Untested; queued with the
+            terms-crossover question.</li>
+      </ul>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
