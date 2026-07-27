@@ -13,7 +13,7 @@ ARCH ?= sm_86
 # -pthread: the 3+1 engine multithreads its host-side work (std::thread).
 NVCCFLAGS ?= -O3 -arch=$(ARCH) -Xcompiler -pthread
 
-BINARIES := braid_cuda braid_cuda3d
+BINARIES := braid_cuda braid_cuda3d frame_bake
 # Full-spectrum variants (terms = T campaigns): same sources built with a
 # larger Path cap. Not part of `all`; the orchestrator builds them on demand.
 WIDE := braid_cuda_w150 braid_cuda3d_w150
@@ -28,6 +28,9 @@ braid_cuda: braid_cuda.cu
 	$(NVCC) $(NVCCFLAGS) -o $@ $<
 
 braid_cuda3d: braid_cuda3d.cu
+	$(NVCC) $(NVCCFLAGS) -o $@ $<
+
+frame_bake: frame_bake.cu
 	$(NVCC) $(NVCCFLAGS) -o $@ $<
 
 braid_cuda_w150: braid_cuda.cu
