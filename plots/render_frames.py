@@ -26,7 +26,16 @@ import numpy as np
 from braidlab.frames import FrameSet, apparent_positions, load_frames
 
 
-def render_pane(ax, fs: FrameSet, fi: int, oi: int, mode: str, vmax: float) -> None:
+def render_pane(
+    ax,
+    fs: FrameSet,
+    fi: int,
+    oi: int,
+    mode: str,
+    vmax: float,
+    lim: float,
+    label: str | None = None,
+) -> None:
     """Draw one (instant, observer) pane onto a matplotlib axis."""
     frame = fs.frames[fi][oi]
     x, y, ln_dopp = apparent_positions(frame, mode, cheb=fs.cheb)
@@ -51,11 +60,12 @@ def render_pane(ax, fs: FrameSet, fi: int, oi: int, mode: str, vmax: float) -> N
         ax.plot(r * np.cos(th), r * np.sin(th), "-", color="gray", lw=0.7)
     typ, path_idx, _, _ = fs.observers[oi]
     who = f"path #{path_idx}" if typ == 0 else "comoving point"
+    prefix = f"{label} — " if label else ""
     ax.set_title(
-        f"{who} ({mode})  t = {frame.z_obs / np.pi:.3f}π  {len(frame.hits):,} images",
+        f"{prefix}{who} ({mode})  t = {frame.z_obs / np.pi:.3f}π  "
+        f"{len(frame.hits):,} images",
         fontsize=9,
     )
-    lim = 1.05 * max(f.chi_max for row in fs.frames for f in row)
     ax.set_xlim(-lim, lim)
     ax.set_ylim(-lim, lim)
     ax.set_aspect("equal")
@@ -65,13 +75,26 @@ def render_pane(ax, fs: FrameSet, fi: int, oi: int, mode: str, vmax: float) -> N
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--frames", required=True)
+    parser.add_argument(
+        "--frames",
+        nargs="+",
+        required=True,
+        help="one .frames file per pane (a single file may be repeated by "
+        "giving it once with several --observers)",
+    )
     parser.add_argument(
         "--observers",
         type=int,
         nargs="+",
         default=[0],
-        help="observer indices to render (1 pane each, side by side)",
+        help="observer index per pane; pane i pairs frames[i] (or the sole "
+        "frames file) with observers[i]",
+    )
+    parser.add_argument(
+        "--labels",
+        nargs="+",
+        default=None,
+        help="optional pane title prefixes (one per pane)",
     )
     parser.add_argument("--mode", choices=("static", "moving"), default="static")
     parser.add_argument("--fps", type=int, default=12)
@@ -90,32 +113,40 @@ def main() -> None:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    fs = load_frames(args.frames)
-    n_inst = len(fs.frames)
-    # One color scale across the whole animation: the 99th percentile of
-    # ln(1+Z_total) over every rendered frame (the Bang-adjacent tail is
-    # unbounded).
+    n_panes = len(args.observers)
+    files = args.frames if len(args.frames) > 1 else args.frames * n_panes
+    if len(files) != n_panes:
+        raise SystemExit("--frames must be one file, or one per --observers entry")
+    if args.labels and len(args.labels) != n_panes:
+        raise SystemExit("--labels must give one label per pane")
+    sets = [load_frames(f) for f in files]
+    n_inst = min(len(fs.frames) for fs in sets)
+    # One color scale and one zoom across every pane of the whole animation:
+    # the 99th percentile of ln(1+Z_total) (the Bang-adjacent tail is
+    # unbounded) and the largest front.
     ln_all = []
-    for row in fs.frames:
-        for oi in args.observers:
+    for k, oi in enumerate(args.observers):
+        fs = sets[k]
+        for row in fs.frames:
             f = row[oi]
             _, _, ln_dopp = apparent_positions(f, args.mode, cheb=fs.cheb)
             if len(f.hits):
                 ln_all.append(np.log(f.redshift) + ln_dopp)
     vmax = float(np.percentile(np.concatenate(ln_all), 99)) if ln_all else 1.0
+    lim = 1.05 * max(f.chi_max for fs in sets for row in fs.frames for f in row)
 
     png_dir = args.png_dir or Path(tempfile.mkdtemp(prefix="frames_"))
     png_dir.mkdir(parents=True, exist_ok=True)
-    n_panes = len(args.observers)
     for fi in range(n_inst):
         fig, axes = plt.subplots(
             1, n_panes, figsize=(5.2 * n_panes, 5.4), squeeze=False
         )
         for k, oi in enumerate(args.observers):
-            render_pane(axes[0][k], fs, fi, oi, args.mode, vmax)
+            label = args.labels[k] if args.labels else None
+            render_pane(axes[0][k], sets[k], fi, oi, args.mode, vmax, lim, label)
         fig.suptitle(
-            f"past-light-cone frame — {fs.front} front, "
-            f"{'square' if fs.cheb else 'circle'} metric",
+            f"past-light-cone frame — {sets[0].front} front, "
+            f"{'square' if sets[0].cheb else 'circle'} metric",
             fontsize=10,
         )
         fig.tight_layout()

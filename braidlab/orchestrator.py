@@ -122,8 +122,12 @@ def render_runner(
         lines += [
             "  if [ -f dumps/$name.csv ]; then",
             "    head -1 dumps/$name.csv > dumps/$name.sub.csv",
-            f"    tail -n +2 dumps/$name.csv | shuf -n {DUMP_SUBSAMPLE} "
-            ">> dumps/$name.sub.csv",
+            # Order-preserving random subsample: subpath dumps carry meaning
+            # in row order (phase-1 uniques precede phase-2 subpaths, and a
+            # unique's gid equals its own row index), so the sample is
+            # re-sorted to original line order instead of left shuffled.
+            f"    tail -n +2 dumps/$name.csv | nl -ba | shuf -n {DUMP_SUBSAMPLE} "
+            "| sort -n | cut -f2- >> dumps/$name.sub.csv",
             "    rm -f dumps/$name.csv",
             "  fi",
         ]
