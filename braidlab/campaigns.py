@@ -93,6 +93,13 @@ FULLSPEC3DEXT_T = tuple(range(80, 101, 5))  # 80, 85, ..., 100
 #: follow-up).
 FULLSPEC3DEXT2_T = (110, 120)
 FULLSPEC2DEXT_T = (125, 150)
+#: FULLSUB (2026-07-27): the full-spectrum model with second-phase subpath
+#: packing (2+1 only -- the 3+1 engine has no subpath mode). Mirrors
+#: fullspec2d_e6 exactly, so the unique phase doubles as an A/B control;
+#: the questions are whether the subpath admission decay matches the 2-term
+#: model's (subpaths never jam -- depth cutoff, not a jam) and whether the
+#: ensemble laws (w = d/(6T) dust, uniformity) survive when the packing is
+#: filled with arbitrarily many subpaths on top of the uniques.
 
 #: CONVERGE campaigns (2026-07-10): pin both headline exponents. 3+1 extends
 #: the T ladder past the dense-grid VRAM ceiling with the sparse engine (does
@@ -335,6 +342,21 @@ CAMPAIGNS: dict[str, Campaign] = {
         dump=True,
         terms_track_t=True,
         tag="fs2e6",
+    ),
+    "fullsub2d_e6": Campaign(
+        name="fullsub2d_e6",
+        dim=2,
+        t_values=FULLSPEC2D_T,
+        seeds=FULLSPEC_SEEDS,
+        accept_rate=1e-6,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        terms_track_t=True,
+        subpaths=True,
+        # Small-T subpath admission never decays below the cutoff (subpaths
+        # do not jam), so those cells need the hard phase-2 budget.
+        sub_attempts=1e10,
+        tag="fsub2e6",
     ),
     # SUBPATH: post-jam filling by paths that join existing groups (engine
     # --subpaths, 2+1 only). Mirrors pack2d_e6 exactly (same ladder, seeds,
