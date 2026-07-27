@@ -117,8 +117,8 @@ The ground-truth summary, current as of 2026-07-20. Full numbers and caveats in
 - **The full-spectrum limit (terms = T).** Pushing the dictionary to its
   Nyquist edge — every axis carries the whole frequency pool [2, T] exactly
   once, only the simplex budget split, signs, and even phases random — breaks
-  the exponent invariance: **N ~ T^2.53** (3+1; T ≤ 100 plateau, windowed
-  fits 2.52–2.55 and still crawling like the baseline did toward 2.32) and
+  the exponent invariance: **N ~ T^2.53** (3+1; plateau through T = 120,
+  windowed fits 2.52–2.55 and still crawling like the baseline did toward 2.32) and
   **T^1.58** (2+1), both steeper and denser than the 2-term law. Slices are
   exactly uniform, same as the baseline: the wrapped (minimum-image)
   estimator reads D₂ = 3.03/2.04 at the ladder tops, converging to 3/2 from

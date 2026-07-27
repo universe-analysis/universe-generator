@@ -365,13 +365,13 @@ the amplitude signs, and the even-frequency phases. Campaigns:
 
 - **Packing law.** The exponent invariance of the small-dictionary sweeps
   breaks: 3+1 fits N ~ T^2.44 whole-ladder with windowed fits crawling
-  2.52 → 2.55 (T ≥ 30 / T ≥ 75) and adjacent-rung slopes flat at
-  ~2.53 ± 0.05 over T = 75–100; 2+1 fits 1.58 (baseline 1.38, matched
-  window). Same slow crawl phenomenology as the terms = 2 ladders, around a
-  distinctly higher plateau; the jamming-limit value is open.
+  2.52 → 2.55 and adjacent-rung slopes at ~2.53–2.57 through the T = 120
+  extension (N up to 74k per packing); 2+1 fits 1.58 (baseline 1.38,
+  matched window). Same slow crawl phenomenology as the terms = 2 ladders,
+  around a distinctly higher plateau; the jamming-limit value is open.
 - **Uniformity.** Exactly uniform, same as the baseline. The genuinely
-  wrapped (minimum-image) estimator reads D₂ = 3.05 → 3.03 over T = 80–100
-  (3+1, sphere; cube 3.03 → 3.01) and 2.05 → 2.04 at T = 125/150 (2+1),
+  wrapped (minimum-image) estimator reads D₂ = 3.05 → 3.02 over T = 80–120
+  (3+1, sphere; cube → 3.01) and 2.05 → 2.04 at T = 125/150 (2+1),
   converging to the space dimension from above exactly as the baseline's
   3.01/2.02 did. An earlier "~3% deficit" (07-25) was an estimator artifact:
   `braidlab corrdim` loads clouds unwrapped, and its open-boundary edge bias
@@ -381,8 +381,11 @@ the amplitude signs, and the even-frequency phases. Campaigns:
 - **The turnaround dent (07-26, found by Kevin).** One crack in the
   slices-identical-in-time law: the per-slice coarse box-dimension dips
   ~0.3% in a V centered exactly on z = π/2 — +0.009 ± 0.0003 (paired-t = 30)
-  at 3+1 T = 100, growing with T, with a 2+1 twin (+0.012, t = 13) — while
-  the baseline has its broad maximum there. Occupancy-only: wrapped D₂ is
+  at 3+1 T = 100, with a 2+1 twin (+0.012, t = 13) — while the baseline has
+  its broad maximum there. The magnitude is non-monotone in T: it climbs
+  +0.002 → +0.010 over T = 60–110, then eases to +0.007 at T = 120 —
+  significant everywhere, and the saturation profile is a constraint any
+  mechanism must explain. Occupancy-only: wrapped D₂ is
   slice-independent (3.026 at 0.3π/π/2/0.7π) and rms stays exactly √⅓, so
   no stored result is affected. Not the b ≡ 0 (mod 4) silencing (tested,
   null). Mechanism open; leading suspect is the w = d/(6T) velocity
