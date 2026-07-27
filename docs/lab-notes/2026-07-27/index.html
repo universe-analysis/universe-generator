@@ -71,6 +71,69 @@
       </ul>
     </article>
 
+    <article class="entry" id="frame-pipeline">
+      <h2>GPU observer frames: the viewer's past-light-cone construction, baked from campaign dumps &mdash; and subpath groups appear as galaxies on the sky</h2>
+      <p class="meta">
+        New pipeline: <code>cuda/frame_bake.cu</code> (GPU baker, validated
+        hit-for-hit against an independent Python oracle) +
+        <code>braidlab/frames.py</code> (loader, aberration/Doppler remap,
+        in-universe measurements) + <code>plots/render_frames.py</code>
+        (video export) &middot; commits
+        <a href="https://github.com/universe-analysis/universe-generator/commit/7eb4fe8"><code>7eb4fe8</code></a>,
+        <a href="https://github.com/universe-analysis/universe-generator/commit/5b1ce21"><code>5b1ce21</code></a>,
+        <a href="https://github.com/universe-analysis/universe-generator/commit/2cfa78d"><code>2cfa78d</code></a>
+      </p>
+      <p>
+        Kevin's idea: move the viewer's reference-frame construction (pause,
+        rewind, expand a pulse front, image every worldline crossing with
+        its redshift) onto the GPU so frames bake from full campaign dumps
+        &mdash; data first, then analysis and video from the same files.
+        Baking 480 observation instants of a 19,413-path universe takes
+        ~7&nbsp;min on a 4090 (60 instants of a 1,087-path one: 12&nbsp;s);
+        hits are stored frame-independently so static/moving observer views
+        are a draw-time remap, exactly as in the viewer.
+      </p>
+      <figure class="plot">
+        <video controls loop muted playsinline style="max-width:100%">
+          <source src="fullsub_frame_showpiece.mp4" type="video/mp4" />
+        </video>
+        <figcaption>
+          The first product: one comoving observer, the whole cycle
+          (t&nbsp;=&nbsp;0.05&pi;&nbsp;&rarr;&nbsp;0.95&pi;, 480 frames).
+          Left: the unique jam alone (fullspec 2+1, T&nbsp;=&nbsp;100,
+          1,118 paths). Right: the same universe with its 18,295 subpaths.
+          Colors are received redshift (bright = low Z, dark = high).
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="fullsub_frame_still_turnaround.png"
+             alt="Side-by-side observer skies at the turnaround: the unique-only pane is a featureless redshift-graded field of 1,090 images; the with-subpaths pane shows 19,463 images clumped into dozens of dense knots against the uniform background." />
+        <figcaption>
+          The turnaround still. The unique-only sky is featureless &mdash;
+          exactly uniform, as measured. The subpath-filled sky <em>clumps
+          into knots</em>: each blob is one group (a unique and its
+          co-grouped subpaths sharing the hidden a&#8321; anchor of the
+          07-22 partner-correlation entry). An in-universe observer sees
+          structure &mdash; galaxies against a uniform background &mdash;
+          formed purely by the subpath admission rule.
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>Validation.</strong> The CUDA baker matches a pure-Python
+            reference port of the viewer math hit-for-hit (both front modes,
+            both observer types, multiple instants); the one subtlety was the
+            observer's chi&nbsp;&asymp;&nbsp;0 self-contact branch, which now
+            snaps from an epsilon band so host/device libm ulp differences
+            cannot flip it.</li>
+        <li><strong>Queued measurements.</strong> The same .frames files feed
+            quantitative in-universe observations: redshift-binned number
+            counts N(&lt;Z), ghost-image multiplicity, and &mdash; motivated
+            by the clumping above &mdash; angular clustering of the observed
+            sky with vs without subpaths, to put a number on the structure an
+            observer sees.</li>
+      </ul>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
