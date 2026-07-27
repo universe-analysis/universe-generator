@@ -399,7 +399,14 @@ the amplitude signs, and the even-frequency phases. Campaigns:
   **w = d/(6T) → 0**. Measured: 0.0066 vs 0.00667 (3+1, T = 75) and
   0.0034 vs 0.00333 (2+1, T = 100), identical under E ~ b and E ~ arc
   length. Mover speeds form a narrow bell (⟨v⟩ ≈ 0.13 at 3+1 T = 75) in
-  place of the arcsine pile-up at the speed cap.
+  place of the arcsine pile-up at the speed cap. Over the whole loop
+  (07-27), w(z) follows the closed form (d/3)(cos²z/3 + 1/T): the
+  comoving-offset velocity a₁cos z dominates away from the turnaround
+  (radiation-like w → d/9 at the bang/crunch — exactly ⅓ in 3+1 as
+  T → ∞) while the wiggle terms set the O(1/T) dust floor. Measured
+  w(bang) = 0.343 vs 0.342 predicted (3+1, T = 120); 0.228 vs 0.227
+  (2+1, T = 150); E ~ b tracks the closed form graphically over the
+  entire cycle, E ~ length runs ~13% hotter at the endpoints only.
 - **Engine/measurement support.** Wide binaries (`-DKMAX_WIGGLE=149`) built
   on demand; over-cap `--terms` fatal (was a silent clamp); O(nw) full-pool
   frequency shuffle and exponential-spacings simplex draw, both gated so

@@ -133,7 +133,12 @@ The ground-truth summary, current as of 2026-07-20. Full numbers and caveats in
   of state obeys the parameter-free law **w = d/(6T) → 0** (measured 0.0066
   vs 0.00667 at 3+1 T = 75; 0.0034 vs 0.00333 at 2+1 T = 100; identical
   under E ~ b and E ~ length) — the full-spectrum universe is exact dust in
-  the continuum limit. (FULLSPEC campaigns, lab notes 2026-07-25.)
+  the continuum limit. Over the whole loop, w(z) follows the closed form
+  **(d/3)(cos²z/3 + 1/T)**: radiation-like w → ⅓ (3+1) at the bang and
+  crunch, cooling on a cos² profile to the dust floor at the turnaround —
+  the standard cosmological radiation → matter sequence from pure packing
+  statistics (measured w(bang) = 0.343 vs predicted 0.342 at T = 120).
+  (FULLSPEC campaigns, lab notes 2026-07-25/26/27.)
 - **No geometric carrier.** D is not the fractal dimension of any point set
   the packing produces — box-counting sweeps through it without a plateau. It
   is a capacity exponent of the joint whole-history exclusion.
