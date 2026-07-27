@@ -44,6 +44,18 @@ def velocity2(axes: list[AxisTerms], z: float) -> np.ndarray:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--params", default=str(PARAMS / "params_T120.csv"))
+    parser.add_argument(
+        "--predict-fullspec",
+        type=int,
+        default=0,
+        metavar="T",
+        help="overlay the full-spectrum closed form w(z) = (d/3)(cos^2 z / 3 "
+        "+ 1/T) for the given T: the comoving-offset velocity a2 cos z "
+        "dominates away from the turnaround (radiation-like w -> d/9 at the "
+        "bang/crunch) while the ~T incoherent wiggle terms contribute O(1/T) "
+        "(the dust floor; exactly d/(6T) at the turnaround, where odd terms "
+        "freeze)",
+    )
     parser.add_argument("--out", type=Path, default=Path("eos_history.png"))
     args = parser.parse_args()
     import matplotlib.pyplot as plt
@@ -70,6 +82,18 @@ def main() -> None:
     fig, ax = plt.subplots(figsize=(9, 5.5))
     ax.plot(zgrid, w_b, color="tab:blue", lw=2, label="E ~ b (Quantum Wave)")
     ax.plot(zgrid, w_L, color="tab:orange", lw=2, ls="--", label="E ~ length (String)")
+    if args.predict_fullspec:
+        d = len(axes)
+        t_pred = args.predict_fullspec
+        w_pred = (d / 3.0) * (np.cos(zgrid) ** 2 / 3.0 + 1.0 / t_pred)
+        ax.plot(
+            zgrid,
+            w_pred,
+            color="tab:green",
+            lw=1.5,
+            ls=":",
+            label=rf"closed form $(d/3)(\cos^2 z/3 + 1/T)$, T={t_pred}",
+        )
     ax.axhline(1 / 3, color="tab:red", ls=":", lw=1, label="radiation w=1/3")
     ax.axhline(0, color="gray", ls=":", lw=1, label="dust w=0")
     ax.axvline(HALF_PI, color="black", ls="--", lw=1, label="turnaround z=pi/2")
