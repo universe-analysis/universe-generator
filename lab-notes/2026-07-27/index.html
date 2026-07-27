@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-07-27</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-07-27</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="fullspec-eos-history">
+      <h2>w(z) over the whole loop (Chris's question): the full-spectrum universe runs radiation &rarr; dust &rarr; radiation, with a closed form</h2>
+      <p class="meta">
+        Analysis of the stored FULLSPEC dumps (3+1 T&nbsp;=&nbsp;120, 2+1
+        T&nbsp;=&nbsp;150; no new campaign) &middot; closed-form overlay
+        <a href="https://github.com/universe-analysis/universe-generator/commit/563ed87"><code>563ed87</code></a>
+      </p>
+      <p>
+        Chris asked what w looks like across conformal time, not just at the
+        turnaround. Answer: the full-spectrum model runs the <em>standard
+        cosmological ordering</em>. The physical velocity per axis is
+        &Sigma;&nbsp;a<sub>j</sub>b<sub>j</sub>cos(b<sub>j</sub>z&nbsp;+&nbsp;f<sub>j</sub>)
+        +&nbsp;a&#8321;cos&nbsp;z: away from the turnaround the comoving-offset
+        term a&#8321;cos&nbsp;z dominates
+        (&lang;a&#8321;&sup2;&rang;&nbsp;=&nbsp;&#8531;), while the ~T wiggle
+        terms contribute an incoherent O(1/T) floor. That gives the closed
+        form
+        <strong>w(z)&nbsp;=&nbsp;(d/3)(cos&sup2;z/3&nbsp;+&nbsp;1/T)</strong>:
+        radiation-like w&nbsp;&rarr;&nbsp;d/9 at the bang and crunch
+        (&rarr;&nbsp;exactly &#8531; in 3+1 as T&nbsp;&rarr;&nbsp;&infin;),
+        cooling on a cos&sup2; profile to the w&nbsp;=&nbsp;d/(6T) dust floor
+        at the turnaround.
+      </p>
+      <figure class="plot">
+        <img src="fullspec_eos_history_3d.png"
+             alt="Equation of state w versus conformal time for the fullspec 3+1 T=120 packing: the E~b curve starts at 0.343 at the bang, sits exactly on the radiation line 1/3, follows a cosine-squared fall to nearly zero at the turnaround, and rises symmetrically to the crunch; the closed-form overlay is indistinguishable from the E~b curve; the E~length dictionary runs slightly hotter near the endpoints at 0.386." />
+        <figcaption>
+          3+1, T&nbsp;=&nbsp;120 (N&nbsp;=&nbsp;73,822): measured
+          w(bang)&nbsp;=&nbsp;0.343 vs closed form
+          &#8531;&nbsp;+&nbsp;1/T&nbsp;=&nbsp;0.342; the E&nbsp;~&nbsp;b
+          curve is graphically indistinguishable from the prediction over
+          the entire loop. The E&nbsp;~&nbsp;length dictionary agrees at the
+          turnaround and runs ~13% hotter at the endpoints.
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="fullspec_eos_history_2d.png"
+             alt="The 2+1 twin at T=150: same cosine-squared shape from 0.228 at the bang to 0.0034 at the turnaround." />
+        <figcaption>
+          2+1 twin (T&nbsp;=&nbsp;150): w(bang)&nbsp;=&nbsp;0.228 vs
+          predicted (2/3)(&#8531;&nbsp;+&nbsp;1/T)&nbsp;=&nbsp;0.227;
+          turnaround 0.0034.
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>The few-term model never did this.</strong> Its w(z) was
+            resolution-independent (w&nbsp;&asymp;&nbsp;0.07&ndash;0.19
+            depending on ensemble/dictionary) with no radiation limit. The
+            full-spectrum model instead reproduces the radiation &rarr;
+            matter cooling sequence of standard cosmology from pure packing
+            statistics, with no fitted parameters.</li>
+        <li><strong>Dictionary robustness.</strong> E&nbsp;~&nbsp;b and
+            E&nbsp;~&nbsp;arc-length agree to 4 decimals at the turnaround
+            and within ~13% at the endpoints (the arc-length weight
+            correlates mildly with endpoint speed).</li>
+      </ul>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
