@@ -354,8 +354,12 @@ CAMPAIGNS: dict[str, Campaign] = {
         terms_track_t=True,
         subpaths=True,
         # Small-T subpath admission never decays below the cutoff (subpaths
-        # do not jam), so those cells need the hard phase-2 budget.
-        sub_attempts=1e10,
+        # do not jam), so cells need a hard phase-2 budget. 1e9, not the
+        # 2-term campaigns' 1e10: the fullspec per-attempt cost is ~30x
+        # higher (O(T * terms) evaluation), so 1e9 here buys the same
+        # wall-clock depth the baseline got -- measured 2026-07-27 when the
+        # first 1e10 cell was pacing toward ~2.8 h of phase 2.
+        sub_attempts=1e9,
         tag="fsub2e6",
     ),
     # SUBPATH: post-jam filling by paths that join existing groups (engine
