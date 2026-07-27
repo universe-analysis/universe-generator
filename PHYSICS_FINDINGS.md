@@ -378,6 +378,16 @@ the amplitude signs, and the even-frequency phases. Campaigns:
   depresses D₂ identically for the baseline (pack2d reads 1.93 at its top
   under it) — resolved 07-26 with the periodic estimator, which is the
   self-consistent measurement on the torus.
+- **The turnaround dent (07-26, found by Kevin).** One crack in the
+  slices-identical-in-time law: the per-slice coarse box-dimension dips
+  ~0.3% in a V centered exactly on z = π/2 — +0.009 ± 0.0003 (paired-t = 30)
+  at 3+1 T = 100, growing with T, with a 2+1 twin (+0.012, t = 13) — while
+  the baseline has its broad maximum there. Occupancy-only: wrapped D₂ is
+  slice-independent (3.026 at 0.3π/π/2/0.7π) and rms stays exactly √⅓, so
+  no stored result is affected. Not the b ≡ 0 (mod 4) silencing (tested,
+  null). Mechanism open; leading suspect is the w = d/(6T) velocity
+  freeze-out sharpening the exclusion constraint at the near-static
+  turnaround (`analysis/analyze_turnaround_dent.py`).
 - **Kinematics: cold dust, parameter-free.** Every worldline carries even
   frequencies, so the cold/mover split and the arcsine premise dissolve.
   The turnaround velocity is a many-term incoherent sum: odd terms freeze,

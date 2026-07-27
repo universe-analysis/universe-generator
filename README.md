@@ -123,8 +123,11 @@ The ground-truth summary, current as of 2026-07-20. Full numbers and caveats in
   exactly uniform, same as the baseline: the wrapped (minimum-image)
   estimator reads D₂ = 3.03/2.04 at the ladder tops, converging to 3/2 from
   above (an earlier "~3% deficit" was the unwrapped estimator's edge bias,
-  shared identically by the baseline — lab notes 2026-07-26). The kinematics
-  change phase
+  shared identically by the baseline — lab notes 2026-07-26). One genuine
+  crack in time-uniformity: the turnaround slice's coarse box-occupancy dips
+  ~0.3% in a sharp V at z = π/2 (growing with T, 2+1 twin, absent in the
+  baseline) while D₂ and rms stay exact — an occupancy-only anomaly,
+  mechanism open. The kinematics change phase
   entirely: every worldline is mobile, the arcsine law collapses into a
   central-limit bell (⟨v⟩ ≈ 0.13 at 3+1 T = 75), and the turnaround equation
   of state obeys the parameter-free law **w = d/(6T) → 0** (measured 0.0066
