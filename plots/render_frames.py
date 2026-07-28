@@ -36,11 +36,17 @@ def render_pane(
     oi: int,
     mode: str,
     vmax: float,
+    bmax: float,
     lim: float,
     label: str | None = None,
     gids: np.ndarray | None = None,
 ) -> None:
     """Draw one (instant, observer) pane onto a matplotlib axis.
+
+    Redshifted images (ln(1+Z) > 0) run warm-to-dark on inferno; BLUESHIFTED
+    images — light emitted when the universe was larger than at reception,
+    generic in the contracting half — run on their own blue scale (deeper
+    blue = stronger blueshift) instead of being clamped to the zero color.
 
     ``gids`` switches the pane from redshift tinting to family coloring:
     every image is colored by its source's group id (a stable golden-ratio
@@ -56,17 +62,16 @@ def render_pane(
         colors = cm.hsv(hues[order])
         ax.scatter(x[order], y[order], c=colors, s=4, linewidths=0)
     else:
-        ln_total = np.log(frame.redshift) + ln_dopp
-        ax.scatter(
-            x[order],
-            y[order],
-            c=ln_total[order],
-            s=4,
-            cmap="inferno_r",
-            vmin=0.0,
-            vmax=vmax,
-            linewidths=0,
-        )
+        ln_total = (np.log(frame.redshift) + ln_dopp)[order]
+        red = ln_total >= 0
+        colors = np.empty((len(ln_total), 4))
+        colors[red] = cm.inferno_r(np.clip(ln_total[red] / vmax, 0.0, 1.0))
+        if (~red).any():
+            # 0.35 floor keeps weak blueshifts visible against the white bg.
+            colors[~red] = cm.Blues(
+                0.35 + 0.65 * np.clip(-ln_total[~red] / bmax, 0.0, 1.0)
+            )
+        ax.scatter(x[order], y[order], c=colors, s=4, linewidths=0)
     ax.plot(0, 0, "+", color="tab:green", ms=10, mew=1.5)
     r = frame.chi_max
     if fs.cheb:
@@ -162,7 +167,12 @@ def main() -> None:
             _, _, ln_dopp = apparent_positions(f, args.mode, cheb=fs.cheb)
             if len(f.hits):
                 ln_all.append(np.log(f.redshift) + ln_dopp)
-    vmax = float(np.percentile(np.concatenate(ln_all), 99)) if ln_all else 1.0
+    all_ln = np.concatenate(ln_all) if ln_all else np.zeros(1)
+    vmax = max(float(np.percentile(all_ln, 99)), 1e-6)
+    # Blueshift scale: 1st percentile of the negative side (blueshift is
+    # bounded, but keep the scale data-driven).
+    neg = all_ln[all_ln < 0]
+    bmax = max(float(-np.percentile(neg, 1)) if len(neg) else 0.0, 1e-6)
     lim = 1.05 * max(f.chi_max for fs in sets for row in fs.frames for f in row)
 
     png_dir = args.png_dir or Path(tempfile.mkdtemp(prefix="frames_"))
@@ -180,6 +190,7 @@ def main() -> None:
                 oi,
                 args.mode,
                 vmax,
+                bmax,
                 lim,
                 label,
                 pane_gids[k],
