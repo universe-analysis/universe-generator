@@ -102,6 +102,77 @@
       </figure>
     </article>
 
+    <article class="entry" id="fullsub">
+      <h2>FULLSUB complete: the full-spectrum model holds ~10&times; the subpath capacity, and the dust law survives arbitrary filling</h2>
+      <p class="meta">
+        Campaign <code>fullsub2d_e6</code> (fullspec 2+1 + subpaths,
+        T&nbsp;=&nbsp;5&ndash;100, 8 seeds, 1e-6, phase-2 budget 1e9;
+        160 runs on mother + kitt + two rented 4090s, $12.30, destroyed)
+        &middot; campaign def
+        <a href="https://github.com/universe-analysis/universe-generator/commit/60b096e"><code>60b096e</code></a>,
+        budget rescale
+        <a href="https://github.com/universe-analysis/universe-generator/commit/5992568"><code>5992568</code></a>
+        &middot; summary chart
+        <a href="https://github.com/universe-analysis/universe-generator/commit/c12ff74"><code>c12ff74</code></a>
+      </p>
+      <p>
+        Kevin's design: mirror fullspec2d_e6 with second-phase subpath
+        packing, to check (a) whether the subpath admission decay matches
+        the 2-term model's, and (b) whether the ensemble laws survive when
+        the packing is filled with "as many subpaths as we want" &mdash; the
+        worry being a scenario where uniques sit at w&nbsp;&asymp;&nbsp;0
+        but subpaths ran hot.
+      </p>
+      <figure class="plot">
+        <img src="fullsub_summary.png"
+             alt="Three panels. Left: subpaths per unique versus T on a log scale — the fullspec curve runs from tens of thousands at T=5 to 20 at T=100, roughly ten times the 2-term baseline at matched T despite a ten times smaller attempt budget. Middle: tail growth exponent gamma versus T — fullspec drifts smoothly from 1.06 to 0.93 with tight error bars while the baseline scatters between 0.75 and 0.99; neither collapses toward zero. Right: turnaround w versus T — uniques-only squares and all-paths circles both sit exactly on the d over 6T dust-law curve." />
+        <figcaption>
+          The campaign in three panels: capacity, growth decay, and the
+          dust-law stability check.
+        </figcaption>
+      </figure>
+      <ul>
+        <li><strong>Capacity: ~10&times; the baseline.</strong> At
+            T&nbsp;=&nbsp;100 the full-spectrum jam retains 20 subpaths per
+            unique (22k subpaths on 1.1k uniques) within a 1e9 budget; the
+            2-term baseline retained 2.0 within a 1e10 budget. The
+            full-spectrum exclusion leaves far more threadable volume
+            (28&ndash;84% of collision cells filled vs 13&ndash;44%).</li>
+        <li><strong>Decay: same structure, cleaner.</strong> Subpaths never
+            jam in either model &mdash; N<sub>sub</sub>&nbsp;~
+            attempts<sup>&gamma;</sup> with &gamma; near 1 and no collapse.
+            The fullspec &gamma; drifts smoothly 1.06&nbsp;&rarr;&nbsp;0.93
+            over T&nbsp;=&nbsp;5&ndash;100 with tight seed scatter (the
+            baseline's 0.75&ndash;0.99 wobbles are consistent within their
+            larger errors). Depth cutoff, not a jam &mdash; unchanged.</li>
+        <li><strong>The dust law survives filling exactly.</strong>
+            w(all paths) = w(uniques) = d/(6T) to 3&ndash;4 decimals at every
+            rung &mdash; even T&nbsp;=&nbsp;20's ~850&times; filling &mdash;
+            and the per-population split on an ordered T&nbsp;=&nbsp;150 cell
+            (2,075 uniques + 15,266 subpaths) gives w<sub>uniq</sub> =
+            0.00226, w<sub>sub</sub> = 0.00224 vs predicted 0.00222, with
+            identical mover-speed distributions. Kevin's hot-subpath scenario
+            is null: subpaths are kinematically indistinguishable from
+            uniques, so every ensemble law (dust, radiation&rarr;dust
+            history, uniformity) is stable under arbitrary subpath
+            filling.</li>
+        <li><strong>Ops notes.</strong> The 2-term campaigns' 1e10 phase-2
+            budget was rescaled to 1e9 (fullspec attempt cost ~30&times;;
+            same wall-clock depth). Small-T cells still grind: high admission
+            rates pin the round batch at its 4,096 floor (~244k GPU rounds
+            per cell) &mdash; future subpath campaigns should use the
+            fill-rate stop or scale the budget with T (queued). The store's
+            attempts column records phase-1 attempts only for subpath runs
+            (the runner grabs the first of two engine "in N attempts" lines;
+            phase-2 attempts live in the curves). Dump subsampling is now
+            order-preserving
+            (<a href="https://github.com/universe-analysis/universe-generator/commit/2cfa78d"><code>2cfa78d</code></a>)
+            so the gid = row-index unique/subpath split survives collection;
+            this campaign's dumps predate the fix and are split-safe only via
+            group membership.</li>
+      </ul>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>

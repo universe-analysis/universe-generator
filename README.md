@@ -163,7 +163,13 @@ The ground-truth summary, current as of 2026-07-20. Full numbers and caveats in
   adversary never beat it — splitting the budget across terms only dilutes
   reach, exactly as budget linearity predicts.
 - **Subpaths.** Phase-2 filling never jams; at matched convergence depth a
-  high-resolution 2+1 jam retains ~1.5 subpaths per unique worldline.
+  high-resolution 2+1 jam retains ~1.5 subpaths per unique worldline. The
+  full-spectrum jam retains ~10× more (20 subpaths per unique at T = 100 in
+  a 10× smaller budget; growth exponent γ drifting smoothly 1.06 → 0.93),
+  and every ensemble law survives the filling exactly: w(all paths) =
+  w(uniques) = d/(6T) to 3–4 decimals at every rung — subpaths are
+  kinematically indistinguishable from uniques (FULLSUB, lab notes
+  2026-07-28).
 - **Partner correlations (2+1).** Co-grouped strands share their comoving
   anchor a₁ at r = +0.95 (wrapped anchor gap 26× tighter than reshuffled
   pairs) while emerging a mean 0.33 apart; never-touching siblings correlate

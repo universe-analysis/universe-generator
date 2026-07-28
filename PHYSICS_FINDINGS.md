@@ -407,6 +407,18 @@ the amplitude signs, and the even-frequency phases. Campaigns:
   w(bang) = 0.343 vs 0.342 predicted (3+1, T = 120); 0.228 vs 0.227
   (2+1, T = 150); E ~ b tracks the closed form graphically over the
   entire cycle, E ~ length runs ~13% hotter at the endpoints only.
+- **Subpaths (FULLSUB, 07-28).** The full-spectrum jam holds ~10× the
+  2-term baseline's subpath capacity (Nsub/N = 20 at T = 100 within a 1e9
+  budget vs 2.0 within 1e10; 28–84% of collision cells filled vs 13–44%),
+  and subpaths still never jam — Nsub ~ attempts^γ with γ drifting smoothly
+  1.06 → 0.93 over T = 5–100 (tight seed scatter; the baseline's noisier
+  0.75–0.99 is consistent). Every ensemble law survives arbitrary filling:
+  w(all paths) = w(uniques) = d/(6T) to 3–4 decimals at every rung, and an
+  ordered T = 150 cell splits to w_uniq = 0.00226 / w_sub = 0.00224 vs
+  0.00222 predicted — subpaths are kinematically indistinguishable from
+  uniques. Ops: phase-2 budgets must scale with the per-attempt cost
+  (1e9 here ≈ the baseline's 1e10 wall-clock depth), and small-T cells
+  grind at the 4096 batch floor — use the fill-rate stop next time.
 - **Engine/measurement support.** Wide binaries (`-DKMAX_WIGGLE=149`) built
   on demand; over-cap `--terms` fatal (was a silent clamp); O(nw) full-pool
   frequency shuffle and exponential-spacings simplex draw, both gated so
