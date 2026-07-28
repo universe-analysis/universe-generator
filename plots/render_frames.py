@@ -27,6 +27,21 @@ from braidlab.frames import FrameSet, apparent_positions, load_frames
 
 #: Golden-ratio conjugate: consecutive gids land far apart on the hue wheel.
 _HUE_STEP = 0.61803398875
+#: The viewer's redshift normalization (uRedNorm default) and shift targets:
+#: unshifted light is WHITE, redshift mixes toward deep red, blueshift toward
+#: deep blue, with a 0.6-power boost so small shifts still color strongly.
+RED_NORM = 1.2
+_RED_TARGET = np.array([1.0, 0.05, 0.02])
+_BLUE_TARGET = np.array([0.06, 0.32, 1.0])
+
+
+def shift_colors(ln_total: np.ndarray, red_norm: float = RED_NORM) -> np.ndarray:
+    """The viewer's redshiftRGB law, vectorized: (N,) ln(1+Z) -> (N, 3) RGB."""
+    t = np.clip(ln_total / red_norm, -1.0, 1.0)
+    t = np.sign(t) * np.abs(t) ** 0.6
+    a = np.abs(t)[:, None]
+    target = np.where(t[:, None] >= 0, _RED_TARGET, _BLUE_TARGET)
+    return 1.0 + (target - 1.0) * a
 
 
 def render_pane(
@@ -35,18 +50,18 @@ def render_pane(
     fi: int,
     oi: int,
     mode: str,
-    vmax: float,
-    bmax: float,
     lim: float,
     label: str | None = None,
     gids: np.ndarray | None = None,
+    red_norm: float = RED_NORM,
 ) -> None:
     """Draw one (instant, observer) pane onto a matplotlib axis.
 
-    Redshifted images (ln(1+Z) > 0) run warm-to-dark on inferno; BLUESHIFTED
-    images — light emitted when the universe was larger than at reception,
-    generic in the contracting half — run on their own blue scale (deeper
-    blue = stronger blueshift) instead of being clamped to the zero color.
+    Redshift coloring matches the visualizer exactly (its redshiftRGB /
+    ring-shader law): unshifted light is white, redshift runs white -> deep
+    red, blueshift white -> deep blue, on a dark background. The Doppler
+    log is SUBTRACTED from the cosmological log, as in the viewer (an
+    observer moving toward the source receives blueshifted light).
 
     ``gids`` switches the pane from redshift tinting to family coloring:
     every image is colored by its source's group id (a stable golden-ratio
@@ -62,23 +77,17 @@ def render_pane(
         colors = cm.hsv(hues[order])
         ax.scatter(x[order], y[order], c=colors, s=4, linewidths=0)
     else:
-        ln_total = (np.log(frame.redshift) + ln_dopp)[order]
-        red = ln_total >= 0
-        colors = np.empty((len(ln_total), 4))
-        colors[red] = cm.inferno_r(np.clip(ln_total[red] / vmax, 0.0, 1.0))
-        if (~red).any():
-            # 0.35 floor keeps weak blueshifts visible against the white bg.
-            colors[~red] = cm.Blues(
-                0.35 + 0.65 * np.clip(-ln_total[~red] / bmax, 0.0, 1.0)
-            )
-        ax.scatter(x[order], y[order], c=colors, s=4, linewidths=0)
-    ax.plot(0, 0, "+", color="tab:green", ms=10, mew=1.5)
+        ln_total = (np.log(frame.redshift) - ln_dopp)[order]
+        ax.scatter(
+            x[order], y[order], c=shift_colors(ln_total, red_norm), s=4, linewidths=0
+        )
+    ax.plot(0, 0, "+", color="#7CFC00", ms=10, mew=1.5)
     r = frame.chi_max
     if fs.cheb:
-        ax.plot([-r, r, r, -r, -r], [-r, -r, r, r, -r], "-", color="gray", lw=0.7)
+        ax.plot([-r, r, r, -r, -r], [-r, -r, r, r, -r], "-", color="#555", lw=0.7)
     else:
         th = np.linspace(0, 2 * np.pi, 120)
-        ax.plot(r * np.cos(th), r * np.sin(th), "-", color="gray", lw=0.7)
+        ax.plot(r * np.cos(th), r * np.sin(th), "-", color="#555", lw=0.7)
     typ, path_idx, _, _ = fs.observers[oi]
     who = f"path #{path_idx}" if typ == 0 else "comoving point"
     prefix = f"{label} — " if label else ""
@@ -86,12 +95,16 @@ def render_pane(
         f"{prefix}{who} ({mode})  t = {frame.z_obs / np.pi:.3f}π  "
         f"{len(frame.hits):,} images",
         fontsize=9,
+        color="#ccc",
     )
+    ax.set_facecolor("black")
     ax.set_xlim(-lim, lim)
     ax.set_ylim(-lim, lim)
     ax.set_aspect("equal")
     ax.set_xticks([])
     ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_color("#444")
 
 
 def main() -> None:
@@ -125,6 +138,12 @@ def main() -> None:
         "(subpath groups share a color); 'none' keeps the redshift tint",
     )
     parser.add_argument("--mode", choices=("static", "moving"), default="static")
+    parser.add_argument(
+        "--red-norm",
+        type=float,
+        default=RED_NORM,
+        help="redshift color normalization (the viewer's uRedNorm; default 1.2)",
+    )
     parser.add_argument("--fps", type=int, default=12)
     parser.add_argument("--dpi", type=int, default=130)
     parser.add_argument("--out", type=Path, required=True, help=".mp4 or .webm")
@@ -156,23 +175,8 @@ def main() -> None:
     ] or [None] * n_panes
     sets = [load_frames(f) for f in files]
     n_inst = min(len(fs.frames) for fs in sets)
-    # One color scale and one zoom across every pane of the whole animation:
-    # the 99th percentile of ln(1+Z_total) (the Bang-adjacent tail is
-    # unbounded) and the largest front.
-    ln_all = []
-    for k, oi in enumerate(args.observers):
-        fs = sets[k]
-        for row in fs.frames:
-            f = row[oi]
-            _, _, ln_dopp = apparent_positions(f, args.mode, cheb=fs.cheb)
-            if len(f.hits):
-                ln_all.append(np.log(f.redshift) + ln_dopp)
-    all_ln = np.concatenate(ln_all) if ln_all else np.zeros(1)
-    vmax = max(float(np.percentile(all_ln, 99)), 1e-6)
-    # Blueshift scale: 1st percentile of the negative side (blueshift is
-    # bounded, but keep the scale data-driven).
-    neg = all_ln[all_ln < 0]
-    bmax = max(float(-np.percentile(neg, 1)) if len(neg) else 0.0, 1e-6)
+    # One zoom across every pane of the whole animation (color needs no shared
+    # scale: the viewer's fixed red-norm law applies per hit).
     lim = 1.05 * max(f.chi_max for fs in sets for row in fs.frames for f in row)
 
     png_dir = args.png_dir or Path(tempfile.mkdtemp(prefix="frames_"))
@@ -189,16 +193,17 @@ def main() -> None:
                 fi,
                 oi,
                 args.mode,
-                vmax,
-                bmax,
                 lim,
                 label,
                 pane_gids[k],
+                args.red_norm,
             )
+        fig.patch.set_facecolor("black")
         fig.suptitle(
             f"past-light-cone frame — {sets[0].front} front, "
             f"{'square' if sets[0].cheb else 'circle'} metric",
             fontsize=10,
+            color="#ccc",
         )
         fig.tight_layout()
         fig.savefig(png_dir / f"frame_{fi:05d}.png", dpi=args.dpi)
