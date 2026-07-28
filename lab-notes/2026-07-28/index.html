@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-07-28</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-07-28</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="video-errata">
+      <h2>Errata: the 07-27 frame videos were re-rendered &mdash; three fixes</h2>
+      <p class="meta">
+        Renderer fixes
+        <a href="https://github.com/universe-analysis/universe-generator/commit/7b92b86"><code>7b92b86</code></a>,
+        <a href="https://github.com/universe-analysis/universe-generator/commit/dd64c7b"><code>dd64c7b</code></a>
+        &middot; slo-mo re-bake in
+        <a href="https://github.com/universe-analysis/universe-generator/commit/49b8571"><code>49b8571</code></a>
+        &middot; every video on the <a href="../2026-07-27/">07-27 page</a>
+        is the corrected version; the originals are superseded
+      </p>
+      <ul>
+        <li><strong>Blueshift was clamped out</strong> (found by Kevin). The
+            first renders clipped the color scale at ln(1+Z)&nbsp;=&nbsp;0,
+            painting every blueshifted image with the zero-shift color.
+            Blueshift is generic in the contracting half (light emitted when
+            the universe was larger arrives with 1+Z&nbsp;&lt;&nbsp;1), so
+            post-turnaround skies were qualitatively wrong.</li>
+        <li><strong>Palette now matches the visualizer exactly</strong>
+            (Kevin). The renderer ports the viewer's redshiftRGB law verbatim
+            &mdash; black sky, white&nbsp;=&nbsp;unshifted, white&nbsp;&rarr;
+            deep red for redshift, white&nbsp;&rarr;&nbsp;deep blue for
+            blueshift, uRedNorm&nbsp;=&nbsp;1.2 with the 0.6-power boost.
+            The port also surfaced a latent moving-mode bug: the Doppler log
+            must be <em>subtracted</em> from the cosmological log (an
+            observer moving toward a source sees blueshift); the previous
+            sign inverted it. Static-observer videos were unaffected.</li>
+        <li><strong>The Bang slo-mo opened a quarter short</strong> (found by
+            Chris, to the digit: he estimated the opening reach at ~0.9 vs
+            the expected &asymp;1.26). The 0.01&pi; rewind floor &mdash; the
+            viewer's stop-short-of-the-Bang convention &mdash; truncates the
+            budget reach hardest exactly in the slo-mo window: measured
+            &chi;<sub>max</sub>(first frame)&nbsp;=&nbsp;0.950 at that floor
+            vs 1.246 with the floor at the 2&times;10&#8315;&sup3;&nbsp;rad
+            numerical clamp. Re-baked: the sky now opens fully tiled at the
+            full reach, its horizon light arriving from ~0.0006&pi; after
+            the Bang at redshifts in the hundreds.</li>
+      </ul>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
