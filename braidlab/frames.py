@@ -202,6 +202,22 @@ def ghost_multiplicity(frame: ObserverFrame) -> np.ndarray:
     return np.bincount(frame.hits["src"])
 
 
+def load_gids(dump_path: str | Path) -> np.ndarray:
+    """Group ids per dump row (subpath dumps carry a trailing gid column).
+
+    Phase-1 uniques each seed their own group; phase-2 subpaths carry the
+    gid of the group they joined — so equal gid = same family, regardless
+    of row order (older collected dumps are shuffled).
+    """
+    import csv
+
+    with open(dump_path) as f:
+        reader = csv.DictReader(f)
+        if reader.fieldnames is None or "gid" not in reader.fieldnames:
+            raise ValueError(f"{dump_path}: no gid column (not a subpath dump)")
+        return np.array([int(row["gid"]) for row in reader], dtype=np.int64)
+
+
 # ---------------------------------------------------------------------------
 # Pure-Python reference baker (the validation oracle for frame_bake.cu).
 # ---------------------------------------------------------------------------

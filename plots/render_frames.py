@@ -25,6 +25,9 @@ import numpy as np
 
 from braidlab.frames import FrameSet, apparent_positions, load_frames
 
+#: Golden-ratio conjugate: consecutive gids land far apart on the hue wheel.
+_HUE_STEP = 0.61803398875
+
 
 def render_pane(
     ax,
@@ -35,22 +38,35 @@ def render_pane(
     vmax: float,
     lim: float,
     label: str | None = None,
+    gids: np.ndarray | None = None,
 ) -> None:
-    """Draw one (instant, observer) pane onto a matplotlib axis."""
+    """Draw one (instant, observer) pane onto a matplotlib axis.
+
+    ``gids`` switches the pane from redshift tinting to family coloring:
+    every image is colored by its source's group id (a stable golden-ratio
+    hue per gid), so a subpath group reads as one same-colored clump.
+    """
+    from matplotlib import cm
+
     frame = fs.frames[fi][oi]
     x, y, ln_dopp = apparent_positions(frame, mode, cheb=fs.cheb)
-    ln_total = np.log(frame.redshift) + ln_dopp
     order = np.argsort(frame.hits["chi"])[::-1]  # nearest images drawn last
-    ax.scatter(
-        x[order],
-        y[order],
-        c=ln_total[order],
-        s=4,
-        cmap="inferno_r",
-        vmin=0.0,
-        vmax=vmax,
-        linewidths=0,
-    )
+    if gids is not None:
+        hues = (gids[frame.hits["src"]] * _HUE_STEP) % 1.0
+        colors = cm.hsv(hues[order])
+        ax.scatter(x[order], y[order], c=colors, s=4, linewidths=0)
+    else:
+        ln_total = np.log(frame.redshift) + ln_dopp
+        ax.scatter(
+            x[order],
+            y[order],
+            c=ln_total[order],
+            s=4,
+            cmap="inferno_r",
+            vmin=0.0,
+            vmax=vmax,
+            linewidths=0,
+        )
     ax.plot(0, 0, "+", color="tab:green", ms=10, mew=1.5)
     r = frame.chi_max
     if fs.cheb:
@@ -96,6 +112,13 @@ def main() -> None:
         default=None,
         help="optional pane title prefixes (one per pane)",
     )
+    parser.add_argument(
+        "--gid-dumps",
+        nargs="+",
+        default=None,
+        help="per-pane dump CSV with a gid column for family coloring "
+        "(subpath groups share a color); 'none' keeps the redshift tint",
+    )
     parser.add_argument("--mode", choices=("static", "moving"), default="static")
     parser.add_argument("--fps", type=int, default=12)
     parser.add_argument("--dpi", type=int, default=130)
@@ -119,6 +142,13 @@ def main() -> None:
         raise SystemExit("--frames must be one file, or one per --observers entry")
     if args.labels and len(args.labels) != n_panes:
         raise SystemExit("--labels must give one label per pane")
+    if args.gid_dumps and len(args.gid_dumps) != n_panes:
+        raise SystemExit("--gid-dumps must give one entry per pane ('none' to skip)")
+    from braidlab.frames import load_gids
+
+    pane_gids = [
+        load_gids(g) if g != "none" else None for g in (args.gid_dumps or [])
+    ] or [None] * n_panes
     sets = [load_frames(f) for f in files]
     n_inst = min(len(fs.frames) for fs in sets)
     # One color scale and one zoom across every pane of the whole animation:
@@ -143,7 +173,17 @@ def main() -> None:
         )
         for k, oi in enumerate(args.observers):
             label = args.labels[k] if args.labels else None
-            render_pane(axes[0][k], sets[k], fi, oi, args.mode, vmax, lim, label)
+            render_pane(
+                axes[0][k],
+                sets[k],
+                fi,
+                oi,
+                args.mode,
+                vmax,
+                lim,
+                label,
+                pane_gids[k],
+            )
         fig.suptitle(
             f"past-light-cone frame — {sets[0].front} front, "
             f"{'square' if sets[0].cheb else 'circle'} metric",
