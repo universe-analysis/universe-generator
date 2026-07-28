@@ -53,6 +53,55 @@
       </ul>
     </article>
 
+    <article class="entry" id="eos-clarified">
+      <h2>The w(z) chart, clarified: which curves are data &mdash; and is the shape timestep-invariant?</h2>
+      <p class="meta">
+        Chart relabeling + a multi-T view of the stored FULLSPEC dumps (no
+        new campaign) &middot;
+        <a href="https://github.com/universe-analysis/universe-generator/commit/bb4fccf"><code>bb4fccf</code></a>
+      </p>
+      <p>
+        Chris read the 07-27 w(z) chart's blue/orange curves as theory
+        predictions ("quantum wave" vs "string") and the green dotted line
+        as a fit to data &mdash; exactly backwards, which means the labels
+        failed. For the record: <strong>blue and orange are both MEASURED
+        data</strong> &mdash; the same measured packing's w(z), weighted
+        under two different energy dictionaries (E&nbsp;&prop;&nbsp;b and
+        E&nbsp;&prop;&nbsp;arc length; their agreement is the
+        dictionary-robustness check) &mdash; and the <strong>green dotted
+        line is the closed-form approximation</strong>
+        (d/3)(cos&sup2;z/3&nbsp;+&nbsp;1/T). The chart now says MEASURED
+        in the legend, and a data-only version exists.
+      </p>
+      <figure class="plot">
+        <img src="fullspec_eos_measured_3d.png"
+             alt="The relabeled w(z) chart: two measured curves labeled MEASURED under each energy dictionary, plus a dotted closed-form approximation, with radiation, dust, and turnaround reference lines." />
+        <figcaption>
+          Relabeled: MEASURED w(z) under both dictionaries (3+1,
+          T&nbsp;=&nbsp;120), closed-form approximation dotted.
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="fullspec_eos_data_only_3d.png"
+             alt="The data-only version: just the two measured curves and the radiation, dust, turnaround reference lines." />
+        <figcaption>Data only (Chris's request): no approximation overlay.</figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="fullspec_eos_multiT_3d.png"
+             alt="Measured w(z) for T = 60, 100, and 120 on one chart: the three curves nearly coincide over the whole cycle, with the T=60 curve sitting slightly above the others, most visibly at the turnaround." />
+        <figcaption>
+          Is it timestep-invariant? Nearly: MEASURED w(z) for
+          T&nbsp;=&nbsp;60/100/120 collapse onto one shape. The only
+          T-dependence is the additive 1/T dust floor &mdash; visible as the
+          T&nbsp;=&nbsp;60 curve riding slightly high, most clearly at the
+          turnaround where w<sub>min</sub>&nbsp;=&nbsp;d/(6T). As
+          T&nbsp;&rarr;&nbsp;&infin; the curve converges to
+          (d/9)cos&sup2;z: radiation &#8531; at the endpoints, exact dust at
+          the turnaround.
+        </figcaption>
+      </figure>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
