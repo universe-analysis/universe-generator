@@ -83,6 +83,13 @@ def main() -> None:
         "timestep-invariance view)",
     )
     parser.add_argument(
+        "--labels",
+        nargs="+",
+        default=None,
+        help="curve label per dump (multi-dump mode; default 'MEASURED w(z), "
+        "T=<n>') -- e.g. to compare uniques-only vs all-paths dumps at one T",
+    )
+    parser.add_argument(
         "--predict-fullspec",
         action="store_true",
         help="overlay the full-spectrum closed form w(z) = (d/3)(cos^2 z / 3 "
@@ -97,6 +104,8 @@ def main() -> None:
 
     zgrid = np.linspace(0.01, np.pi - 0.01, 240)
     multi = len(args.params) > 1
+    if args.labels and len(args.labels) != len(args.params):
+        raise SystemExit("--labels must give one label per --params entry")
     fig, ax = plt.subplots(figsize=(9, 5.5))
     d = 0
     w_b = w_L = None
@@ -110,7 +119,15 @@ def main() -> None:
         w_b, w_L = measured_wz(axes, zgrid, string_dict=not multi)
         color = f"C{i}"
         if multi:
-            ax.plot(zgrid, w_b, color=color, lw=2, label=f"MEASURED w(z), T={t}")
+            label = args.labels[i] if args.labels else f"MEASURED w(z), T={t}"
+            ax.plot(
+                zgrid,
+                w_b,
+                color=color,
+                lw=2,
+                ls="--" if args.labels and i % 2 else "-",
+                label=label,
+            )
         else:
             ax.plot(
                 zgrid,
