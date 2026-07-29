@@ -50,6 +50,11 @@ Note that this discrete method does not explicitly force that two paths ever per
 
 Here the Causal reach (blue line) is shown in comoving coordinates. The maximum distance between any two points is 1, so the universe begins with complete causal connection and no horizon problem. Time can be measured from 0 to pi, or from pi to zero. This graph is the same except mirrored in the case of pi to zero.
 
+### Frame of reference (static observer)
+![Frame of reference plot with redshift](https://raw.githubusercontent.com/universe-analysis/universe-generator/6251e7056211e257e0ecf3ebe03d45e9a1c6fda5/docs/figures/framewithredshift.JPG)
+
+Frame of reference for an observer is built by emitting a pulse back to time zero, covering the maximum causal reach at the time it was emitted. Color is white to red indicating redshift.
+
 ### Equation of State
 ![Equation of state](https://universe-analysis.github.io/universe-generator/lab-notes/2026-07-28/fullspec_eos_multiT_3d.png)
 
