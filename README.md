@@ -7,7 +7,7 @@ A worldline in this model is represented per-axis, using parametric form, as exp
 ### Closure
 All worldlines must be closed conformal-time loops between time(t) `t ∈ (0, π)`
 
-### Free sin1
+### Free sin1 amplitude (-1,1)
 All worldlines have a random budget for their sin1 component, different from the other frequencies. Every sin1 component has an independent random amplitude from -1 to 1, independent of the rapidity constraints on the other frequency terms below. The sin1 component is the 'comoving worldline' frequency of this model, and thus freeing sin1 ensures an even distribution across space.
 
 ### Seam wrap
@@ -53,20 +53,13 @@ Here the Causal reach (blue line) is shown in comoving coordinates. The maximum 
 ### Equation of State
 ![Equation of state](https://universe-analysis.github.io/universe-generator/lab-notes/2026-07-28/fullspec_eos_multiT_3d.png)
 
-
-### 2+1 Timelapse, with red/blue shift and subpath coloring shown.
-[![2D timelapse](https://universe-analysis.github.io/universe-generator/lab-notes/2026-07-27/fullspec_eos_history_2d.png)](https://universe-analysis.github.io/universe-generator/lab-notes/2026-07-27/fullsub_frame_family.mp4)
-
 The w value of universes generated, in 3 dimensions, begins at ~.34 and has a turnaround approaching ~0.
 
 ### Minkowski spacetime - FLRW spacetime
 This model describes generic n+1 dimension universes, with n spatial dimensions. The space is flat but has a torus submanifold embedded. This is known as a generalized Minkowski spacetime. However, this model embeds expansion and collapse over time, making it align with a flat FLRW metric.
 
 ### Quantum Behavior
-A single unique group consists of a potentially infinite number of subpaths - paths which only intersect each other while avoiding intersections with every other path from a different unique group across all of time. This allows for a single unique group [particle] to be represented by many different positions and velocities at once. A goal of this project is to study these subpath behaviors to determine if they follow expected Bell inequalities / other tests for quantum behavior.
-
-### Big bang / crunch / inflation / expansion
-This model naturally embeds an expansion and collapse cycle. The measured equation of state at maximum expansion (t = π/2) is matter-like — w = 0.145 (Chebyshev metric), cooled 20–24% below the proposal ensemble by jamming's phase selection — so the turnaround region is cold and matter-dominated. The full w(z) history away from the turnaround (including the rapid-cooling inflation-like era seen in a predecessor model, not yet re-measured on the current torus model) is an open measurement. It is of note that this model is not entirely symmetric across pi/2 due to the inclusion of phase components for even frequency components.
+A single unique group consists of a potentially infinite number of subpaths - paths which only intersect each other while avoiding intersections with every other path from a different unique group across all of time. This allows for a single unique group (particle) to be represented by many different positions and velocities at once. Subpaths have been measured to start far apart from each other at the big bang and get closest to each other on average near the turnaround point. We believe these carry causal implications.
 
 ### Speculation
 The following below is loose speculation.
@@ -74,8 +67,7 @@ The following below is loose speculation.
 The ability to form a stable knot of n unique paths depends on the dimension, therefore a goal of this project is to analyze the unique path knots and attempt to relate them to standard model particles. As far as we understand, the most unique paths that can be knotted in one dimension is one, in two dimensions is four, and in three dimensions is 12, in four is 32 and five is 80. However, the exploration into this has only just begun and these are all tentative findings.
 *Status (2026-07-18, B₃ braid census in 2+1): 1+1 and 3+1 possibly are 2 and 24 respectively, unverified still.*
 #### Gravity
-This model follows a string theory approach, gravity arises from closed strings propagating through the larger ambient space. 
-
+Unsure if this would relate most to entropic gravity or something else.
 #### Strong force
 This may relate to knots, subpaths, and the ability for knots to essentially tangle with each other, as well as knots of knots tangling.
 #### Weak force
@@ -84,54 +76,15 @@ This model allows for paths to enter, and leave, knot groups. The weak force wou
 This model would relate electromagnetic interaction to the general emergent dynamics, however speculation is more loose here.
 
 #### Super-Speculation:
-If this was a model of our universe, we could expect it to imply that the observable universe is the entire universe. This model allows for a description of the fastest paths between two remote points, and the furthest comoving distance a path can travel is dependent on the state of time. At t=0, ~1.2596 comoving units can be travelled. Above 1, allows for wrapping in the torus, which means that looking in one direction, not only can you see the furthest point in that direction, but you can see objects beyond the seam, this means you can see an object near the seams in two different moments in time, on opposite sides of the universe. At the half point in time, π/2, the maximum comoving distance travelled is exactly the square root of two (~1.414) At the end of time, t=π, the maximum comoving distance travelled approaches two. Because this number emerges above 1, the entire universe is always connected. We can pause time and emit light moving backwards in time, rewinding the universe as the light approaches t=0 in time, and use that to build a frame of reference. We can also take into account peculiar speeds to account for doppler / abberation. This is still being tested.
-
-*Status:* the reach numbers above are now closed forms (2026-07-16 wiggle-budget analysis; see Measured results — no horizon at any epoch), the rewind frame map is implemented as the wrapped viewer's default front (v27+), and multi-term budget splits were checked against the single-term envelope (2026-07-18): they never beat it, so the single-term reach *is* the causal front. 
-
-This will be cleaned up a bit later but what Claude means is that the exact causal reach is a wiggle-front, graph to be included when I rewrite this section. It is worth noting the absolute 'speed of light' is equal to 1, well, per-axis. The furthest comoving distance that can be connected as time progresses is a slightly different measure, although heavily related.
+If this was a model of our universe, we could expect it to imply that the observable universe is the entire universe. This model allows for a description of the fastest paths between two remote points, and the furthest comoving distance a path can travel is dependent on the state of time. At t=0, ~1.2596 comoving units can be travelled. Above 1, allows for wrapping in the torus, which means that looking in one direction, not only can you see the furthest point in that direction, but you can see objects beyond the seam, this means you can see an object near the seams in two different moments in time, on opposite sides of the universe. At the half point in time, π/2, the maximum comoving distance travelled is exactly the square root of two (~1.414) At the end of time, t=π, the maximum comoving distance travelled approaches two. Because this number emerges above 1, the entire universe is always connected. We can pause time and emit light moving backwards in time, rewinding the universe as the light approaches t=0 in time, and use that to build a frame of reference.
 
 ## Measured results
 
-The ground-truth summary, current as of 2026-07-20. Full numbers and caveats in
+Current summary, current as of 2026-07-20. Full numbers and caveats in
 [`PHYSICS_FINDINGS.md`](PHYSICS_FINDINGS.md); evidence trail in
 [`docs/lab-notes/`](docs/lab-notes/).
 
-- **How much fits.** The jammed unique count is a clean power law `N ~ T^D`.
-  In 3+1 the state exponent is **D = 2.32**, converged and cutoff-invariant
-  over T = 160–520; the process log-growth-rate exponent lands on 7/3 from
-  above, sitting ~0.015 above the state value, and this state-vs-rate gap is
-  real and unexplained (the leading open question). In 2+1 the jamming-limit
-  extrapolation is **D∞ = 1.434 ± 0.021** (finite-cutoff ladders approach it
-  from below). D is invariant under cutoff depth and dictionary size (2–10
-  terms), and D/d differs between dimensions (0.774 vs 0.717) — not
-  dimension-universal.
-- **No geometric carrier.** D is not the fractal dimension of any point set
-  the packing produces — box-counting sweeps through it without a plateau. It
-  is a capacity exponent of the joint whole-history exclusion.
-- **Exact homogeneity.** The jam is exactly uniform in space (wrapped
-  correlation dimension 3.01 / 2.02 at the ladder tops) and in time (rms
-  comoving spread √⅓, flat over the entire loop). Jamming thins the population
-  by orders of magnitude while preserving uniformity exactly.
-- **Parity selection.** Jamming selects against even frequencies (~0.8× per
-  even axis); the packed population splits 23% cold (all-odd, at rest at the
-  turnaround) / 77% movers.
-- **Arcsine speed law.** Per-axis mover speeds at the turnaround follow the
-  arcsine law with its relativistic pile-up at the per-axis speed cap; jamming
-  additionally selects on phase, tilting ⟨v⟩ from 0.637 (proposal) to 0.603.
-- **Equation of state.** Turnaround w = 0.145 (Chebyshev) / 0.193 (Euclidean),
-  cooled 20–24% below the proposal ensemble — matter-like at maximum
-  expansion.
-- **Causal structure.** Reach is set by the wiggle budget, not a null cone:
-  ≈1.26 near the Bang → √2 at the turnaround → 2 at the Crunch, all closed
-  forms. No horizon at any epoch. The phased single-term envelope is the true
-  front: 200k-config random sweeps (k = 2–4 terms) plus a Nelder-Mead
-  adversary never beat it — splitting the budget across terms only dilutes
-  reach, exactly as budget linearity predicts.
-- **Subpaths.** Phase-2 filling never jams; but it does decay to a constant acceptance rate. At matched convergence depth a
-  high-resolution 2+1 jam retains ~1.5 subpaths per unique worldline.
-- **Braiding (2+1).** Touching means braiding — unique groups are genuinely,
-  chirality-balanced braided, but hot: no selection for minimal
-  (Bilson-Thompson) braid classes.
+In rewrite.
 
 ## Live site
 
