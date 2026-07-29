@@ -20,6 +20,9 @@ The bounds of our universe in any axis direction is denoted by `|sint|`, therefo
 ### Rapidity on rest of frequency terms
 The rest of a path's axis frequency terms must obey a shared rapidity budget. The sum of the absolute value of every amplitude * frequency term must add to exactly 1 - this ensures a constant speed of light, satisfying relativity. It is of note that as many frequency terms up to a frequency limit as high as one wishes, however a maximum must be chosen for discrete analysis. In each path, per axis, every frequency term must be unique, and an integer above zero.
 
+### Every integer frequency used
+In discrete simulation, we must pick a cap, and analyze as the cap approaches infinity, but every possible integer frequency up to that must be included in every axis of every path. Fractional frequencies cannot be used due to closure requirement. This integer frequency requirement builds the semicircle causal reach structure.
+
 ### Phase rules
 As mentioned earlier, due to the closure requirement, odd frequencies can only be inverted, which is already satisfied due to amplitude being absolute value and thus being able to be negative. That means only even frequencies need an explicit phase component, and to ensure closure, a constant term needs to be subtracted. This allows a full range of possible paths, and phase is critical to many behaviors.
 
