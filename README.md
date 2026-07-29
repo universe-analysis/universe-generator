@@ -1,3 +1,7 @@
+<p align="center">
+    <img src="https://raw.githubusercontent.com/universe-analysis/universe-generator/da2259700386fe0c80774a02093e447eb85fdff0/docs/figures/banner12342424.webp" width="600px">
+</p>
+
 # Universe Generator
 This project is centered around discrete generation and analysis of a model universe. Our model universe has n spatial dimensions, and one dimension for time, it is flat and contains a torus submanifold, therefore describing a slightly modified generalized Minkowski spacetime. Worldlines are defined within this spacetime, and a discrete analysis with a Random-Sequential-Adsorption (RSA) technique is used to pack the universe according to rules of intersection and non-intersection. This model therefore describes n spatial dimensions on an expanding and collapsing n-torus, allowing a cat-map automorphism. The worldlines are 1D paths through time, raising many similarities to string theory as discussed later.
 
@@ -46,17 +50,23 @@ Note that this discrete method does not explicitly force that two paths ever per
 ## Physics
 
 ### Causal Structure
-![Causal structure graph](https://github.com/universe-analysis/universe-generator/blob/5f7791651a646cbd0e2c397d9751c6d37be09803/docs/figures/Causalreach1.JPG)
+<p align="left">
+    <img src="https://github.com/universe-analysis/universe-generator/blob/5f7791651a646cbd0e2c397d9751c6d37be09803/docs/figures/Causalreach1.JPG" width="600px">
+</p>
 
 Here the Causal reach (blue line) is shown in comoving coordinates. The maximum distance between any two points is 1, so the universe begins with complete causal connection and no horizon problem. Time can be measured from 0 to pi, or from pi to zero. This graph is the same except mirrored in the case of pi to zero.
 
 ### Frame of reference (static observer)
-![Frame of reference plot with redshift](https://raw.githubusercontent.com/universe-analysis/universe-generator/6251e7056211e257e0ecf3ebe03d45e9a1c6fda5/docs/figures/framewithredshift.JPG)
+<p align="left">
+    <img src="https://raw.githubusercontent.com/universe-analysis/universe-generator/6251e7056211e257e0ecf3ebe03d45e9a1c6fda5/docs/figures/framewithredshift.JPG" width="600px">
+</p>
 
 Frame of reference for an observer is built by emitting a pulse back to time zero, covering the maximum causal reach at the time it was emitted. Color is white to red indicating redshift.
 
 ### Equation of State
-![Equation of state](https://universe-analysis.github.io/universe-generator/lab-notes/2026-07-28/fullspec_eos_multiT_3d.png)
+<p align="left">
+    <img src="https://universe-analysis.github.io/universe-generator/lab-notes/2026-07-28/fullspec_eos_multiT_3d.png" width="600px">
+</p>
 
 The w value of universes generated, in 3 dimensions, begins at ~.34 and has a turnaround approaching ~0.
 
