@@ -1,13 +1,4 @@
 # Universe Generator
-
-> **Latest Information.** This file is the canonical statement of the model and its
-> measured results, updated whenever a new result lands or an old idea is
-> disproven. The detailed findings narrative is
-> [`PHYSICS_FINDINGS.md`](PHYSICS_FINDINGS.md); the dated evidence trail
-> (every campaign and figure, tied to the commit that produced it) is the lab
-> notebook under [`docs/lab-notes/`](docs/lab-notes/). This project uses AI for
-> automated analysis and house-keeping. It's a love hate relationship.
-
 This project is centered around discrete generation and analysis of a model universe. Our model universe has n spatial dimensions, and one dimension for time, it is flat and contains a torus submanifold, therefore describing a slightly modified generalized Minkowski spacetime. Worldlines are defined within this spacetime, and a discrete analysis with a Random-Sequential-Adsorption (RSA) technique is used to pack the universe according to rules of intersection and non-intersection. This model therefore describes n spatial dimensions on an expanding and collapsing n-torus, allowing a cat-map automorphism. The worldlines are 1D paths through time, raising many similarities to string theory as discussed later.
 
 ## Worldlines
@@ -53,6 +44,20 @@ The second phase still has the previous non-intersection requirement, but only f
 Note that this discrete method does not explicitly force that two paths ever perfectly intersect or non-intersect, however as frequency and timestep approach infinity, and the comoving intersection box shrinks, the intersections approach true intersections, therefore this analysis is an approximation that can be measured as the limit of the maxfreq (or the timestep resolution, same thing) approaches infinity.
 
 ## Physics
+
+### Causal Structure
+![Causal structure graph](https://github.com/universe-analysis/universe-generator/blob/5f7791651a646cbd0e2c397d9751c6d37be09803/docs/figures/Causalreach1.JPG)
+
+Here the Causal reach (blue line) is shown in comoving coordinates. The maximum distance between any two points is 1, so the universe begins with complete causal connection and no horizon problem. Time can be measured from 0 to pi, or from pi to zero. This graph is the same except mirrored in the case of pi to zero.
+
+### Equation of State
+![Equation of state](https://universe-analysis.github.io/universe-generator/lab-notes/2026-07-28/fullspec_eos_multiT_3d.png)
+
+
+### 2+1 Timelapse, with red/blue shift and subpath coloring shown.
+[![2D timelapse](https://universe-analysis.github.io/universe-generator/lab-notes/2026-07-27/fullspec_eos_history_2d.png)](https://universe-analysis.github.io/universe-generator/lab-notes/2026-07-27/fullsub_frame_family.mp4)
+
+The w value of universes generated, in 3 dimensions, begins at ~.34 and has a turnaround approaching ~0.
 
 ### Minkowski spacetime - FLRW spacetime
 This model describes generic n+1 dimension universes, with n spatial dimensions. The space is flat but has a torus submanifold embedded. This is known as a generalized Minkowski spacetime. However, this model embeds expansion and collapse over time, making it align with a flat FLRW metric.
