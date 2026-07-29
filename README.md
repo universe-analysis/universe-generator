@@ -3,7 +3,7 @@
 </p>
 
 # Universe Generator
-This project is centered around discrete generation and analysis of a model universe. Our model universe has n spatial dimensions, and one dimension for time, it is flat and contains a torus submanifold, therefore describing a slightly modified generalized Minkowski spacetime. Worldlines are defined within this spacetime, and a discrete analysis with a Random-Sequential-Adsorption (RSA) technique is used to pack the universe according to rules of intersection and non-intersection. This model therefore describes n spatial dimensions on an expanding and collapsing n-torus. The worldlines are 1D paths through time, raising many similarities to string theory as discussed later.
+This project is centered around discrete generation and analysis of a model universe. Our model universe has n spatial dimensions, and one dimension for time, it is flat and contains a torus submanifold, therefore describing a slightly modified generalized Minkowski spacetime. Worldlines are defined within this spacetime, and a discrete analysis with a Random-Sequential-Adsorption (RSA) technique is used to pack the universe according to rules of intersection and non-intersection. This model therefore describes n spatial dimensions on an expanding and collapsing n-torus (usually displayed as a comoving n-torus).
 [`2+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/twoplusone_2torus_wrapped.html)
 ## Worldlines
 A worldline in this model is represented per-axis, using parametric form, as expansion of sine terms. The generic `a * sin(b * T+f) - a * sin(f)` where f is allowed to be between 0 and π if b (the frequency) is even - if b is odd then f must be 0 (or π, but a is already allowed to be inverted which accomplishes the same thing.) The critical constraints on these worldlines are as follows:
@@ -24,7 +24,7 @@ The rest of a path's axis frequency terms must obey a shared rapidity budget. Th
 As mentioned earlier, due to the closure requirement, odd frequencies can only be inverted, which is already satisfied due to amplitude being absolute value and thus being able to be negative. That means only even frequencies need an explicit phase component, and to ensure closure, a constant term needs to be subtracted. This allows a full range of possible paths, and phase is critical to many behaviors.
 
 ### Per-axis rules [technical clarification for Euclidean vs Chebyshev]
-This allows n spatial dimensions, however the rapidity constraint is axis-independent. This means that this space is not directly euclidean, however this is accounted for in square-intersection bounds, and Chebyshev calculations when relevant (Peculiar speed.) A cat-map transformation is the equivalent of 'rotating' this space while preserving it's properties.
+This allows n spatial dimensions, however the rapidity constraint is axis-independent. This means that this space is not directly euclidean, however this is accounted for in square-intersection bounds, and Chebyshev calculations when relevant (Peculiar speed.)
 
 ### Unique Path Group / Rules
 In this model, a single path does not need to represent only one particle. By defining rules of intersection and non-intersection, we define a unique group to be a group of paths which intersect each other at least once from  `t ∈ (0, π)`, while not intersecting any other path in a different unique group. This allows for a single unique group to consist of many paths. These intersection rules are the building blocks of the generation methods used in this project.
