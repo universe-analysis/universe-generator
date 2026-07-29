@@ -77,7 +77,11 @@ The w value of universes generated, in 3 dimensions, begins at ~.34 and has a tu
 This model describes generic n+1 dimension universes, with n spatial dimensions. The space is flat but has a torus submanifold embedded. This is known as a generalized Minkowski spacetime. However, this model embeds expansion and collapse over time, making it align with a flat FLRW metric.
 
 ### Quantum Behavior
-A single unique group consists of a potentially infinite number of subpaths - paths which only intersect each other while avoiding intersections with every other path from a different unique group across all of time. This allows for a single unique group (particle) to be represented by many different positions and velocities at once. Subpaths have been measured to start far apart from each other at the big bang and get closest to each other on average near the turnaround point. We believe these carry causal implications.
+<p align="left">
+    <img src="https://universe-analysis.github.io/universe-generator/lab-notes/2026-07-22/group_partners.png" width="600px">
+</p>
+
+A single unique group consists of a potentially infinite number of subpaths - paths which only intersect each other while avoiding intersections with every other path from a different unique group across all of time. This allows for a single unique group (particle) to be represented by many different positions and velocities at once. Subpaths have been measured to start far apart from each other at the big bang and get closest to each other on average near the turnaround point. We believe these carry causal implications. The graph above shows some measurements claude made on some data sets that had subpaths.
 
 ### Speculation
 The following below is loose speculation.
