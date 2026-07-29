@@ -3,8 +3,8 @@
 </p>
 
 # Universe Generator
-This project is centered around discrete generation and analysis of a model universe. Our model universe has n spatial dimensions, and one dimension for time, it is flat and contains a torus submanifold, therefore describing a slightly modified generalized Minkowski spacetime. Worldlines are defined within this spacetime, and a discrete analysis with a Random-Sequential-Adsorption (RSA) technique is used to pack the universe according to rules of intersection and non-intersection. This model therefore describes n spatial dimensions on an expanding and collapsing n-torus, allowing a cat-map automorphism. The worldlines are 1D paths through time, raising many similarities to string theory as discussed later.
-
+This project is centered around discrete generation and analysis of a model universe. Our model universe has n spatial dimensions, and one dimension for time, it is flat and contains a torus submanifold, therefore describing a slightly modified generalized Minkowski spacetime. Worldlines are defined within this spacetime, and a discrete analysis with a Random-Sequential-Adsorption (RSA) technique is used to pack the universe according to rules of intersection and non-intersection. This model therefore describes n spatial dimensions on an expanding and collapsing n-torus. The worldlines are 1D paths through time, raising many similarities to string theory as discussed later.
+[`2+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/twoplusone_2torus_wrapped.html)
 ## Worldlines
 A worldline in this model is represented per-axis, using parametric form, as expansion of sine terms. The generic `a * sin(b * T+f) - a * sin(f)` where f is allowed to be between 0 and π if b (the frequency) is even - if b is odd then f must be 0 (or π, but a is already allowed to be inverted which accomplishes the same thing.) The critical constraints on these worldlines are as follows:
 
@@ -37,7 +37,7 @@ To generate a universe to analyze, we first choose the maximum frequency we will
 This model uses a very robust (but not perfect) method to check for intersection between paths. This method is most fallible in one dimension, however extremely strong in 2 or more spatial dimensions. The method uses a comoving intersection check, where T is equal to the number of discrete timesteps, a comoving intersection distance of 2/T per-axis is used to check for intersection at every discrete timestep. While this can miss intersections, the missed intersections are extremely rare and self-intersecting paths are allowed in this model, meaning that any missed intersection would simply join two unique groups as a single unique group. We believe this missed intersection error rate approaches zero for two or more dimensions in discrete analysis. This algorithim is open for discussion.
 
 ### Comoving visualizer  / n-torus
-Our interactive viewers include a 2+1 generator / visualizer, viewing as a true 2-torus in 3d space (with a causal frame map whose front is the closed-form wiggle-budget reach), and a braid viewer rendering worldlines as 3D strands. All are published from [`docs/`](docs/) via GitHub Pages.
+Our interactive viewers include a 2+1 generator / visualizer, viewing as a true 2-torus in 3d space (with a causal frame map whose front is the closed-form wiggle-budget reach), and a braid viewer rendering worldlines as 3D strands. All are published from [`docs/`](docs/) via GitHub Pages. [`2+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/twoplusone_2torus_wrapped.html)
 
 ### Random-Sequential-Adsorption (RSA)
 Traditional RSA packs objects in a single space, whereas this packs 1D paths across all of time at once. Discussed more in the implementation section.
@@ -54,7 +54,7 @@ Note that this discrete method does not explicitly force that two paths ever per
     <img src="https://github.com/universe-analysis/universe-generator/blob/5f7791651a646cbd0e2c397d9751c6d37be09803/docs/figures/Causalreach1.JPG" width="600px">
 </p>
 
-Here the Causal reach (blue line) is shown in comoving coordinates. The maximum distance between any two points is 1, so the universe begins with complete causal connection and no horizon problem. Time can be measured from 0 to pi, or from pi to zero. This graph is the same except mirrored in the case of pi to zero.
+Here the Causal reach (blue line) is shown in comoving coordinates. The maximum distance between any two points is 1, so the universe begins with complete causal connection and no horizon problem. Time can be measured from 0 to pi, or from pi to zero. This graph is the same except mirrored in the case of pi to zero. The causal structure is not globally hyperbolic in the Cauchy sense and has a whole-history structure. At least this is the current understanding.
 
 ### Frame of reference (static observer)
 <p align="left">
