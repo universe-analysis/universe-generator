@@ -22,6 +22,10 @@ All worldlines have a random budget for their sin1 component, different from the
 The bounds of our universe in any axis direction are denoted by `|sint|`, therefore any function exceeding sint has 2sint subtracted from it, and it emerges from -sint. Similar, if a function goes below -sint, it has 2sint added to it, making it emerge from sint. By adding this seam to the model along with the free sin1 component, any preferred center is erased.
 
 ### Rapidity / Wiggle Budget on rest of frequency terms
+<p align="left">
+    <img src="https://raw.githubusercontent.com/universe-analysis/universe-generator/4299786d06a8d9233f5e591f9b1bc0600458ba60/docs/figures/wigglebudget1234.JPG" width="300px">
+</p>
+
 The rest of a path's axis frequency terms must obey a shared budget, known as the wiggle budget. It functions like a rapidity budget. The sum of the absolute value of every amplitude * frequency term must add to exactly 1 - this ensures a constant maximum slope of 1. It is of note that as many frequency terms up to a frequency limit as high as one wishes, however a maximum must be chosen for discrete analysis. In each path, per axis, every frequency term must be unique, and an integer above zero.
 
 ### Every integer frequency used
