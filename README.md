@@ -83,7 +83,7 @@ Frame of reference for an observer is built by emitting a pulse back to time zer
     <img src="https://universe-analysis.github.io/universe-generator/lab-notes/2026-07-28/fullspec_eos_multiT_3d.png" width="600px">
 </p>
 
-The w value of universes generated, in 3 dimensions, begins at ~.34 and has a turnaround approaching ~0.
+The w value of universes generated, in 3 dimensions, begins at ~.34 and has a turnaround approaching ~0. This graph uses a mass-energy index of E ∝ b. Subpaths are not included in this graph, they follow a similar curve however the mass-energy dictionary is still being evaluated for subpaths.
 
 ### Uniformity over time
 <p align="left">
