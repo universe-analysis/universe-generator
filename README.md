@@ -73,8 +73,15 @@ Frame of reference for an observer is built by emitting a pulse back to time zer
 
 The w value of universes generated, in 3 dimensions, begins at ~.34 and has a turnaround approaching ~0.
 
+### Uniformity over time
+<p align="left">
+    <img src="https://universe-analysis.github.io/universe-generator/lab-notes/2026-07-26/fullspec_uniformity_over_time_3d.png" width="600px">
+</p>
+
+The blue line here shows a constant comoving root mean squared spread - showing that the universe is isotropic spatially at any given slice in time. The purple line shows that the box counting dimension increase and decrease over time.
+
 ### Minkowski spacetime - FLRW spacetime
-This model describes generic n+1 dimension universes, with n spatial dimensions. The space is flat but has a torus submanifold embedded. This is known as a generalized Minkowski spacetime. However, this model embeds expansion and collapse over time, making it align with a flat FLRW metric.
+This model describes generic n+1 dimension universes, with n spatial dimensions. The space is flat but has a torus submanifold embedded. This is known as a generalized Minkowski spacetime. However, this model embeds expansion and collapse over time, in accordance with a sine wave, we would assume this is similar to a flat FLRW-metric given the homogenous nature, but we are unsure on the exact classification at this time.
 
 ### Quantum Behavior
 <p align="left">
