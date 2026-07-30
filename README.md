@@ -15,6 +15,10 @@ All worldlines must be closed conformal-time loops between time(t) `t ∈ (0, π
 All worldlines have a random budget for their sin1 component, different from the other frequencies. Every sin1 component has an independent random amplitude from -1 to 1, independent of the rapidity constraints on the other frequency terms below. The sin1 component is the 'comoving worldline' frequency of this model, and thus freeing sin1 ensures an even distribution across space.
 
 ### Seam wrap
+<p align="left">
+    <img src="https://raw.githubusercontent.com/universe-analysis/universe-generator/db3417af9b244c3f8e8842baa55df233393e8e13/docs/figures/timewrapped.JPG" width="300px">
+</p>
+
 The bounds of our universe in any axis direction is denoted by `|sint|`, therefore any function exceeding sint has 2sint subtracted from it, and it emerges from -sint. Similar, if a function goes below -sint, it has 2sint added to it, making it emerge from sint. By adding this seam to the model along with the free sin1 component, any preferred center is erased.
 
 ### Rapidity / Wiggle Budget on rest of frequency terms
@@ -43,6 +47,10 @@ This model uses a very robust (but not perfect) method to check for intersection
 Our interactive viewers include a 2+1 generator / visualizer, viewing as a true 2-torus in 3d space (with a causal frame map whose front is the closed-form wiggle-budget reach), and a braid viewer rendering worldlines as 3D strands. All are published from [`docs/`](docs/) via GitHub Pages. [`2+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/twoplusone_2torus_wrapped.html)
 
 ### Random-Sequential-Adsorption (RSA)
+<p align="left">
+    <img src="https://raw.githubusercontent.com/universe-analysis/universe-generator/db3417af9b244c3f8e8842baa55df233393e8e13/docs/figures/rsaimage2.JPG" width="400px">
+</p>
+
 Traditional RSA packs objects in a single space, whereas this packs 1D paths across all of time at once. Discussed more in the implementation section.
 
 ### Unique generation -> Subpath Generation
@@ -92,7 +100,11 @@ A single unique group consists of a potentially infinite number of subpaths - pa
 
 ### Speculation
 The following below is loose speculation.
-#### Small-scale knots
+#### Small-scale knots / braids
+<p align="left">
+    <img src="https://raw.githubusercontent.com/universe-analysis/universe-generator/db3417af9b244c3f8e8842baa55df233393e8e13/docs/figures/simplebraid1.JPG" width="300px">
+</p>
+
 The ability to form a stable knot of n unique paths depends on the dimension, therefore a goal of this project is to analyze the unique path knots and attempt to relate them to standard model particles. As far as we understand, the most unique paths that can be knotted in one dimension is one, in two dimensions is four, and in three dimensions is 12, in four is 32 and five is 80. However, the exploration into this has only just begun and these are all tentative findings.
 *Status (2026-07-18, B₃ braid census in 2+1): 1+1 and 3+1 possibly are 2 and 24 respectively, unverified still.*
 #### Gravity
