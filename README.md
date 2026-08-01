@@ -72,7 +72,7 @@ Our interactive viewers include a 2+1 generator / visualizer, viewing as a true 
     <img src="https://github.com/universe-analysis/universe-generator/blob/5f7791651a646cbd0e2c397d9751c6d37be09803/docs/figures/Causalreach1.JPG" width="600px">
 </p>
 
-Here the Causal reach (blue line) is shown in comoving coordinates. The maximum distance between any two points is 1, so the universe begins with complete causal connection and no horizon problem. Time can be measured from 0 to pi, or from pi to zero. This graph is the same except mirrored in the case of pi to zero. The causal structure is not globally hyperbolic in the Cauchy sense and has a whole-history structure. At least this is the current understanding.
+Here the Causal reach (blue line) is shown in comoving coordinates. The maximum distance between any two points is 1, so the universe begins with complete causal connection and no horizon problem. Time can be measured from 0 to pi, or from pi to zero. This graph is the same except mirrored in the case of pi to zero. The bouncing semicircles, to our current knowledge, are due to only using integer frequencies as mandated by the closure requirement. The causal structure is not globally hyperbolic in the Cauchy sense and has a whole-history structure. At least this is the current understanding.
 
 ### Frame of reference (static observer)
 <p align="left">
