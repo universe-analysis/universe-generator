@@ -130,7 +130,7 @@ This model naturally embeds an expansion and collapse cycle. The measured equati
 </p>
 
 The ability to form a stable knot of n unique paths depends on the dimension, therefore a goal of this project is to analyze the unique path knots and attempt to relate them to standard model particles. As far as we understand, the most unique paths that can be knotted in one dimension is one, in two dimensions is four, and in three dimensions is 12, in four is 32 and five is 80. However, the exploration into this has only just begun and these are all tentative findings.
-*Status (2026-08-01): the observed values are running at exactly double the conjecture — 1+1 → 2, 2+1 → 8 (braid-viewer closure mode), 3+1 → 24 — i.e. the sequence d·2^d, the directed-edge count of the d-hypercube (the original guesses were the undirected edge count d·2^(d−1)). All three remain unverified by an automated census; see the [2026-08-01 lab note](https://universe-analysis.github.io/universe-generator/lab-notes/2026-08-01/) for the record and caveats.*
+*Status (2026-08-01, measured): the viewer-run values (2, 8, 24 — the d·2^d pattern) turned out to be search-time isochrones, not capacities. The braid-viewer experiment (pin sin1 to zero + full frequency band), ported to the CUDA engines (`--pin-sin1`) and run 4–5 orders of magnitude deeper, packs ≥15 strands in 2+1 and ≥39 in 3+1 (T = 32), with each further strand costing ~10× more attempts and no ceiling yet in sight; prime vs composite T shows no difference. All values are lower bounds — whether a finite knot capacity exists is open. See the [2026-08-01 lab note](https://universe-analysis.github.io/universe-generator/lab-notes/2026-08-01/).*
 
 ## Predictions / Theory
 

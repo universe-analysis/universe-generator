@@ -232,6 +232,28 @@ struct Path {
     double ax2, ay2, aw2;                                   // sin1 amplitudes
 };
 
+// --pin-sin1: zero the free comoving-offset amplitudes on every proposal
+// (the braid viewer's "Pin sin1 amplitude to zero" experiment: strands lose
+// their free placement and bunch at the comoving origin, so the jam count
+// measures how many strands can braid around a shared anchor).
+__constant__ int dPinSin1;
+static int gPinSin1 = 0;
+__host__ __device__ inline void apply_pin(Path& p) {
+#ifdef __CUDA_ARCH__
+    if (dPinSin1) {
+        p.ax2 = 0.0;
+        p.ay2 = 0.0;
+        p.aw2 = 0.0;
+    }
+#else
+    if (gPinSin1) {
+        p.ax2 = 0.0;
+        p.ay2 = 0.0;
+        p.aw2 = 0.0;
+    }
+#endif
+}
+
 // One uniform frequency draw in [2, modmax+1]. (The old "smart" sampler --
 // max-of-two bias + coprime rule -- was removed 2026-07-09: the FREQ campaign
 // showed its D-vs-terms trend was a sampler artifact; see lab notes 07-08.)
@@ -773,6 +795,7 @@ __global__ void test_kernel(uint64_t baseSeed,
     rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
     Path p = propose(r, modmax, nw);
+    apply_pin(p);
     if (!collides_dev(p, nw, T, z, sinz, invz, cell, gw, gw2, gw3, cellStart, ptsX, ptsY, ptsW,
                       order, euclid)) {
         int slot = atomicAdd(survCount, 1);
@@ -814,6 +837,7 @@ __global__ void test_kernel_sparse(uint64_t baseSeed,
     rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
     Path p = propose(r, modmax, nw);
+    apply_pin(p);
     if (!collides_sparse_dev(p, nw, T, sinbT, cosbm1T, sinzF, invzF, cellF, cellTightF, gw, gw2,
                              keys, keyStart, cellOff, ptsXf, ptsYf, ptsWf, order, euclid)) {
         int slot = atomicAdd(survCount, 1);
@@ -878,6 +902,8 @@ int main(int argc, char** argv) {
             sparse = true;
         else if (!strcmp(argv[i], "--terms"))
             terms = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--pin-sin1"))
+            gPinSin1 = 1;
         else if (!strcmp(argv[i], "--diag"))
             diagPrefix = argv[++i];
         else if (!strcmp(argv[i], "--probe-n"))
@@ -1005,6 +1031,9 @@ int main(int argc, char** argv) {
     }
 
     size_t ncell = (size_t)T * gw3;
+    CK(cudaMemcpyToSymbol(dPinSin1, &gPinSin1, sizeof(int)));
+    if (gPinSin1)
+        fprintf(stderr, "pin-sin1: comoving offsets pinned to zero\n");
     if (sparse)
         fprintf(stderr,
                 "3+1 (torus, phase) (sparse): T=%d  modmax=%u (maxfreq=%u)  terms=%d  grid "
@@ -1621,6 +1650,7 @@ int main(int argc, char** argv) {
         std::vector<double> X(T), Y(T), W(T);
         for (long long t = 0; t < probeN; t++) {
             Path p = propose(pr, modmax, nw);
+            apply_pin(p);
             eval_path(p, X.data(), Y.data(), W.data());
             int b = bin_of(p.ax2);  // bin by the X-centre of the proposal
             prop[b]++;

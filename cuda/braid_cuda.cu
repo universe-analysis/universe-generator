@@ -167,6 +167,26 @@ __host__ __device__ inline double torus_delta(double d) {
     return d;
 }
 
+// --pin-sin1: zero the free comoving-offset amplitudes on every proposal
+// (the braid viewer's "Pin sin1 amplitude to zero" experiment: strands lose
+// their free placement and bunch at the comoving origin, so the jam count
+// measures how many strands can braid around a shared anchor).
+__constant__ int dPinSin1;
+static int gPinSin1 = 0;
+__host__ __device__ inline void apply_pin(Path& p) {
+#ifdef __CUDA_ARCH__
+    if (dPinSin1) {
+        p.ax2 = 0.0;
+        p.ay2 = 0.0;
+    }
+#else
+    if (gPinSin1) {
+        p.ax2 = 0.0;
+        p.ay2 = 0.0;
+    }
+#endif
+}
+
 // One uniform frequency draw in [2, modmax+1]. (The old "smart" sampler --
 // max-of-two bias + coprime rule -- was removed 2026-07-09: the FREQ campaign
 // showed its D-vs-terms trend was a sampler artifact; see lab notes 07-08.)
@@ -480,6 +500,7 @@ __global__ void test_kernel(uint64_t baseSeed,
     rng_seed(r, baseSeed ^ (round * 0xD1B54A32D192ED03ULL) ^
                     ((uint64_t)tid * 0x9E3779B97F4A7C15ULL));
     Path p = propose(r, modmax, nw);
+    apply_pin(p);
     if (!collides_dev(p, nw, sub, ptsGid, T, z, sinz, invz, cell, gw, cellStart, cellLen, ptsX,
                       ptsY, order)) {
         int slot = atomicAdd(survCount, 1);
@@ -544,6 +565,8 @@ int main(int argc, char** argv) {
             // without it).
         } else if (!strcmp(argv[i], "--terms"))
             terms = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--pin-sin1"))
+            gPinSin1 = 1;
         else if (!strcmp(argv[i], "--subpaths"))
             subpaths = true;
         else if (!strcmp(argv[i], "--sub-attempts"))
@@ -614,6 +637,9 @@ int main(int argc, char** argv) {
     // Torus grid: exactly T cells of width CELL span [-1, 1), so the modular
     // neighbour scan wraps cleanly at the seam.
     const int gw = T;
+    CK(cudaMemcpyToSymbol(dPinSin1, &gPinSin1, sizeof(int)));
+    if (gPinSin1)
+        fprintf(stderr, "pin-sin1: comoving offsets pinned to zero\n");
     fprintf(stderr, "2+1 (torus, phase): T=%d  modmax=%u (maxfreq=%u)  terms=%d\n", T, modmax,
             modmax + 1, terms);
     if (subpaths)
