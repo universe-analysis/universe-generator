@@ -26,14 +26,19 @@ central-limit bell with **w = d/(6T) → 0** at terms = T; few-term turnaround
 equation of state **w = 0.145 (Chebyshev) / 0.193 (Euclidean)**, with
 jamming cooling w 20–24% below the proposal ensemble in both metrics.
 
-**Documentation ground truth: `README.md`.** The README is the canonical
-statement of the model and its measured results. Whenever a campaign or
-analysis establishes a new result — or disproves a claim the README currently
-makes (including its speculation sections) — update `README.md` as part of
-landing that result. `PHYSICS_FINDINGS.md` is the detailed findings narrative
-layered beneath it and should be kept consistent when convenient, but on any
-disagreement the README wins and the stale doc gets fixed. (The paper
-`paper/main.tex` predates the uniform re-anchor and needs revision.)
+**Documentation ground truth (division of labor since 2026-08-01).**
+`README.md` is the narrative statement of the model — its definition, rules,
+figures, and predictions/theory — and is actively authored by Kevin and
+Chris on GitHub: preserve their structure and prose on merges, and do NOT
+re-add detailed measured-results listings there (they were deliberately
+moved out). `PHYSICS_FINDINGS.md` is the CANONICAL measured-results record:
+whenever a campaign or analysis establishes a new result — or disproves a
+standing claim — update `PHYSICS_FINDINGS.md` as part of landing that
+result, and fix any README statement the new result contradicts. The dated
+evidence trail is `docs/lab-notes/` (with editor's-note errata on
+superseded pages). On any disagreement about a measured number,
+`PHYSICS_FINDINGS.md` wins. (The paper `paper/main.tex` predates the
+uniform re-anchor and needs revision.)
 
 ## Layout
 
