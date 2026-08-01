@@ -40,6 +40,13 @@ This allows n spatial dimensions, however the rapidity constraint is axis-indepe
 ### Unique Path Group / Rules
 In this model, a single path does not need to represent only one particle. By defining rules of intersection and non-intersection, we define a unique group to be a group of paths which intersect each other at least once from  `t ∈ (0, π)`, while not intersecting any other path in a different unique group. This allows for a single unique group to consist of many paths. These intersection rules are the building blocks of the generation methods used in this project.
 
+## Random-Sequential-Adsorption (RSA)
+<p align="left">
+    <img src="https://raw.githubusercontent.com/universe-analysis/universe-generator/db3417af9b244c3f8e8842baa55df233393e8e13/docs/figures/rsaimage2.JPG" width="400px">
+</p>
+
+Traditional RSA packs objects in a single space, whereas this packs 1D paths across all of time at once. This is done using a comoving volume, and resembles classical sequential growth (CSG) dynamics seen in causal sets. Discussed more in the implementation section.
+
 ## Implementation
 ### Discrete timestep / nyquist frequency
 To generate a universe to analyze, we first choose the maximum frequency we will allow. This determines virtually every other parameter used in generation. The universe is divided into n timesteps, where n is equal to the maxFrequency chosen. This is a nyquist timestep/frequency. This then also determines the maximum number of terms in each path's parametric axis formula. This also determines collision rules below. Analysis is done in regard to the maximum frequency approaching infinity.
@@ -49,13 +56,6 @@ This model uses a very robust (but not perfect) method to check for intersection
 
 ### Comoving visualizer  / n-torus
 Our interactive viewers include a 2+1 generator / visualizer, viewing as a true 2-torus in 3d space (with a causal frame map whose front is the closed-form wiggle-budget reach), and a braid viewer rendering worldlines as 3D strands. All are published from [`docs/`](docs/) via GitHub Pages. [`2+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/twoplusone_2torus_wrapped.html)
-
-### Random-Sequential-Adsorption (RSA)
-<p align="left">
-    <img src="https://raw.githubusercontent.com/universe-analysis/universe-generator/db3417af9b244c3f8e8842baa55df233393e8e13/docs/figures/rsaimage2.JPG" width="400px">
-</p>
-
-Traditional RSA packs objects in a single space, whereas this packs 1D paths across all of time at once. Discussed more in the implementation section.
 
 ### Unique generation -> Subpath Generation
 The generation process follows two RSA stages, the first stage generates only unique paths (potential missed intersections aside.) Once the universe is jammed with unique paths, or earlier if one chooses, the next stage can follow through generation of subpaths, using the unique paths essentially as seeds. During the first stage, non-intersection is the only priority, and no self-intersections are explicitly allowed (although it is possible for some to slip in.)<br><br>
