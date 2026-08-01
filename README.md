@@ -62,7 +62,7 @@ The generation process follows two RSA stages, the first stage generates only un
 The second phase still has the previous non-intersection requirement, but only for paths of a different unique group. When a path intersects another, it inherits it's groupID, and if the path never intersects a path with a different groupID, it is a valid subpath. It isn't possible to jam the subpaths due to them being able to occupy the same space as previously existing subpaths, but the growth rate does decay.<br><br>
 Note that this discrete method does not explicitly force that two paths ever perfectly intersect or non-intersect, however as frequency and timestep approach infinity, and the comoving intersection box shrinks, the intersections approach true intersections, therefore this analysis is an approximation that can be measured as the limit of the maxfreq (or the timestep resolution, same thing) approaches infinity.
 
-## Physics
+## Analysis and measurements
 
 ### Causal Structure
 <p align="left">
@@ -109,34 +109,22 @@ This model describes generic n+1 dimension universes, with n spatial dimensions.
 
 A single unique group consists of a potentially infinite number of subpaths - paths which only intersect each other while avoiding intersections with every other path from a different unique group across all of time. This allows for a single unique group (particle) to be represented by many different positions and velocities at once. Subpaths have been measured to start far apart from each other at the big bang and get closest to each other on average near the turnaround point. We believe these carry causal implications. The graph above shows some measurements claude made on some data sets that had subpaths.
 
-### Speculation
-The following below is loose speculation.
-#### Small-scale knots / braids
+### Small-scale knots / braids
 <p align="left">
     <img src="https://raw.githubusercontent.com/universe-analysis/universe-generator/db3417af9b244c3f8e8842baa55df233393e8e13/docs/figures/simplebraid1.JPG" width="300px">
 </p>
 
 The ability to form a stable knot of n unique paths depends on the dimension, therefore a goal of this project is to analyze the unique path knots and attempt to relate them to standard model particles. As far as we understand, the most unique paths that can be knotted in one dimension is one, in two dimensions is four, and in three dimensions is 12, in four is 32 and five is 80. However, the exploration into this has only just begun and these are all tentative findings.
 *Status (2026-07-18, B₃ braid census in 2+1): 1+1 and 3+1 possibly are 2 and 24 respectively, unverified still.*
-#### Gravity
-Unsure if this would relate most to entropic gravity or something else.
-#### Strong force
-This may relate to knots, subpaths, and the ability for knots to essentially tangle with each other, as well as knots of knots tangling.
-#### Weak force
-This model allows for paths to enter, and leave, knot groups. The weak force would be the model of these interactions.
-#### Electromagnetic 
-This model would relate electromagnetic interaction to the general emergent dynamics, however speculation is more loose here.
 
-#### Super-Speculation:
-If this was a model of our universe, we could expect it to imply that the observable universe is the entire universe. This model allows for a description of the fastest paths between two remote points, and the furthest comoving distance a path can travel is dependent on the state of time. At t=0, ~1.2596 comoving units can be travelled. Above 1, allows for wrapping in the torus, which means that looking in one direction, not only can you see the furthest point in that direction, but you can see objects beyond the seam, this means you can see an object near the seams in two different moments in time, on opposite sides of the universe. At the half point in time, π/2, the maximum comoving distance travelled is exactly the square root of two (~1.414) At the end of time, t=π, the maximum comoving distance travelled approaches two. Because this number emerges above 1, the entire universe is always connected. We can pause time and emit light moving backwards in time, rewinding the universe as the light approaches t=0 in time, and use that to build a frame of reference.
+## Predictions / Theory
 
-## Measured results
+### Gravity and it's role in spacetime
+One core feature of this model is it's flat space, it does contain a torus submanifold, but the space itself does not warp due to any force such as gravity. Therefore, given this model does have a thermodynamic ~.33 to ~0 evolution and seems to have a flow of entropy associated, we would likely assign gravity as entropic in nature. Furthermore, if photons are modeled by these paths, and photons wiggle due to gravity over long distances, they would not be taking the fastest path as a curved spacetime would imply. Therefore we assume that paths which are straighter over longer distances and don't appear as effected by gravity are neutrinos. The consequence of this on photons are that photons end up redshifted more than would be expected over longer distances, since this model has a near-constant but slowly decreasing rate of expansion, the extra redshift from this effect may match an interpretation of accelerating expansion. The consequence of this on neutrinos are many fold: neutrinos would not exert gravity but instead exert pressure. If this model assumes cold dark matter, the w value curve does not match the expected time progression of our universe, but if hot dark matter is assumed, the w value curve aligns highly with our universe. Hot dark matter, as neutrinos, are assumed to be unable to cluster in galaxies in order to exert gravitational pull, but this model poses that dark matter actually exerts a pressure outwards, and dark matter is everywhere we would expect it not to be - instead of inside galaxies pulling them together with gravity, the hot dark matter neutrinos are clustered outside of the galaxy, exerting a pressure from outside holding the galaxy together.
 
-Current summary, current as of 2026-07-20. Full numbers and caveats in
-[`PHYSICS_FINDINGS.md`](PHYSICS_FINDINGS.md); evidence trail in
-[`docs/lab-notes/`](docs/lab-notes/).
 
-In rewrite.
+### Distant observation
+The causal connection of this universe is above the maximum distance, so the most distant observations should be previous in time copies of matter closer to the observer on the other side of the universe.
 
 ## Live site
 
