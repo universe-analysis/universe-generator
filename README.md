@@ -130,7 +130,7 @@ This model naturally embeds an expansion and collapse cycle. The measured equati
 </p>
 
 The ability to form a stable knot of n unique paths depends on the dimension, therefore a goal of this project is to analyze the unique path knots and attempt to relate them to standard model particles. As far as we understand, the most unique paths that can be knotted in one dimension is one, in two dimensions is four, and in three dimensions is 12, in four is 32 and five is 80. However, the exploration into this has only just begun and these are all tentative findings.
-*Status (2026-07-18, B₃ braid census in 2+1): 1+1 and 3+1 possibly are 2 and 24 respectively, unverified still.*
+*Status (2026-08-01): the observed values are running at exactly double the conjecture — 1+1 → 2, 2+1 → 8 (braid-viewer closure mode), 3+1 → 24 — i.e. the sequence d·2^d, the directed-edge count of the d-hypercube (the original guesses were the undirected edge count d·2^(d−1)). All three remain unverified by an automated census; see the [2026-08-01 lab note](https://universe-analysis.github.io/universe-generator/lab-notes/2026-08-01/) for the record and caveats.*
 
 ## Predictions / Theory
 

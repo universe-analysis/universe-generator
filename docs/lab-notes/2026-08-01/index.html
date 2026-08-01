@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-08-01</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-08-01</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="knot-capacity">
+      <h2>Maximum knottable strands by dimension: the observed sequence is 2, 8, 24 &mdash; the hypercube-edge conjecture, doubled</h2>
+      <p class="meta">
+        Documentation of Chris's braid-mode observations (2+1 braid viewer,
+        <code>docs/viewers/twoplusone_braids.html</code>, census-closure
+        machinery) &middot; STATUS: tooling-assisted observations, not a
+        census-proved bound &mdash; no automated verification has been run
+      </p>
+      <p>
+        The maximum number of unique paths that can form a stable knot in
+        d spatial dimensions was originally conjectured as 1, 4, 12, 32, 80
+        for d&nbsp;=&nbsp;1&ndash;5 (README, knots/braids section) &mdash;
+        which is exactly <strong>d&middot;2<sup>d&minus;1</sup>, the edge
+        count of the d-dimensional hypercube</strong>. Subsequent hands-on
+        exploration has revised the measured values upward by exactly a
+        factor of two at every dimension probed so far:
+      </p>
+      <ul>
+        <li>1+1: 1 &rarr; <strong>2</strong> (07-18 era exploration,
+            &ldquo;possibly, unverified&rdquo;)</li>
+        <li>2+1: 4 &rarr; <strong>8</strong> (Chris, 2026-08-01, via the
+            braid viewer's closure/knot mode)</li>
+        <li>3+1: 12 &rarr; <strong>24</strong> (07-18 era exploration,
+            &ldquo;possibly, unverified&rdquo;)</li>
+      </ul>
+      <p>
+        The revised sequence 2, 8, 24 (, 64, 160 if the pattern holds at
+        d&nbsp;=&nbsp;4, 5) is <strong>d&middot;2<sup>d</sup> &mdash; the
+        DIRECTED edge count of the d-hypercube</strong>: the original
+        conjecture with each undirected contact split in two. The natural
+        physical reading of the factor 2 is chirality/orientation &mdash;
+        each geometric contact slot admits an over-crossing and an
+        under-crossing variant, which the braid picture resolves and plain
+        intersection counting does not; that is presumably why the braid
+        mode is where the doubling shows up.
+      </p>
+      <p>
+        <em>Caveats, stated plainly:</em> all three values are exploratory
+        observations, none is verified by an automated census; the 07-18 lab
+        note (the B&#8323; class census) is often cited for the 2 and 24 but
+        does not itself contain any capacity measurement. A proper
+        verification &mdash; sweep the 2+1 subpath dumps for the largest
+        genuinely-knotted closure component and check that 8 is attained
+        while 9 is not &mdash; is queued.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
+
