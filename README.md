@@ -34,11 +34,14 @@ In discrete simulation, we must pick a cap, and analyze as the cap approaches in
 ### Phase rules
 As mentioned earlier, due to the closure requirement, odd frequencies can only be inverted, which is already satisfied due to amplitude being absolute value and thus being able to be negative. That means only even frequencies need an explicit phase component, and to ensure closure, a constant term needs to be subtracted. This allows a full range of possible paths, and phase is critical to many behaviors.
 
-### Per-axis rules [technical clarification for Euclidean vs Chebyshev]
-This allows n spatial dimensions, however the rapidity constraint is axis-independent. This means that this space is not directly euclidean, however this is accounted for in square-intersection bounds, and Chebyshev calculations when relevant (Peculiar speed.)
-
 ### Unique Path Group / Rules
 In this model, a single path does not need to represent only one particle. By defining rules of intersection and non-intersection, we define a unique group to be a group of paths which intersect each other at least once from  `t ∈ (0, π)`, while not intersecting any other path in a different unique group. This allows for a single unique group to consist of many paths. These intersection rules are the building blocks of the generation methods used in this project.
+
+### Per-axis rules [technical clarification for Euclidean vs Chebyshev]
+This allows n spatial dimensions, however the rapidity constraint is axis-independent. This means that this space is not directly euclidean, this is accounted for using Chebyshev calculations when relevant, such as for intersection volume.
+
+### Additional Notes
+Due to the use of sine waves over the closed interval, a shared expansion-collapse cycle is built into the worldlines themselves. The expansion is nearly constant at the start but decreases until the midpoint when the expansion turns to contraction.
 
 ## Random-Sequential-Adsorption (RSA)
 <p align="left">
@@ -54,13 +57,13 @@ To generate a universe to analyze, we first choose the maximum frequency we will
 ### Collision - intersection
 This model uses a very robust (but not perfect) method to check for intersection between paths. This method is most fallible in one dimension, however extremely strong in 2 or more spatial dimensions. The method uses a comoving intersection check, where T is equal to the number of discrete timesteps, a comoving intersection distance of 2/T per-axis is used to check for intersection at every discrete timestep. While this can miss intersections, the missed intersections are extremely rare and self-intersecting paths are allowed in this model, meaning that any missed intersection would simply join two unique groups as a single unique group. We believe this missed intersection error rate approaches zero for two or more dimensions in discrete analysis. This algorithm is open for discussion. Personally, I (Chris) think this algorithm is perfect in whatever it does, but I understand it fairly poorly. I came up with it while experimenting with manual numbers trying to find a good collision detection.
 
-### Comoving visualizer  / n-torus
-Our interactive viewers include a 2+1 generator / visualizer, viewing as a true 2-torus in 3d space (with a causal frame map whose front is the closed-form wiggle-budget reach), and a braid viewer rendering worldlines as 3D strands. All are published from [`docs/`](docs/) via GitHub Pages. [`2+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/twoplusone_2torus_wrapped.html)
-
 ### Unique generation -> Subpath Generation
 The generation process follows two RSA stages, the first stage generates only unique paths (potential missed intersections aside.) Once the universe is jammed with unique paths, or earlier if one chooses, the next stage can follow through generation of subpaths, using the unique paths essentially as seeds. During the first stage, non-intersection is the only priority, and no self-intersections are explicitly allowed (although it is possible for some to slip in.)<br><br>
 The second phase still has the previous non-intersection requirement, but only for paths of a different unique group. When a path intersects another, it inherits it's groupID, and if the path never intersects a path with a different groupID, it is a valid subpath. It isn't possible to jam the subpaths due to them being able to occupy the same space as previously existing subpaths, but the growth rate does decay.<br><br>
 Note that this discrete method does not explicitly force that two paths ever perfectly intersect or non-intersect, however as frequency and timestep approach infinity, and the comoving intersection box shrinks, the intersections approach true intersections, therefore this analysis is an approximation that can be measured as the limit of the maxfreq (or the timestep resolution, same thing) approaches infinity.
+
+### Comoving visualizer  / n-torus
+Our interactive viewers include a 2+1 generator / visualizer, viewing as a true 2-torus in 3d space (with a causal frame map whose front is the closed-form wiggle-budget reach), and a braid viewer rendering worldlines as 3D strands. All are published from [`docs/`](docs/) via GitHub Pages. [`2+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/twoplusone_2torus_wrapped.html)
 
 ## Analysis and measurements
 
@@ -98,9 +101,6 @@ The blue line here shows a constant comoving root mean squared spread - showing 
 </p>
 
 Blue line shows improper non-periodic measurment showing lower than 3 measured in the 3+1 model, however the periodic cube measurement approaches 3 exactly.
-
-### Minkowski spacetime - FLRW spacetime
-This model describes generic n+1 dimension universes, with n spatial dimensions. The space is flat but has a torus submanifold embedded. This is known as a generalized Minkowski spacetime. However, this model embeds expansion and collapse over time, in accordance with a sine wave, we would assume this is similar to a flat FLRW-metric given the homogenous nature, but we are unsure on the exact classification at this time.
 
 ### Quantum Behavior
 <p align="left">
