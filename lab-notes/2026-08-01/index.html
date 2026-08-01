@@ -14,49 +14,70 @@
     <!-- ENTRIES: chronological, newest appended at the bottom. -->
 
     <article class="entry" id="knot-capacity">
-      <h2>Maximum knottable strands by dimension: the observed sequence is 2, 8, 24 &mdash; the hypercube-edge conjecture, doubled</h2>
+      <h2>Maximum knottable strands: the conjectured 2, 8, 24 are search isochrones &mdash; deep packing finds 15+ (2+1) and 39+ (3+1) with no ceiling in sight</h2>
       <p class="meta">
-        Documentation of Chris's braid-mode observations (2+1 braid viewer,
-        <code>docs/viewers/twoplusone_braids.html</code>, census-closure
-        machinery) &middot; STATUS: tooling-assisted observations, not a
-        census-proved bound &mdash; no automated verification has been run
+        Chris's braid-viewer experiment (pin sin1 to zero + full frequency
+        band, T = 32, ~55 s) engine-ported as <code>--pin-sin1</code> in both
+        CUDA engines and pushed 4&ndash;5 orders of magnitude deeper on
+        mother/kitt + a rented 4090 &middot; STATUS: measured lower bounds;
+        no upper bound is known
       </p>
       <p>
-        The maximum number of unique paths that can form a stable knot in
-        d spatial dimensions was originally conjectured as 1, 4, 12, 32, 80
-        for d&nbsp;=&nbsp;1&ndash;5 (README, knots/braids section) &mdash;
-        which is exactly <strong>d&middot;2<sup>d&minus;1</sup>, the edge
-        count of the d-dimensional hypercube</strong>. Subsequent hands-on
-        exploration has revised the measured values upward by exactly a
-        factor of two at every dimension probed so far:
+        The knot-capacity question &mdash; how many unique paths can pack
+        around a shared comoving anchor without touching &mdash; was
+        conjectured at d&middot;2<sup>d&minus;1</sup> = 1, 4, 12, 32, 80 by
+        dimension (the d-hypercube edge count; README), revised by hands-on
+        viewer runs to 2, 8, 24 (d&middot;2<sup>d</sup>, directed edges;
+        Chris: 2+1 gives 8 at T&nbsp;=&nbsp;32 after ~55 s at a
+        50,000-consecutive-fails stop). The operational definition is now an
+        engine mode: <code>--pin-sin1</code> zeroes every proposal's
+        comoving-offset amplitudes (verified line-for-line equivalent to the
+        viewer's checkbox and sampler), composed with the full-band
+        <code>--terms T</code> mode. Measured, RSA jam counts at a 1e-7
+        acceptance stop (2.7&ndash;4&times;10<sup>8</sup> attempts, ~200&times;
+        the viewer's depth), 4 seeds per cell:
       </p>
       <ul>
-        <li>1+1: 1 &rarr; <strong>2</strong> (07-18 era exploration,
-            &ldquo;possibly, unverified&rdquo;)</li>
-        <li>2+1: 4 &rarr; <strong>8</strong> (Chris, 2026-08-01, via the
-            braid viewer's closure/knot mode)</li>
-        <li>3+1: 12 &rarr; <strong>24</strong> (07-18 era exploration,
-            &ldquo;possibly, unverified&rdquo;)</li>
+        <li><strong>2+1:</strong> T=16: 12,12,12,12 &middot; T=32: 12,11,9,11
+            &middot; T=64: 12,12,10,10 &middot; primes T=11: 12,12,13,13 /
+            T=17: 11,12,12,12 / T=31: 12,12,13,10 / T=61: 11,10,10,10.</li>
+        <li><strong>3+1:</strong> T=10: 31&ndash;36 over 36 seeds (mode 33,
+            max 36) &middot; T=16: 33&ndash;35 &middot; T=32: 29&ndash;32
+            &middot; T=64: 29&ndash;31.</li>
+        <li><strong>Depth probes</strong> (1e10 budget, ~5&times;10<sup>9</sup>
+            attempts): the 2+1 T=32 seed that sat at 9 reached
+            <strong>15</strong>; the 3+1 T=32 seed at 29 reached
+            <strong>39</strong>.</li>
       </ul>
       <p>
-        The revised sequence 2, 8, 24 (, 64, 160 if the pattern holds at
-        d&nbsp;=&nbsp;4, 5) is <strong>d&middot;2<sup>d</sup> &mdash; the
-        DIRECTED edge count of the d-hypercube</strong>: the original
-        conjecture with each undirected contact split in two. The natural
-        physical reading of the factor 2 is chirality/orientation &mdash;
-        each geometric contact slot admits an over-crossing and an
-        under-crossing variant, which the braid picture resolves and plain
-        intersection counting does not; that is presumably why the braid
-        mode is where the doubling shows up.
+        Findings. (1) <strong>The viewer numbers are isochrones, not
+        capacities</strong>: the attempts-to-reach-N staircase at 2+1
+        T&nbsp;=&nbsp;32 puts N&nbsp;=&nbsp;8 at ~4&ndash;17M attempts &mdash;
+        almost exactly a 55-second browser run &mdash; with each further
+        strand costing roughly an order of magnitude more attempts (9 at
+        10<sup>7&ndash;8</sup>, 15 by 5&times;10<sup>9</sup>). Every proposed
+        ceiling (8, 12, 13, 24) has been exceeded by deeper search, in both
+        dimensions; fill fractions at the largest packs are still ~1&ndash;1.5%
+        of collision cells, so geometric room remains. Whether a finite jam
+        exists at all for the pinned packing &mdash; or whether it grows
+        log-like without bound, as the 3+1 unpinned jam approach does &mdash;
+        is open. (2) <strong>No arithmetic signature</strong>: prime T
+        (11/17/31/61) matches composite T at matched scale, extending the
+        archimedean null into the previously untested prime-T regime.
+        (3) <strong>Seed spread</strong>: RSA jam counts are a distribution
+        (3+1 T=10: 31&ndash;36 over 36 seeds) whose maximum keeps creeping
+        with sample size &mdash; every value here is a lower bound on the
+        true capacity, and the d&middot;2<sup>d</sup> sequence does not
+        survive: the measured 2+1/3+1 values (&ge;15 / &ge;39) are neither 8
+        nor 24, nor in a 1:3 ratio.
       </p>
       <p>
-        <em>Caveats, stated plainly:</em> all three values are exploratory
-        observations, none is verified by an automated census; the 07-18 lab
-        note (the B&#8323; class census) is often cited for the 2 and 24 but
-        does not itself contain any capacity measurement. A proper
-        verification &mdash; sweep the 2+1 subpath dumps for the largest
-        genuinely-knotted closure component and check that 8 is attained
-        while 9 is not &mdash; is queued.
+        <em>What would settle it:</em> a depth-convention capacity (N at a
+        fixed acceptance depth &mdash; well-defined, but then a process
+        property rather than a geometric one), an optimization search
+        (exchange/repair moves past RSA's greed) for better lower bounds, or
+        a geometric upper-bound argument (packing strands within reach of a
+        shared anchor under the 2/T exclusion) &mdash; none attempted yet.
       </p>
     </article>
 
