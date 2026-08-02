@@ -426,6 +426,53 @@ the amplitude signs, and the even-frequency phases. Campaigns:
   pack cells). Kinematics analyses generalized to multi-term dumps via
   `braidlab.corrdim.load_axis_terms` (regression-identical on legacy dumps).
 
+## 13. Knot capacity (pinned braid mode): isochrones, and the staircase law
+(2026-08-01, lab note of that date; standalone rollup in
+`KNOT_CAPACITY_RESULTS.md`)
+
+The braid experiment pins every proposal's comoving offset to zero
+(engine flag `--pin-sin1`, both engines; verified equivalent to the
+viewer's checkbox) and packs full-band (terms = T) worldlines around the
+shared anchor. Measured with `cuda/braid_knot.cu` — a grid-free engine
+whose counter-seeded candidates make runs bit-reproducible with every
+admission logged at its exact global attempt index; A/B-validated against
+the production engines at matched budgets.
+
+- **The conjectured capacities (2, 8, 24 = d·2^d; earlier d·2^(d−1) =
+  1, 4, 12, 32, 80) are search-time isochrones, not capacities.** At 2+1
+  T=32 the 8th strand lands between 3.5e5 and 2.1e7 attempts across seeds —
+  bracketing the ~55 s browser run that produced "8". Every proposed
+  ceiling has been exceeded by deeper search.
+- **Deep frontiers** (6 seeds/cell, exact staircases): 2+1 T=32 →
+  14–17 at 1e10; 2+1 T=10 → 15–16 at 1e11; 3+1 T=32 → 42–47 at 1e10;
+  3+1 T=10 → 49–52 at 1e11. All cells still admitting at budget end; all
+  values lower bounds; no jam signature anywhere.
+- **The staircase law.** Admission cost grows a constant factor per strand
+  (log-gap vs N linear over 20+ strands): γ = 2.31×/strand (2+1 T=32),
+  4.20× (2+1 T=10), 1.32× (3+1 T=32), 1.39× (3+1 T=10). Equivalently
+  N ~ log(attempts): ~8 strands per decade in 3+1, ~1.6–2.8 in 2+1. This
+  is not canonical RSA kinetics (finite jam approached algebraically); the
+  filling is logarithmic, irreversible, with constant-ratio measure loss.
+- **γ(T) is monotone falling in both dimensions** (low-T sweep T=3–9,
+  8 seeds, 1e9): 36.9× → 4.4× (2+1), 11.1× → 1.47× (3+1) across T=3–9,
+  splicing onto the deep values. 3+1 plateaus at ~1.3× from T≈10 (a 5%
+  spread T=10 vs 32 where mean-field excluded-volume predicts 10×);
+  2+1 is still falling at T=32. Open: does γ_2+1 plateau (permanent
+  topological tax) or converge to ~1.3 (resolution effect)? T=16–64 decides.
+- **Matched-attempt ratio** N_3+1/N_2+1 climbs with depth (1.8 → 2.9 at
+  T=32) toward γ₂/γ₃ = 2.98 — the origin of the observed "~3× more in 3+1."
+- **Degenerate small T.** T=2: capacity exactly 1 in both dimensions (the
+  2/T exclusion equals the torus half-width — any two strands collide).
+  T=3: saturates at exactly 2^d (4 in 2+1, 8 in 3+1; zero seed variance) —
+  the first saturated packs seen in this system; likely a 3-cell-torus
+  geometric accident, untested at depth.
+- **No arithmetic signature**: prime T (11/17/31/61, 2+1) matches composite
+  T at matched depth.
+- Whether a finite capacity exists at any T ≥ 4 is open in both dimensions.
+  Packed configurations are stable by construction (RSA never moves an
+  admitted strand); the 2+1 vs 3+1 difference lives entirely in the growth
+  law, not in existence or stability of the knots.
+
 ## Caveats that bind the current results
 
 - Cutoff states, not literal jamming (section 3: no plateau through 1e-8);
@@ -478,7 +525,11 @@ the amplitude signs, and the even-frequency phases. Campaigns:
    (b, f, a1) population in parameter space; seed-divergence; a map whose
    iteration RSA approximates.
 8. **Knot selection and g(r)** — re-measure on the current model (the old
-   measurements predate the torus + uniform-proposal definition).
+   measurements predate the torus + uniform-proposal definition). The
+   capacity side is now measured (section 13); still open there: the
+   γ_2+1 plateau question (T=16–64), whether T=3's exact 2^d is a true jam
+   (deepen 100×), and a winding/linking census tying the staircase law to
+   braid classes.
 9. **Kinematics at intermediate terms** — the 2-term sector has the arcsine
    law (section 7) and the spectrum edge terms = T has the w = d/(6T) dust
    law (section 12); the crossover between them (terms ~ 3–10) is unmeasured.
