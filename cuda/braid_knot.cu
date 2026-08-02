@@ -92,8 +92,11 @@ __host__ __device__ inline bool rng_flip(Rng& r) {
 constexpr double kPi = 3.14159265358979323846;
 // This tool exists for the full-band regime: size for terms up to 256.
 constexpr int kMaxW = 255;
-constexpr int kMaxStrands = 256;
-constexpr int kSurvCap = 1 << 20;  // uint64 indices only — 8 MB
+// Sized for the two-species (nu-sector) experiment: an unpinned jam plus a
+// weakly-coupled secondary population can run to thousands of strands.
+constexpr int kMaxStrands = 16384;
+// Equal to the largest batch, so the survivor buffer can never overflow.
+constexpr int kSurvCap = 1 << 24;  // uint64 indices only — 128 MB
 
 // ---------------------------------------------------------------------------
 // Candidate: per-axis full-band terms. Axis count is runtime (2 or 3).
@@ -229,8 +232,8 @@ __global__ void knot_kernel(uint64_t seed,
             bool hit = true;
             for (int ax = 0; ax < dim; ax++) {
                 // Strand layout matches the host buffer: [axis][kMaxStrands][T].
-                const double d = torus_delta(
-                    pos[ax] - strands[((long)ax * kMaxStrands + s) * T + t]);
+                const double d =
+                    torus_delta(pos[ax] - strands[((long)ax * kMaxStrands + s) * T + t]);
                 if (fabs(d) > cell) {
                     hit = false;
                     break;
@@ -252,7 +255,10 @@ int main(int argc, char** argv) {
     int T = 32, dim = 2, terms = 0, pin = 0;
     uint64_t seed = 1;
     double budget = 1e10;
+    double nuAttempts = 0.0;  // --nu-attempts: second-species budget (0 = off)
+    double nuDiv = 1.0;       // --nu-div k: nu exclusion cell is (2/T)/k
     const char* curvePath = nullptr;
+    const char* dumpPath = nullptr;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-t"))
             T = atoi(argv[++i]);
@@ -266,12 +272,22 @@ int main(int argc, char** argv) {
             seed = strtoull(argv[++i], 0, 10);
         else if (!strcmp(argv[i], "--attempts"))
             budget = atof(argv[++i]);
+        else if (!strcmp(argv[i], "--nu-attempts"))
+            nuAttempts = atof(argv[++i]);
+        else if (!strcmp(argv[i], "--nu-div"))
+            nuDiv = atof(argv[++i]);
         else if (!strcmp(argv[i], "--curve"))
             curvePath = argv[++i];
+        else if (!strcmp(argv[i], "--dump"))
+            dumpPath = argv[++i];
         else {
             fprintf(stderr, "unknown flag %s\n", argv[i]);
             return 1;
         }
+    }
+    if (nuDiv < 1.0) {
+        fprintf(stderr, "error: --nu-div must be >= 1\n");
+        return 1;
     }
     if (dim != 2 && dim != 3) {
         fprintf(stderr, "error: --dim must be 2 or 3\n");
@@ -336,7 +352,7 @@ int main(int argc, char** argv) {
                 out[(size_t)ax * T + t] = torus_wrap(wig * invsinzH[t] + c.a2[ax]);
             }
     };
-    auto collides_host = [&](const std::vector<double>& pos) {
+    auto collides_host = [&](const std::vector<double>& pos, double cc) {
         for (int t = 0; t < T; t++)
             for (int s = 0; s < nStrands; s++) {
                 bool hit = true;
@@ -344,7 +360,7 @@ int main(int argc, char** argv) {
                     const double d =
                         torus_delta(pos[(size_t)ax * T + t] -
                                     strandsH[((size_t)ax * kMaxStrands + s) * T + t]);
-                    if (fabs(d) > cell) {
+                    if (fabs(d) > cc) {
                         hit = false;
                         break;
                     }
@@ -357,73 +373,110 @@ int main(int argc, char** argv) {
 
     FILE* curve = curvePath ? fopen(curvePath, "w") : nullptr;
     if (curve)
-        fprintf(curve, "attempt,n\n");
+        fprintf(curve, "attempt,n,species\n");
+    FILE* dump = dumpPath ? fopen(dumpPath, "w") : nullptr;
+    if (dump)
+        fprintf(dump,
+                "# species,attempt, then per axis: a2, then nw x (b,a,f); dim=%d T=%d nw=%d\n",
+                dim, T, nw);
     fprintf(stderr,
             "braid_knot: dim=%d T=%d terms=%d pin=%d seed=%llu budget=%.3g "
-            "(exact-index admission, deterministic)\n",
-            dim, T, terms, pin, (unsigned long long)seed, budget);
+            "nu=%.3g nu-div=%.3g (exact-index admission, deterministic)\n",
+            dim, T, terms, pin, (unsigned long long)seed, budget, nuAttempts, nuDiv);
+
+    // Two phases: the primary species at the standard cell, then (optionally)
+    // the weakly-coupled "nu" species at cell/nu-div against everything
+    // already packed. The attempt counter runs straight through both phases,
+    // so every admission keeps a globally unique, exact attempt index.
+    struct PhaseDef {
+        double budgetEnd;
+        double cellPhase;
+        int species;
+    };
+    std::vector<PhaseDef> phases;
+    phases.push_back({budget, cell, 0});
+    if (nuAttempts > 0)
+        phases.push_back({budget + nuAttempts, cell / nuDiv, 1});
 
     std::vector<uint64_t> hSurv(kSurvCap);
     uint64_t attempts = 0;
-    int round = 0;
-    uint64_t nextLog = 1;
-    while ((double)attempts < budget && nStrands < kMaxStrands) {
-        // Deterministic ramp: 4096 -> 2^24 over the first few rounds.
-        uint32_t batch = 4096u << (2 * std::min(round, 6));
-        if (batch > (1u << 24))
-            batch = 1u << 24;
-        if ((double)(attempts + batch) > budget)
-            batch = (uint32_t)(budget - (double)attempts);
-        if (batch == 0)
-            break;
+    int nPrimary = 0;
+    for (const PhaseDef& ph : phases) {
+        // Deterministic adaptive batch: grows while survivors are scarce,
+        // shrinks when the serial host recheck would be flooded. Admission
+        // results are batch-independent (survivors are re-admitted in exact
+        // index order), so this only affects throughput, never output.
+        uint32_t batch = 4096;
+        while ((double)attempts < ph.budgetEnd && nStrands < kMaxStrands) {
+            uint32_t b = batch;
+            if ((double)(attempts + b) > ph.budgetEnd)
+                b = (uint32_t)(ph.budgetEnd - (double)attempts);
+            if (b == 0)
+                break;
 
-        // Upload current strand set (tiny).
-        CK(cudaMemcpy(dStrands, strandsH.data(), (size_t)3 * kMaxStrands * T * 8,
-                      cudaMemcpyHostToDevice));
-        CK(cudaMemset(dCount, 0, 4));
-        const int threads = 128;
-        knot_kernel<<<(int)((batch + threads - 1) / threads), threads>>>(
-            seed, attempts, batch, modmax, nw, dim, pin, T, dSinbz, dCosbz, dSinz, dInvsinz,
-            dStrands, nStrands, cell, dSurv, dCount);
-        CK(cudaDeviceSynchronize());
-        int sc = 0;
-        CK(cudaMemcpy(&sc, dCount, 4, cudaMemcpyDeviceToHost));
-        if (sc > kSurvCap) {
-            fprintf(stderr, "error: survivor cap overflow (%d)\n", sc);
-            return 1;
-        }
-        if (sc) {
-            CK(cudaMemcpy(hSurv.data(), dSurv, (size_t)sc * 8, cudaMemcpyDeviceToHost));
-            std::sort(hSurv.begin(), hSurv.begin() + sc);
-            std::vector<double> pos;
-            for (int k = 0; k < sc && nStrands < kMaxStrands; k++) {
-                const uint64_t idx = hSurv[k];
-                Rng r;
-                rng_seed(r, seed ^ (idx * 0x9E3779B97F4A7C15ULL + 0x1234567ULL));
-                Cand c;
-                propose(r, modmax, nw, dim, pin, c);
-                eval_cand(c, pos);
-                if (collides_host(pos))
-                    continue;  // collided with an earlier same-round admission
-                for (int ax = 0; ax < dim; ax++)
-                    for (int t = 0; t < T; t++)
-                        strandsH[((size_t)ax * kMaxStrands + nStrands) * T + t] =
-                            pos[(size_t)ax * T + t];
-                nStrands++;
-                if (curve)
-                    fprintf(curve, "%llu,%d\n", (unsigned long long)idx + 1, nStrands);
-                fprintf(stderr, "admit: N=%d at attempt %llu\n", nStrands,
-                        (unsigned long long)idx + 1);
+            CK(cudaMemcpy(dStrands, strandsH.data(), (size_t)3 * kMaxStrands * T * 8,
+                          cudaMemcpyHostToDevice));
+            CK(cudaMemset(dCount, 0, 4));
+            const int threads = 128;
+            knot_kernel<<<(int)((b + threads - 1) / threads), threads>>>(
+                seed, attempts, b, modmax, nw, dim, pin, T, dSinbz, dCosbz, dSinz, dInvsinz,
+                dStrands, nStrands, ph.cellPhase, dSurv, dCount);
+            CK(cudaDeviceSynchronize());
+            int sc = 0;
+            CK(cudaMemcpy(&sc, dCount, 4, cudaMemcpyDeviceToHost));
+            if (sc > kSurvCap) {
+                fprintf(stderr, "error: survivor cap overflow (%d)\n", sc);
+                return 1;
             }
+            if (sc) {
+                CK(cudaMemcpy(hSurv.data(), dSurv, (size_t)sc * 8, cudaMemcpyDeviceToHost));
+                std::sort(hSurv.begin(), hSurv.begin() + sc);
+                std::vector<double> pos;
+                for (int k = 0; k < sc && nStrands < kMaxStrands; k++) {
+                    const uint64_t idx = hSurv[k];
+                    Rng r;
+                    rng_seed(r, seed ^ (idx * 0x9E3779B97F4A7C15ULL + 0x1234567ULL));
+                    Cand c;
+                    propose(r, modmax, nw, dim, pin, c);
+                    eval_cand(c, pos);
+                    if (collides_host(pos, ph.cellPhase))
+                        continue;  // collided with an earlier same-round admission
+                    for (int ax = 0; ax < dim; ax++)
+                        for (int t = 0; t < T; t++)
+                            strandsH[((size_t)ax * kMaxStrands + nStrands) * T + t] =
+                                pos[(size_t)ax * T + t];
+                    nStrands++;
+                    if (curve)
+                        fprintf(curve, "%llu,%d,%d\n", (unsigned long long)idx + 1, nStrands,
+                                ph.species);
+                    if (dump) {
+                        fprintf(dump, "%d,%llu", ph.species, (unsigned long long)idx + 1);
+                        for (int ax = 0; ax < dim; ax++) {
+                            fprintf(dump, ",%.17g", c.a2[ax]);
+                            for (int j = 0; j < nw; j++)
+                                fprintf(dump, ",%d,%.17g,%.17g", c.b[ax][j], c.a[ax][j],
+                                        c.f[ax][j]);
+                        }
+                        fprintf(dump, "\n");
+                    }
+                }
+            }
+            attempts += b;
+            if (sc > (int)(b / 8) && batch > 4096)
+                batch = std::max(4096u, batch / 4);
+            else if (sc < (int)(b / 64) && batch < (1u << 24))
+                batch *= 4;
         }
-        attempts += batch;
-        round++;
-        if (attempts >= nextLog) {
-            nextLog = attempts * 2;
-        }
+        if (ph.species == 0)
+            nPrimary = nStrands;
+        fprintf(stderr, "phase %d done: N=%d at %llu attempts (cell=%.6g)\n", ph.species,
+                nStrands, (unsigned long long)attempts, ph.cellPhase);
     }
     if (curve)
         fclose(curve);
-    fprintf(stderr, "done: N=%d in %llu attempts\n", nStrands, (unsigned long long)attempts);
+    if (dump)
+        fclose(dump);
+    fprintf(stderr, "done: N=%d (primary %d, nu %d) in %llu attempts\n", nStrands, nPrimary,
+            nStrands - nPrimary, (unsigned long long)attempts);
     return 0;
 }
