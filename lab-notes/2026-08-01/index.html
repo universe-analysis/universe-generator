@@ -47,7 +47,8 @@
         <li><strong>Depth probes</strong> (1e10 budget, ~5&times;10<sup>9</sup>
             attempts): the 2+1 T=32 seed that sat at 9 reached
             <strong>15</strong>; the 3+1 T=32 seed at 29 reached
-            <strong>39</strong>.</li>
+            <strong>39</strong>. <em>(Superseded same day: the systematic
+            deep runs in the next entry push these to &ge;17 and &ge;52.)</em></li>
       </ul>
       <p>
         Findings. (1) <strong>The viewer numbers are isochrones, not
@@ -78,6 +79,88 @@
         (exchange/repair moves past RSA's greed) for better lower bounds, or
         a geometric upper-bound argument (packing strands within reach of a
         shared anchor under the 2/T exclusion) &mdash; none attempted yet.
+      </p>
+    </article>
+
+    <article class="entry" id="knot-staircase-law">
+      <h2>The knot staircase law: deterministic deep runs to 10&sup1;&sup1; &mdash; cost grows a constant factor per strand, 3+1 plateaus at ~1.3&times;, and T=3 saturates at exactly 2<sup>d</sup></h2>
+      <p class="meta">
+        New engine <code>cuda/braid_knot.cu</code> (commit
+        <a href="https://github.com/universe-analysis/universe-generator/commit/c11a6d2">c11a6d2</a>):
+        grid-free, counter-seeded candidates &rarr; bit-reproducible runs with
+        every admission logged at its exact global attempt index.
+        A/B-validated against the general engines
+        (<a href="https://github.com/universe-analysis/universe-generator/commit/0f775e6">0f775e6</a>)
+        at matched budgets before use &middot; deep cells: {2+1, 3+1} &times;
+        {T=10, T=32}, 6 seeds, 10&sup1;&sup0;&ndash;10&sup1;&sup1; attempts;
+        low-T sweep T=2&ndash;9, 8 seeds, 10&sup9;, both dims
+      </p>
+      <p>
+        The exact-index staircases (below) settle what the earlier
+        batch-quantized tables could only hint at. The admission cost is
+        <strong>exponential in N with a constant ratio</strong> over 20+
+        consecutive strands &mdash; log-gap vs N is linear, with no upward
+        curvature that would signal an approaching jam. Frontiers at budget
+        end: <strong>2+1 T=32: 14&ndash;17</strong> (new record 17),
+        <strong>3+1 T=32: 42&ndash;47</strong>, <strong>3+1 T=10:
+        49&ndash;52</strong> at 10&sup1;&sup1; (the shallow-era record for
+        that cell was 36 over 36 seeds), <strong>2+1 T=10: 15&ndash;16</strong>.
+        Every deep run reproduces its shallow prefix admission-for-admission
+        (determinism verified end-to-end).
+      </p>
+      <figure class="plot">
+        <img src="knotlaw_staircases.png"
+             alt="Four log-x staircase panels (2+1 and 3+1, T=10 and T=32), six seeds each, showing strand count vs attempts climbing steadily with no plateau at budget end." />
+        <figcaption>
+          Admission staircases, 6 seeds per cell. All four cells are still
+          admitting at budget end &mdash; no jam signature anywhere in five
+          decades of search depth.
+        </figcaption>
+      </figure>
+      <p>
+        The per-strand cost factor &gamma;(T, d) is monotone falling in T in
+        both dimensions: from 36.9&times; (2+1) / 11.1&times; (3+1) at the
+        degenerate-adjacent T=3 down to 2.31&times; / 1.32&times; at T=32.
+        <strong>3+1 plateaus early</strong> (&asymp;1.5&times; by T=8,
+        &asymp;1.3&times; from T=10 through T=32 &mdash; a 5% spread where a
+        mean-field excluded-volume estimate predicts 10&times;), while
+        <strong>2+1 is still falling at T=32</strong>. Whether &gamma;<sub>2+1</sub>
+        plateaus at its own value (a permanent topological tax on braided
+        packing) or slides to the same ~1.3 asymptote (topological stiffness
+        as a finite-resolution effect) is now the sharpest open question;
+        T=16&ndash;64 runs would answer it. The 2+1 : 3+1 strand ratio at
+        matched attempts climbs with depth (2.2&rarr;3.3 at T=10;
+        1.8&rarr;2.9 at T=32) and tends to &gamma;<sub>2</sub>/&gamma;<sub>3</sub>
+        &mdash; 2.98 at T=32, which is why fixed-budget comparisons keep
+        landing near &ldquo;3&times; more in 3+1.&rdquo;
+      </p>
+      <figure class="plot">
+        <img src="knotlaw_gammaT.png"
+             alt="Log-log plot of per-strand cost factor vs T for both dimensions: both curves fall with T; the 3+1 curve flattens onto a ~1.3 line by T=10 while the 2+1 curve is still declining at T=32." />
+        <figcaption>
+          &gamma;(T): per-strand admission cost factor. &ldquo;T-invariance&rdquo;
+          in 3+1 is an early plateau, not a dichotomy &mdash; and 2+1 has not
+          reached its asymptote (if any) by T=32.
+        </figcaption>
+      </figure>
+      <p>
+        The low-T sweep also produced the first saturated packs seen anywhere
+        in this system. <strong>T=2 is degenerate by construction</strong>
+        (the 2/T exclusion equals the torus half-width, so any second strand
+        collides everywhere: capacity exactly 1, both dimensions, all seeds).
+        <strong>T=3 lands on exactly 2<sup>d</sup></strong>: 4 strands in 2+1
+        and 8 in 3+1, with zero seed variance (8/8 seeds each; one 3+1 seed at
+        7 within budget) &mdash; the 2+1 value coinciding with the old
+        d&middot;2<sup>d&minus;1</sup> = 4 conjecture, though the 3+1 value
+        (8, not 12) breaks the pattern and the tiny 3-cell torus makes this
+        look like a geometric accident rather than vindication. Deepening
+        T=3 by 100&times; would test whether it is a true jam.
+        Takeaway for the capacity question: <em>the staircase law
+        (&gamma; and its T-trend), not any single integer per dimension, is
+        the object that distinguishes 2+1 from 3+1</em> &mdash; packed knots
+        are stable by construction in both dimensions (RSA never moves an
+        admitted strand); what differs is the growth complexity of adding to
+        them.
       </p>
     </article>
 
