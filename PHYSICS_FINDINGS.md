@@ -473,6 +473,32 @@ the production engines at matched budgets.
   admitted strand); the 2+1 vs 3+1 difference lives entirely in the growth
   law, not in existence or stability of the knots.
 
+## 14. Two-species packing: the ν sector (2026-08-02)
+(lab note 2026-08-02; engine mode `braid_knot --nu-attempts --nu-div`)
+
+A second species packed after the primary jam with exclusion cell (2/T)/k
+against everything (weak coupling as a knob); unpinned full-band worldlines,
+2+1 T=32 and 3+1 T=10, k ∈ {1, 2, 4}, primary 1e9 + ν 1e9 attempts, 4 seeds,
+full dumps. The k=1 control is bit-identical to a continuous single-species
+run (validated).
+
+- **Capacity below naive scaling**: ν/primary = 1.9× at k=2 and 8.3× at k=4
+  in 2+1 (47% / 52% of the naive k^d), 5.9× and 49× in 3+1 (74% / 77%).
+  The frozen jam wastes more fine-grained room in 2+1 than 3+1.
+- **The ν sector fills logarithmically** (near-constant admissions per
+  decade at budget end) — no jam; ratios are depth-conditional lower bounds.
+- **No relic temperature at large T**: turnaround ⟨v²⟩ ratio ν/primary =
+  1.00 at T=32 (both k). At T=10 the ν sector runs hot by +4% (k=2) / +7%
+  (k=4) — a real phase-selection effect. Both species' comoving anchors are
+  exactly uniform (a₁ sd = 1/√3).
+- Interpretation: the dust law w = d/(6T) is **ensemble-rigid** — any
+  RSA-selected subpopulation lands on it, with a kinematic selection lever
+  of order 1/T. Coupling strength is thermodynamically inert in the
+  continuum direction; the model's neutrino-like relic component is the 1/T
+  radiation floor in w(z), set by resolution rather than by decoupling
+  history. Open: k-ladder (naive-fraction trend), T-ladder on the heating
+  (1/T?), interleaved vs sequential packing (decoupling order).
+
 ## Caveats that bind the current results
 
 - Cutoff states, not literal jamming (section 3: no plateau through 1e-8);

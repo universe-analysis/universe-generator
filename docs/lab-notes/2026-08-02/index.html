@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-08-02</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-08-02</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="nu-sector">
+      <h2>The &nu;-sector experiment: a weakly-coupled second species packs
+      below naive scaling, never jams, and carries no relic temperature at
+      large T</h2>
+      <p class="meta">
+        Two-species mode in <code>cuda/braid_knot.cu</code> (commit
+        <a href="https://github.com/universe-analysis/universe-generator/commit/b0394ff">b0394ff</a>):
+        after the primary (unpinned, full-band) population packs its budget at
+        the standard 2/T exclusion, a second &ldquo;neutrino&rdquo; species
+        packs at cell (2/T)/k against everything &mdash; coupling strength as
+        a knob. Cells: 2+1 T=32 and 3+1 T=10, k &isin; {1 (control), 2, 4},
+        primary 10<sup>9</sup> + &nu; 10<sup>9</sup> attempts, 4 seeds, full
+        parameter dumps. Validated: k=1 two-phase run bit-identical to a
+        continuous single-species run; pinned curves bit-identical to the
+        previous build.
+      </p>
+      <p>
+        Motivation: does the model have an analog of the thermodynamic role
+        neutrinos play &mdash; a weakly-coupled relic sector with its own
+        temperature? Measured answers:
+      </p>
+      <ul>
+        <li><strong>Capacity undershoots naive measure-scaling.</strong>
+            Naively a k&times; smaller exclusion cell means k<sup>d</sup>
+            more room. Measured &nu;/primary ratios: 2+1 T=32: 1.9&times;
+            at k=2 (47% of naive), 8.3&times; at k=4 (52%); 3+1 T=10:
+            5.9&times; at k=2 (74%), 49&times; at k=4 (77%). The frozen
+            primary jam wastes more of the fine-grained configuration space
+            in 2+1 than in 3+1 &mdash; the same extra-room story as the
+            knot staircase law.</li>
+        <li><strong>The &nu; sector never jams.</strong> Admissions per
+            decade of &nu;-phase attempts are near-constant after the burst
+            (2+1 k=4: 271/247/237/228; 3+1: 1518/1343/1257/1170) &mdash;
+            logarithmic filling again, so the ratios above are
+            depth-conditional lower bounds. The k=1 controls confirm the
+            primary itself is deeply stalled (+4&ndash;7 admissions in a
+            second 10<sup>9</sup>).</li>
+        <li><strong>No relic temperature at large T &mdash; a small
+            selection heating at small T.</strong> At T=32 the &nu; sector's
+            turnaround &lang;v&sup2;&rang; matches the primary's to 0.3%
+            (ratio 1.00) at both couplings; at T=10 it runs consistently hot:
+            +4% (k=2), +7% (k=4). Both species' comoving anchors stay
+            exactly uniform (a&#8321; sd 0.5775 vs 1/&radic;3).</li>
+      </ul>
+      <figure class="plot">
+        <img src="nu_staircases.png"
+             alt="Two log-x panels showing total strand count vs nu-phase attempts for k=2 and k=4 in both cells: fast early filling then steady logarithmic growth, with k=4 packing far more than k=2." />
+        <figcaption>
+          &nu;-phase staircases (4 seeds per k). The weakly-coupled species
+          floods in early, then settles into the familiar log-filling &mdash;
+          no jam in sight at either coupling.
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="nu_temperature.png"
+             alt="Turnaround speed-squared histograms for primary vs nu species: at T=32 the two distributions coincide exactly; at T=10 the nu distribution is slightly shifted toward higher speeds." />
+        <figcaption>
+          Species temperature. Left: T=32, distributions coincide &mdash; the
+          dust law is ensemble-rigid. Right: T=10, the &nu; population is
+          slightly hotter (dashed means).
+        </figcaption>
+      </figure>
+      <p>
+        Interpretation. In the full-spectrum model the instantaneous speed is
+        a central-limit sum of ~T terms, so admission selection has a
+        kinematic lever of order 1/T: at large T <em>any</em> RSA-selected
+        subpopulation &mdash; whatever its coupling or admission epoch &mdash;
+        lands on the same w = d/(6T) dust law, and the &nu; sector decouples
+        with no temperature memory. At small T the lever is real: squeezing
+        into a frozen jam's gaps selects wigglier worldlines, and the
+        decoupled sector comes out measurably hot. So the model's closest
+        analog to the cosmic-neutrino thermodynamic role remains the 1/T
+        radiation floor in w(z) &mdash; a resolution-set relic component
+        &mdash; while coupling strength per se turns out to be
+        thermodynamically inert in the continuum direction. Follow-ups
+        queued: a k-ladder (8, 16) for the naive-fraction trend, a T-ladder
+        on the heating effect (does it die as 1/T?), and interleaved rather
+        than sequential two-species packing (the decoupling-order knob).
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
