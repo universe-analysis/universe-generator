@@ -504,6 +504,38 @@ run (validated).
   history. Open: k-ladder (naive-fraction trend), T-ladder on the heating
   (1/T?), interleaved vs sequential packing (decoupling order).
 
+## 15. Spectral concentration and w: no emergent ν sector (2026-08-05)
+(lab note 2026-08-05; `analysis/analyze_spectral_w.py` on the stored
+FULLSPEC dumps — re-analysis, no new runs)
+
+Hypothesis tested: with random amplitudes, some full-spectrum worldlines
+might be "effectively few-term" (negligible weight on most terms) and run
+hot — an emergent two-fluid w split. Probe: participation ratio
+PR = 1/Σŝ² of the normalized |a·b| weights (effective carrying-term count),
+PR-quartile group w at the turnaround; 3+1 T=75 (177,848 worldlines) and
+2+1 T=100 (8,744), 8 seeds pooled, terms = T.
+
+- **Concentration is hot, but only mildly**: group w falls monotonically
+  from 1.09× (most concentrated quartile) to 0.92× ensemble in 3+1
+  (1.11× → 0.91× in 2+1); the hottest 1% tail reaches 1.20× / 1.27×.
+- **The uniform amplitude simplex self-averages**: PR ≈ T/2 ± 6%; the
+  single most concentrated worldline at T=75 still spreads over ~27
+  effective terms. No few-term tail exists — a relic sector at
+  w ≈ 0.15–0.3 against dust d/(6T) needs PR ≈ 2–3 (~40× in w); the
+  measured spread is ±9%.
+- **Jamming selects on spectra only at the ~0.4% level**, toward *spread*
+  (cooler) worldlines: packed mean PR +0.14 of 38 (3+1) / +0.20 of 50
+  (2+1) vs the Dirichlet(1,…,1) proposal null; 8/8 seeds high in both
+  dims (seed-level t = 25 / 6.2). This is the spectral fingerprint of
+  jamming-cooling (§ w results), nothing more.
+- Consistency: pooled turnaround w = 0.00663 / 0.00338 vs d/(6T) =
+  0.00667 / 0.00333 — the dust law to half a percent on this data.
+
+Third inertness result in a row (coupling, admission epoch, emergent
+spectral concentration): **a two-fluid w split must be an ingredient, not
+an emergent property** — an explicit few-term second species (out-of-model
+probe) or a sparser amplitude prior (a model change).
+
 ## Caveats that bind the current results
 
 - Cutoff states, not literal jamming (section 3: no plateau through 1e-8);
