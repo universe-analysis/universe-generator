@@ -536,6 +536,31 @@ spectral concentration): **a two-fluid w split must be an ingredient, not
 an emergent property** — an explicit few-term second species (out-of-model
 probe) or a sparser amplitude prior (a model change).
 
+## 16. Accretion multiplicity and w: fourth rigidity result (2026-08-05)
+(lab note 2026-08-05; `analysis/analyze_subpath_groups.py` on the stored
+fullsub2d_e6 dumps — 2+1 full-spectrum terms=T with phase-2 subpaths,
+T = 20/40/100, 8 seeds pooled; T ≤ 10 excluded, dumps truncated at 60k rows)
+
+Groups (one unique + everything that accreted onto it, dump `gid` column)
+binned by subpath count; per-bin turnaround w under the E ~ Σb dictionary:
+
+- **Fertility carries no w signal**: all bins within ±10% of ensemble w at
+  every T, no monotone trend (T=100: sterile 1.00×, 1-subpath 1.03×,
+  100+ megagroups 1.00×). Groups with 1 vs 45,018 subpaths share an EOS.
+- **Contribution differences are pure mass share**: the 100+ bin owns
+  86% (T=100) to 99.6% (T=20) of total energy at unchanged w.
+- **Accretion selection is thermodynamically inert**: sterile bin = pure
+  phase-1 uniques ("touch nothing"), 100+ bin ≈ pure phase-2 subpaths
+  ("touch exactly one group") — same w. Fourth rigidity result after
+  coupling, admission epoch, and spectral concentration (§14, §15).
+- **The group mass function is violently heavy-tailed**: sterile fraction
+  rises with T (59% at T=20 → 71% at T=100); largest groups ~45,000
+  (T=20) / ~7,100 (T=100) members. A halo-mass-function analog; tail
+  exponent and T-scaling unmeasured (open).
+- Anomaly noted in passing: sub-dump rows are NOT in the admission order
+  the engine comment claims (uniques are not a row prefix); harmless for
+  gid-based analyses, but the 2+1 dump writer deserves a look.
+
 ## Caveats that bind the current results
 
 - Cutoff states, not literal jamming (section 3: no plateau through 1e-8);
