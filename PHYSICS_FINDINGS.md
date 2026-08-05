@@ -539,7 +539,11 @@ probe) or a sparser amplitude prior (a model change).
 ## 16. Accretion multiplicity and w: fourth rigidity result (2026-08-05)
 (lab note 2026-08-05; `analysis/analyze_subpath_groups.py` on the stored
 fullsub2d_e6 dumps — 2+1 full-spectrum terms=T with phase-2 subpaths,
-T = 20/40/100, 8 seeds pooled; T ≤ 10 excluded, dumps truncated at 60k rows)
+T = 20/40/100, 8 seeds pooled; T ≤ 10 excluded — dumps truncated at the
+60k row cap. ERRATUM same day: T=20 is also partially truncated, 5/8 seeds
+at the cap — its group counts/sizes are censored (sterile fraction 68% on
+the 3 complete seeds, not 59%; max size ≥45,018 is a lower bound). T=40
+and T=100 dumps are complete and unaffected.)
 
 Groups (one unique + everything that accreted onto it, dump `gid` column)
 binned by subpath count; per-bin turnaround w under the E ~ Σb dictionary:
@@ -554,9 +558,9 @@ binned by subpath count; per-bin turnaround w under the E ~ Σb dictionary:
   ("touch exactly one group") — same w. Fourth rigidity result after
   coupling, admission epoch, and spectral concentration (§14, §15).
 - **The group mass function is violently heavy-tailed**: sterile fraction
-  rises with T (59% at T=20 → 71% at T=100); largest groups ~45,000
-  (T=20) / ~7,100 (T=100) members. A halo-mass-function analog; tail
-  exponent and T-scaling unmeasured (open).
+  ≈68–71% (T=20 complete seeds → T=100); largest groups ≥45,000 (T=20,
+  censored lower bound) / ~7,100 (T=100) members. A halo-mass-function
+  analog; tail exponent and T-scaling unmeasured (open).
 - **Off-turnaround probe (z = π/8, Chris's ask) is also null**: away from
   the turnaround the bin ratio measures anchor energy ⟨E·a₂²⟩ (the a₂cos z
   velocity dominates there), so this tests anchor stratification the
@@ -566,9 +570,18 @@ binned by subpath count; per-bin turnaround w under the E ~ Σb dictionary:
   sub-percent-energy bins (e.g. 7/8 seeds at ratio 0.95–1.13 plus one at
   1.66). The 100+ megagroup bin sits at 1.00× at every z in every seed.
   Multiplicity is w-inert across the whole cycle, wiggles and anchors both.
+- **The null is dictionary-robust (Chris's equal-energy-per-group
+  dictionary)**: giving every group an equal share of the w budget — a
+  drastic reallocation, sterile groups go from 3.4% to 71% of the budget
+  at T=100 — leaves all bins within ±3% of ensemble at T=100 (±8% at
+  T=40, the known noise bin) at both π/2 and π/8, and shifts the total w
+  by +2.7% (T=40) / +0.3% (T=100), shrinking with T. The subpopulations
+  genuinely share one EOS; no weighting scheme can split them.
 - Anomaly noted in passing: sub-dump rows are NOT in the admission order
   the engine comment claims (uniques are not a row prefix); harmless for
-  gid-based analyses, but the 2+1 dump writer deserves a look.
+  gid-based analyses, but the 2+1 dump writer deserves a look. The 60k
+  dump row cap is engine-side; long phase-2 runs need it raised or made
+  a flag if uncensored group sizes at small T matter.
 
 ## Caveats that bind the current results
 

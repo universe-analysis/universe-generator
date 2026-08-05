@@ -112,6 +112,17 @@
         many subpaths differ in their w contribution? (T = 5, 10 excluded:
         those dumps hit a 60k-row cap and are truncated.)
       </p>
+      <p class="meta">
+        <em>Editor's note (later the same day): the T=20 dumps are also
+        partially truncated &mdash; 5 of 8 seeds sit at the 60k row cap,
+        discovered during the energy-dictionary follow-up below. T=20 group
+        counts and sizes in this entry and the &pi;/8 addendum are therefore
+        censored (on the 3 complete seeds the sterile fraction is 68%, not
+        59%; the max group size 45,018 stands as a &ge; lower bound, since
+        dumped rows undercount a capped group). The w measurements are
+        unaffected in kind &mdash; they are statistics of the dumped paths
+        &mdash; and T=40/100 are complete. See the second addendum.</em>
+      </p>
       <p>
         A group is one unique worldline plus everything that accreted onto
         it in phase 2 (a subpath must touch exactly one existing group and
@@ -224,6 +235,68 @@
         groups share both their wiggle temperature and their anchor-speed
         distribution. The rigidity result of the previous entry holds across
         the whole cycle.
+      </p>
+    </article>
+
+    <article class="entry" id="subpath-groups-dict">
+      <h2>Second addendum: the equal-energy-per-group dictionary changes
+      nothing &mdash; and exposes a dump-truncation gotcha at T=20</h2>
+      <p class="meta">
+        Chris's proposed re-weighting: every unique group should represent an
+        <em>equal</em> share of the total energy &mdash; a sterile group
+        counts as much in the w budget as a 45,000-member megagroup.
+        Implemented as a second dictionary in
+        <code>analyze_subpath_groups</code> (commits
+        <a href="https://github.com/universe-analysis/universe-generator/commit/7e80776">7e80776</a>,
+        <a href="https://github.com/universe-analysis/universe-generator/commit/484038d">484038d</a>):
+        a group's own w is its internal E-weighted mean; ensemble and bin w
+        are plain means over groups. Same FULLSUB cells; T=20 restricted to
+        its 3 complete seeds (see editor's note above).
+      </p>
+      <p>
+        This is a drastic reallocation of the budget &mdash; at T=100 the
+        sterile groups go from 3.4% of the energy (per-path dictionary) to
+        71% (they are 71% of all groups) &mdash; and the answer still does
+        not move:
+      </p>
+      <ul>
+        <li><strong>Bins stay flat under the group dictionary.</strong>
+            T=100 at the turnaround: sterile 1.00&times;, 1-subpath
+            1.03&times;, 2&ndash;9 1.00&times;, 10&ndash;99 1.00&times;,
+            100+ 0.99&times; ensemble; at z = &pi;/8: 1.00 / 1.03 / 0.98 /
+            0.99 / 1.03. T=40 within 0.92&ndash;1.02 everywhere (the 0.92 is
+            the same 10&ndash;99 seed-noise bin identified in the first
+            addendum, softened by the equal weighting).</li>
+        <li><strong>The total w barely notices the dictionary.</strong>
+            Turnaround ensemble w moves from 0.00830 to 0.00852 at T=40
+            (+2.7%) and from 0.00333 to 0.00334 at T=100 (+0.3%) &mdash;
+            shrinking with T. Handing 71% of the budget to the sterile
+            population changes the universe's equation of state by a third
+            of a percent, because every subpopulation carries the same w.</li>
+        <li><strong>The dictionary hunt also caught a data gotcha:</strong>
+            phantom groups (gids with zero dumped rows) revealed that T=20's
+            dumps are partially truncated at the engine's 60k row cap
+            &mdash; 5 of 8 seeds, not just the T&le;10 cells excluded
+            originally. The module now detects capped dumps
+            (<code>--complete-only</code>) and excludes phantom groups;
+            the previous entries carry an editor's note.</li>
+      </ul>
+      <figure class="plot">
+        <img src="subpath_w_of_z_group.png"
+             alt="Three panels of per-bin w(z) over ensemble w(z) under the equal-energy-per-group dictionary: T=100 curves are flat within about three percent at all conformal times, T=40 nearly so, and the three-seed T=20 panel scatters widely." />
+        <figcaption>
+          Per-bin w(z)/ensemble-w(z) under the equal-energy-per-group
+          dictionary. T=100 (8 seeds): flat to &plusmn;3% at every conformal
+          time. T=20 is down to 3 complete seeds and is noise.
+        </figcaption>
+      </figure>
+      <p>
+        Takeaway: the multiplicity null is <em>dictionary-robust</em>. Like
+        the turnaround w results that survived the Chebyshev/Euclidean
+        dictionary swap, the group-fertility result survives moving from
+        path-weighted to group-weighted energy &mdash; because it was never
+        a weighting effect: the subpopulations genuinely share one equation
+        of state.
       </p>
     </article>
 
