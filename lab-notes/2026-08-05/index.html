@@ -99,6 +99,83 @@
       </p>
     </article>
 
+    <article class="entry" id="subpath-groups">
+      <h2>Accretion multiplicity carries no w signal &mdash; but the group
+      mass function is violently heavy-tailed</h2>
+      <p class="meta">
+        New analysis <code>analysis/analyze_subpath_groups.py</code> (commit
+        <a href="https://github.com/universe-analysis/universe-generator/commit/5109525">5109525</a>),
+        run on the stored FULLSUB dumps (2+1 full-spectrum terms=T with
+        phase-2 subpaths, campaign <code>fullsub2d_e6</code>): T = 20, 40,
+        100, 8 seeds each pooled via the dumps' <code>gid</code> group
+        column. Question from Chris: do unique groups with one subpath vs
+        many subpaths differ in their w contribution? (T = 5, 10 excluded:
+        those dumps hit a 60k-row cap and are truncated.)
+      </p>
+      <p>
+        A group is one unique worldline plus everything that accreted onto
+        it in phase 2 (a subpath must touch exactly one existing group and
+        joins it; accepted subpaths seed further accretion). Binning groups
+        by subpath count and measuring each bin's turnaround w under the
+        standard E ~ &Sigma;b dictionary:
+      </p>
+      <ul>
+        <li><strong>Fertility carries no w signal.</strong> At T=100,
+            sterile groups sit at 1.00&times; the ensemble w, 1-subpath
+            groups at 1.03&times;, and the 100+ megagroups at exactly
+            1.00&times; &mdash; no monotone trend at any T, all bins within
+            &plusmn;10% (the T=20 dips are bins of ~25&ndash;40 groups,
+            within noise). Groups with one subpath and groups with 45,018
+            subpaths have the same equation of state.</li>
+        <li><strong>The contribution difference is pure mass share.</strong>
+            The 100+ bin owns 86% (T=100) to 99.6% (T=20) of the total
+            energy &mdash; megagroups dominate the w budget only because
+            they dominate the weight, at an unchanged temperature.</li>
+        <li><strong>Accretion selection is thermodynamically inert.</strong>
+            The sterile bin is pure phase-1 uniques (admitted by
+            &ldquo;touch nothing&rdquo;); the 100+ bin is ~100% phase-2
+            subpaths (admitted by &ldquo;touch exactly one group&rdquo;).
+            Same w. That makes this the <em>fourth</em> ensemble-rigidity
+            result, after coupling strength, admission epoch, and spectral
+            concentration.</li>
+        <li><strong>The real structure is the multiplicity distribution
+            itself.</strong> The group-size &ldquo;mass function&rdquo; is
+            violently heavy-tailed: the sterile fraction grows with T (59%
+            at T=20 &rarr; 71% at T=100) while the largest groups reach
+            ~45,000 (T=20) / ~7,100 (T=100) members &mdash; most anchors
+            accrete nothing, a handful accrete everything, a halo-mass-
+            function-like object whose tail exponent and T-trend are
+            unmeasured.</li>
+      </ul>
+      <figure class="plot">
+        <img src="subpath_w_bins.png"
+             alt="Grouped bar chart of bin w over ensemble w for group subpath counts 0, 1, 2-9, 10-99, and 100+, at T=20, 40, and 100: every bar is close to 1 with no monotone trend." />
+        <figcaption>
+          Turnaround w by group subpath count, 8 seeds pooled per T. Flat:
+          sterile singletons and megagroups share the ensemble's equation of
+          state.
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="subpath_group_sizes.png"
+             alt="Log-log complementary CDF of group sizes at T=20, 40, 100: a steep initial drop (the sterile majority), a broad power-law-like middle, and a cutoff tail reaching tens of thousands of members." />
+        <figcaption>
+          The group mass function (CCDF). A sterile majority, a broad
+          scale-free-looking middle, and a megagroup cutoff that recedes
+          with T.
+        </figcaption>
+      </figure>
+      <p>
+        Caveats: 2+1 only (subpaths are a 2+1 engine feature &mdash; no
+        dimension twin exists without new engine work); T&le;10 dumps
+        truncated; and the sub-dump rows are <em>not</em> in the admission
+        order the engine comment claims (uniques are not a row prefix &mdash;
+        harmless here since <code>gid</code> carries the grouping, but the
+        writer deserves a look). Follow-up worth having: the mass function's
+        tail exponent and whether it is scale-free in T.
+      </p>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
