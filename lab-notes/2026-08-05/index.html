@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-08-05</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-08-05</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="spectral-w">
+      <h2>No emergent &nu; sector: spectral concentration is only mildly hot,
+      and the amplitude simplex self-averages it away</h2>
+      <p class="meta">
+        New analysis <code>analysis/analyze_spectral_w.py</code> (commit
+        <a href="https://github.com/universe-analysis/universe-generator/commit/87516b6">87516b6</a>),
+        run on the stored FULLSPEC dumps: 3+1 T=75 terms=T (177,848
+        worldlines) and 2+1 T=100 terms=T (8,744), 8 seeds each pooled.
+        No new packing runs &mdash; this is a re-analysis of existing
+        campaign data.
+      </p>
+      <p>
+        Question (raised by the two-fluid equation-of-state discussion): does
+        the full-spectrum model <em>already contain</em> an &ldquo;effective
+        few-term&rdquo; subpopulation? The amplitude split is random, so a
+        term drawn with negligible amplitude is as good as absent &mdash; if
+        such worldlines exist and run hot (higher w), the model would carry a
+        built-in neutrino-like relic sector with no new ingredient. The probe:
+        each worldline's <strong>participation ratio</strong> PR =
+        1/&Sigma;&#349;&sup2; of its normalized |a&middot;b| weights
+        (axis-averaged) &mdash; the effective number of terms actually
+        carrying rapidity budget. Split the pack into PR quartiles, measure
+        each group's turnaround w under the standard E ~ &Sigma;b dictionary.
+      </p>
+      <ul>
+        <li><strong>Concentration is hot &mdash; directionally.</strong>
+            Group w falls monotonically from the most-concentrated to the
+            most-spread quartile in both dimensions: 1.09&times; &rarr;
+            0.92&times; the ensemble w in 3+1, 1.11&times; &rarr; 0.91&times;
+            in 2+1; the most-concentrated 1% runs 1.20&times; / 1.27&times;.
+            Mechanism: at the turnaround the comoving-offset velocity
+            vanishes, so v&sup2; is an incoherent sum over the wiggle
+            weights and concentrating them raises it.</li>
+        <li><strong>But the simplex self-averages: there is no few-term
+            tail.</strong> Under the uniform Dirichlet(1,&hellip;,1)
+            amplitude split the effective term count concentrates at
+            &asymp;T/2 &plusmn; 6%: at T=75 the packed PR spans 26.5&ndash;47.8
+            (median 38) over 177,848 worldlines &mdash; the single most
+            concentrated worldline in the whole campaign still spreads its
+            budget over ~27 effective terms. Near-zero amplitudes essentially
+            never happen. A genuine two-fluid w split (a sector at
+            w &asymp; 0.15&ndash;0.3 against dust at d/(6T)) would need
+            PR &asymp; 2&ndash;3, i.e. a factor ~40 in w &mdash; the measured
+            spread is &plusmn;9%.</li>
+        <li><strong>Jamming barely notices spectra.</strong> The packed PR
+            distribution vs the proposal-ensemble null: shapes coincide, with
+            a tiny mean shift toward <em>spread</em> spectra &mdash; +0.14
+            terms of 38 in 3+1, +0.20 of 50 in 2+1 (~0.4%, but 8/8 seeds
+            high in both dims; seed-level t = 25 / 6). Jamming weakly culls
+            the hot concentrated worldlines &mdash; the spectral fingerprint
+            of the known jamming-cooling effect, and nothing more.</li>
+      </ul>
+      <figure class="plot">
+        <img src="spectral_w_quartiles.png"
+             alt="Bar charts of group w relative to ensemble w by participation-ratio quartile for 3+1 T=75 and 2+1 T=100: monotone decline from about 1.1 at the concentrated quartile to about 0.91 at the spread quartile, with the hottest 1% tail at 1.2 to 1.27." />
+        <figcaption>
+          Turnaround w by spectral-concentration quartile (8 seeds pooled).
+          Concentrated worldlines are hotter &mdash; but the whole effect is
+          &plusmn;9%, not the &times;40 a relic sector needs.
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="spectral_pr_null.png"
+             alt="Histograms of participation ratio for packed worldlines versus the proposal-ensemble null in both dimensions: the distributions coincide almost exactly, with dashed mean lines showing a tiny shift of the packed mean toward higher participation ratio." />
+        <figcaption>
+          Packed vs proposal PR distributions. Jamming selects on spectral
+          concentration only at the ~0.4% level, toward spread (cooler)
+          spectra.
+        </figcaption>
+      </figure>
+      <p>
+        Takeaway. This is the third &ldquo;inertness&rdquo; result in a row:
+        coupling strength (&nu;-sector run, 2026-08-02), admission epoch
+        (same), and now emergent spectral concentration all fail to give a
+        subpopulation its own equation of state &mdash; the dust law
+        w = d/(6T) really is ensemble-rigid, and a two-fluid w split
+        <em>has to be an ingredient, not an emergent property</em>: either an
+        explicit few-term second species (an out-of-model probe, like the
+        &nu;-sector mode) or a sparser amplitude prior (a model change).
+        Bonus consistency check: the pooled turnaround w on this data is
+        0.00663 (3+1) / 0.00338 (2+1) against d/(6T) = 0.00667 / 0.00333
+        &mdash; the dust law reconfirmed to half a percent on the stored
+        FULLSPEC campaigns.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
