@@ -300,6 +300,74 @@
       </p>
     </article>
 
+    <article class="entry" id="subpath-anchor-coherence">
+      <h2>Third addendum: extremes vs extremes &mdash; and the discovery that
+      accretion groups are iso-anchor objects</h2>
+      <p class="meta">
+        Chris asked for the extreme comparison: sterile groups vs the very
+        largest (are there 1000+-subpath groups at T=100? Yes &mdash; 42 of
+        them, max 7,130 members; T=40 has 64, max 35,381). Brackets made
+        configurable (<code>--bins 0,1,2,10,100,1000</code>) and a
+        group-anchor analysis added (commits
+        <a href="https://github.com/universe-analysis/universe-generator/commit/fc76f4c">fc76f4c</a>,
+        <a href="https://github.com/universe-analysis/universe-generator/commit/5c74b8b">5c74b8b</a>);
+        complete dumps only.
+      </p>
+      <p>
+        The pooled fine-bracket table at z = &pi;/8 looks at first like the
+        split Chris suspected: at T=100 the 100&ndash;999 bin reads
+        1.11&times; ensemble and the 1000+ bin 0.92&times; (the earlier flat
+        &ldquo;100+&rdquo; bin was averaging the two). But per-seed the split
+        is not reproducible &mdash; the 1000+ ratio swings 0.63&ndash;1.17
+        across seeds in both directions (the pooled 0.92 is dominated by the
+        same outlier seed as before), while at the <em>turnaround</em> the
+        extremes agree seed-by-seed to &plusmn;2% (sterile and 1000+ both at
+        1.00). The multiplicity null stands at the extremes too.
+      </p>
+      <p>
+        The scatter itself, though, was the clue. A bin holding 93,000 paths
+        should not fluctuate like a bin of five &mdash; unless its members
+        are correlated. They are, spectacularly: <strong>accretion groups
+        are iso-anchor objects.</strong> The intraclass correlation of the
+        anchor energy &Sigma;a&#8322;&sup2; within groups (&ge;10 members)
+        is <strong>ICC = 0.979 (T=40) / 0.996 (T=100)</strong> against a
+        shuffled-gid null of ~0.00, in 8/8 seeds &mdash; members of a group
+        share essentially one comoving anchor speed, a per-group
+        &ldquo;peculiar velocity,&rdquo; while different groups span the
+        whole range (0 to ~2). And that group velocity is completely
+        uncorrelated with fertility: corr(log size, group anchor energy) =
+        +0.002 / &minus;0.000 (per-seed spread &plusmn;0.01).
+      </p>
+      <figure class="plot">
+        <img src="subpath_anchor_coherence.png"
+             alt="Two panels (T=40, T=100) of group mean anchor energy vs group size on a log axis: groups of every size span the whole anchor-energy range, with tiny red error bars showing each large group's internal spread, and no trend with size." />
+        <figcaption>
+          Each point is a group; red bars are the internal spread of groups
+          with &ge;10 members. Tight bars at every level = iso-anchor
+          coherence; flat cloud = fertility carries no anchor bias.
+        </figcaption>
+      </figure>
+      <p>
+        This explains the whole addendum saga mechanically: off-turnaround,
+        w is anchor-dominated, and since a megagroup is <em>one</em>
+        effective anchor draw, a multiplicity bin's off-turnaround w has an
+        effective sample size of its group count &mdash; tens, not tens of
+        thousands &mdash; hence the seed swings. And it sharpens the null
+        into a positive statement: <strong>individual groups genuinely do
+        have individual w(z) contributions</strong> (set by their shared
+        anchor speed &mdash; Chris's reading of the graphs was right at the
+        group level), <strong>but the anchor is assigned independently of
+        multiplicity</strong>, so binning by subpath count always averages
+        back to the ensemble. Plausible mechanism: a subpath must stay in
+        contact with exactly one group across the loop while avoiding all
+        others &mdash; co-moving (matched-a&#8322;) candidates are the ones
+        that can do that, so accretion selects members onto their group's
+        drift. First genuinely positive structural result of this thread:
+        the model grows coherent bound-structure analogs with shared bulk
+        velocities and a scale-free mass spectrum.
+      </p>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
