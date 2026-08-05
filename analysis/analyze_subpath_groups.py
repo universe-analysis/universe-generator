@@ -16,6 +16,13 @@ the comoving-anchor velocity a2 cos(z) dominates v^2, so a mid-cycle z
 probes anchor differences the turnaround is blind to. The group-size
 distribution itself (a mass-function analog) is reported alongside.
 
+Two energy dictionaries are reported (Chris, 2026-08-05): the per-path
+dictionary above (a group's budget share grows with its member count), and
+a per-group dictionary in which every group represents an EQUAL share of
+the total energy -- a sterile group counts as much as a megagroup. Under
+the group dictionary a group's own w is its internal E-weighted mean and
+the ensemble/bin w is the plain mean over groups.
+
 Usage::
 
     python -m analysis.analyze_subpath_groups \
@@ -73,6 +80,8 @@ class CellGroups:
     bin_ev2: dict[str, np.ndarray] = field(default_factory=dict)
     tot_e: float = 0.0
     tot_ev2: np.ndarray = field(default_factory=lambda: np.empty(0))
+    #: per-group internal w(z), rows aligned with group_sizes (group dict.)
+    group_wz: np.ndarray = field(default_factory=lambda: np.empty((0, 0)))
 
     def zi(self, z: float) -> int:
         return int(np.argmin(np.abs(self.zgrid - z)))
@@ -80,14 +89,23 @@ class CellGroups:
     def w_ensemble(self, z: float) -> float:
         return float(self.tot_ev2[self.zi(z)] / self.tot_e / 3.0)
 
-    def bin_rows(self, z: float) -> list[tuple[str, int, int, float, float]]:
-        """(label, n_groups, n_paths, energy_share, w at z) per bin."""
+    def w_ensemble_group(self, z: float) -> float:
+        """Ensemble w under the equal-energy-per-group dictionary."""
+        return float(self.group_wz[:, self.zi(z)].mean())
+
+    def _bin_gmask(self, lo: int, hi: int) -> np.ndarray:
+        return (self.group_sizes - 1 >= lo) & (self.group_sizes - 1 <= hi)
+
+    def bin_rows(self, z: float) -> list[tuple[str, int, int, float, float, float]]:
+        """(label, n_groups, n_paths, E_share, w_path, w_group) at z per bin."""
         rows = []
-        for _, _, label in BINS:
+        for lo, hi, label in BINS:
+            gmask = self._bin_gmask(lo, hi)
             if self.bin_paths.get(label, 0) == 0:
-                rows.append((label, self.bin_groups.get(label, 0), 0, 0.0, np.nan))
+                rows.append((label, int(gmask.sum()), 0, 0.0, np.nan, np.nan))
                 continue
             w = float(self.bin_ev2[label][self.zi(z)] / self.bin_e[label] / 3.0)
+            w_grp = float(self.group_wz[gmask, self.zi(z)].mean())
             rows.append(
                 (
                     label,
@@ -95,6 +113,7 @@ class CellGroups:
                     self.bin_paths[label],
                     self.bin_e[label] / self.tot_e,
                     w,
+                    w_grp,
                 )
             )
         return rows
@@ -118,6 +137,17 @@ def load_cells(paths: list[Path], zgrid: np.ndarray) -> list[CellGroups]:
         cell.group_sizes = np.concatenate([cell.group_sizes, sizes])
         cell.tot_e += e.sum()
         cell.tot_ev2 += v2_z @ e
+        # per-group internal w(z): E-weighted within the group (group dict.)
+        e_g = np.bincount(gid, weights=e)
+        ev2_g = np.stack(
+            [np.bincount(gid, weights=e * v2_z[k]) for k in range(len(zgrid))],
+            axis=1,
+        )
+        wz_g = ev2_g / e_g[:, None] / 3.0  # (n_groups, nz)
+        if cell.group_wz.size == 0:
+            cell.group_wz = wz_g
+        else:
+            cell.group_wz = np.concatenate([cell.group_wz, wz_g])
         for lo, hi, label in BINS:
             pmask = (subs >= lo) & (subs <= hi)
             gmask = (sizes - 1 >= lo) & (sizes - 1 <= hi)
@@ -136,10 +166,11 @@ def report(cell: CellGroups, z: float) -> None:
     gs = cell.group_sizes
     d = 2  # subpaths are a 2+1 engine feature
     w_ens = cell.w_ensemble(z)
+    w_ens_g = cell.w_ensemble_group(z)
     print(
         f"\n=== 2+1 T={cell.t} ({cell.n_seeds} seeds): {len(gs)} groups, "
         f"{gs.sum()} paths; z = {z:.4f} ({z / np.pi:.3f} pi); "
-        f"ensemble w(z) = {w_ens:.5f} ==="
+        f"ensemble w(z) = {w_ens:.5f} path-dict / {w_ens_g:.5f} group-dict ==="
     )
     print(
         f"  [turnaround w = {cell.w_ensemble(HALF_PI):.5f}, "
@@ -147,11 +178,17 @@ def report(cell: CellGroups, z: float) -> None:
         f"{int(np.median(gs))}, max {gs.max()}, "
         f"sterile {(gs == 1).sum()}/{len(gs)} ({(gs == 1).mean():.0%})"
     )
-    c = ("bin", "groups", "paths", "E share", "w(z)", "w/ens")
-    print(f"  {c[0]:<14}{c[1]:>7}{c[2]:>9}{c[3]:>9}{c[4]:>10}{c[5]:>7}")
-    for label, n_g, n_p, share, w in cell.bin_rows(z):
-        ratio = w / w_ens if np.isfinite(w) else float("nan")
-        print(f"  {label:<14}{n_g:>7}{n_p:>9}{share:>9.2%}{w:>10.5f}{ratio:>7.2f}")
+    c = ("bin", "groups", "paths", "E share", "w path", "/ens", "w group", "/ens")
+    print(
+        f"  {c[0]:<14}{c[1]:>7}{c[2]:>9}{c[3]:>9}{c[4]:>10}{c[5]:>6}{c[6]:>10}{c[7]:>6}"
+    )
+    for label, n_g, n_p, share, w, w_grp in cell.bin_rows(z):
+        r = w / w_ens if np.isfinite(w) else float("nan")
+        r_g = w_grp / w_ens_g if np.isfinite(w_grp) else float("nan")
+        print(
+            f"  {label:<14}{n_g:>7}{n_p:>9}{share:>9.2%}"
+            f"{w:>10.5f}{r:>6.2f}{w_grp:>10.5f}{r_g:>6.2f}"
+        )
 
 
 def plot_bins(cells: list[CellGroups], z: float, out: Path) -> None:
@@ -164,7 +201,8 @@ def plot_bins(cells: list[CellGroups], z: float, out: Path) -> None:
     for k, cell in enumerate(cells):
         w_ens = cell.w_ensemble(z)
         ratios = [
-            w / w_ens if np.isfinite(w) else 0.0 for _, _, _, _, w in cell.bin_rows(z)
+            w / w_ens if np.isfinite(w) else 0.0
+            for _, _, _, _, w, _ in cell.bin_rows(z)
         ]
         x = np.arange(len(labels)) + (k - (len(cells) - 1) / 2) * width
         ax.bar(x, ratios, width=width * 0.92, label=f"T={cell.t}")
@@ -180,18 +218,27 @@ def plot_bins(cells: list[CellGroups], z: float, out: Path) -> None:
     print(f"wrote {out}")
 
 
-def plot_wz(cells: list[CellGroups], out: Path, mark_z: float | None = None) -> None:
+def plot_wz(
+    cells: list[CellGroups],
+    out: Path,
+    mark_z: float | None = None,
+    dictionary: str = "path",
+) -> None:
     """Per-bin w(z)/ensemble-w(z) ratio curves across the cycle, one panel/T."""
     import matplotlib.pyplot as plt
 
     fig, axs = plt.subplots(1, len(cells), figsize=(4.2 * len(cells), 4.2), sharey=True)
     for ax, cell in zip(np.atleast_1d(axs), cells):
-        for _, _, label in BINS:
+        for lo, hi, label in BINS:
             if cell.bin_paths.get(label, 0) == 0:
                 continue
-            ratio = (cell.bin_ev2[label] / cell.bin_e[label]) / (
-                cell.tot_ev2 / cell.tot_e
-            )
+            if dictionary == "group":
+                gmask = cell._bin_gmask(lo, hi)
+                ratio = cell.group_wz[gmask].mean(axis=0) / cell.group_wz.mean(axis=0)
+            else:
+                ratio = (cell.bin_ev2[label] / cell.bin_e[label]) / (
+                    cell.tot_ev2 / cell.tot_e
+                )
             ax.plot(cell.zgrid / np.pi, ratio, label=label)
         ax.axhline(1.0, color="0.4", lw=0.8, ls="--")
         if mark_z is not None:
@@ -201,7 +248,8 @@ def plot_wz(cells: list[CellGroups], out: Path, mark_z: float | None = None) -> 
         ax.set_title(f"T={cell.t}")
     np.atleast_1d(axs)[0].set_ylabel("bin w(z) / ensemble w(z)")
     np.atleast_1d(axs)[0].legend(fontsize=8)
-    fig.suptitle("Group-multiplicity w across the whole cycle")
+    name = "equal-energy-per-group" if dictionary == "group" else "per-path E"
+    fig.suptitle(f"Group-multiplicity w across the whole cycle ({name} dictionary)")
     fig.tight_layout()
     fig.savefig(out, dpi=140)
     print(f"wrote {out}")
@@ -221,6 +269,12 @@ def main() -> None:
     parser.add_argument("--out-bins", type=Path, default=None)
     parser.add_argument("--out-sizes", type=Path, default=None)
     parser.add_argument("--out-wz", type=Path, default=None)
+    parser.add_argument(
+        "--out-wz-group",
+        type=Path,
+        default=None,
+        help="w(z) curves under the equal-energy-per-group dictionary",
+    )
     args = parser.parse_args()
     base = np.linspace(0.02 * np.pi, 0.98 * np.pi, 49)
     zgrid = np.unique(np.concatenate([base, [args.z, HALF_PI]]))
@@ -233,6 +287,8 @@ def main() -> None:
         plot_sizes(cells, args.out_sizes)
     if args.out_wz is not None:
         plot_wz(cells, args.out_wz, mark_z=args.z)
+    if args.out_wz_group is not None:
+        plot_wz(cells, args.out_wz_group, mark_z=args.z, dictionary="group")
 
 
 def plot_sizes(cells: list[CellGroups], out: Path) -> None:
