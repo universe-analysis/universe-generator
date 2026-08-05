@@ -476,6 +476,11 @@ the production engines at matched budgets.
 ## 14. Two-species packing: the ν sector (2026-08-02)
 (lab note 2026-08-02; engine mode `braid_knot --nu-attempts --nu-div`)
 
+**This is an out-of-model probe: the two-species construction is not part of
+the model definition** — it asks how the unmodified model responds to a
+hypothetical second population, and nothing here adds an ingredient to the
+model stated in the README.
+
 A second species packed after the primary jam with exclusion cell (2/T)/k
 against everything (weak coupling as a knob); unpinned full-band worldlines,
 2+1 T=32 and 3+1 T=10, k ∈ {1, 2, 4}, primary 1e9 + ν 1e9 attempts, 4 seeds,
