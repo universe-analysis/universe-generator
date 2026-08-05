@@ -85,6 +85,30 @@ class CellGroups:
     group_wz: np.ndarray = field(default_factory=lambda: np.empty((0, 0)))
     #: multiplicity brackets (lo, hi, label) used for binning
     bins: list[tuple[int, int, str]] = field(default_factory=lambda: list(BINS))
+    #: per-path anchor energy sum(a2^2) and global group index (anchor stats)
+    path_a2sq: np.ndarray = field(default_factory=lambda: np.empty(0))
+    path_group: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=int))
+
+    def group_anchor_stats(self, min_size: int = 10) -> tuple[float, float]:
+        """(ICC, size-corr) of the anchor energy across groups.
+
+        ICC: 1 - within-group variance / total variance over members of
+        groups with >= min_size members (1 = perfectly coherent groups).
+        size-corr: Pearson corr of log group size vs group-mean anchor
+        energy over all groups (0 = fertility carries no anchor bias).
+        """
+        sizes_of = self.group_sizes[self.path_group]
+        m = sizes_of >= min_size
+        g, x = self.path_group[m], self.path_a2sq[m]
+        gm = np.bincount(g, weights=x, minlength=len(self.group_sizes))
+        gn = np.bincount(g, minlength=len(self.group_sizes))
+        mean_of = (gm / np.maximum(gn, 1))[g]
+        icc = 1.0 - ((x - mean_of) ** 2).mean() / x.var()
+        all_gm = np.bincount(
+            self.path_group, weights=self.path_a2sq, minlength=len(self.group_sizes)
+        ) / np.maximum(np.bincount(self.path_group, minlength=len(self.group_sizes)), 1)
+        corr = float(np.corrcoef(np.log(self.group_sizes), all_gm)[0, 1])
+        return float(icc), corr
 
     def zi(self, z: float) -> int:
         return int(np.argmin(np.abs(self.zgrid - z)))
@@ -160,6 +184,12 @@ def load_cells(
         v2_z = np.stack([velocity2(axes, float(z)) for z in zgrid])  # (nz, N)
         subs = sizes[gid] - 1
         occupied = sizes > 0  # phantom (fully truncated) groups drop out
+        remap = np.cumsum(occupied) - 1  # old gid -> occupied-only index
+        offset = len(cell.group_sizes)
+        cell.path_a2sq = np.concatenate(
+            [cell.path_a2sq, np.sum([ax.a2**2 for ax in axes], axis=0)]
+        )
+        cell.path_group = np.concatenate([cell.path_group, remap[gid] + offset])
         cell.group_sizes = np.concatenate([cell.group_sizes, sizes[occupied]])
         cell.tot_e += e.sum()
         cell.tot_ev2 += v2_z @ e
@@ -203,6 +233,11 @@ def report(cell: CellGroups, z: float) -> None:
         f"d/(6T) = {d / (6 * cell.t):.5f}]  group sizes: median "
         f"{int(np.median(gs))}, max {gs.max()}, "
         f"sterile {(gs == 1).sum()}/{len(gs)} ({(gs == 1).mean():.0%})"
+    )
+    icc, corr = cell.group_anchor_stats()
+    print(
+        f"  anchor coherence: ICC = {icc:.3f} (groups >= 10 members; "
+        f"shuffled null ~ 0), corr(log size, group anchor energy) = {corr:+.3f}"
     )
     c = ("bin", "groups", "paths", "E share", "w path", "/ens", "w group", "/ens")
     print(
@@ -281,6 +316,43 @@ def plot_wz(
     print(f"wrote {out}")
 
 
+def plot_anchor(cells: list[CellGroups], out: Path) -> None:
+    """Group anchor energy vs group size: coherence bars, no size trend."""
+    import matplotlib.pyplot as plt
+
+    fig, axs = plt.subplots(1, len(cells), figsize=(4.6 * len(cells), 4.4), sharey=True)
+    for ax, cell in zip(np.atleast_1d(axs), cells):
+        n_g = len(cell.group_sizes)
+        gsum = np.bincount(cell.path_group, weights=cell.path_a2sq, minlength=n_g)
+        gsumsq = np.bincount(cell.path_group, weights=cell.path_a2sq**2, minlength=n_g)
+        cnt = np.maximum(np.bincount(cell.path_group, minlength=n_g), 1)
+        gmean = gsum / cnt
+        gstd = np.sqrt(np.maximum(gsumsq / cnt - gmean**2, 0.0))
+        ax.scatter(cell.group_sizes, gmean, s=7, alpha=0.3, color="C0", lw=0)
+        big = cell.group_sizes >= 10
+        ax.errorbar(
+            cell.group_sizes[big],
+            gmean[big],
+            yerr=gstd[big],
+            fmt="none",
+            ecolor="C3",
+            alpha=0.5,
+            lw=0.9,
+        )
+        icc, corr = cell.group_anchor_stats()
+        ax.set_xscale("log")
+        ax.set_xlabel("group size (unique + subpaths)")
+        ax.set_title(f"T={cell.t}   ICC {icc:.3f}, size-corr {corr:+.3f}")
+    np.atleast_1d(axs)[0].set_ylabel("group mean anchor energy  sum a2^2")
+    fig.suptitle(
+        "Accretion groups are iso-anchor: tight internal spread (red bars), "
+        "no size trend"
+    )
+    fig.tight_layout()
+    fig.savefig(out, dpi=140)
+    print(f"wrote {out}")
+
+
 def parse_bins(spec: str) -> list[tuple[int, int, str]]:
     """Turn "0,1,2,10,100,1000" into (lo, hi, label) brackets."""
     los = sorted(int(x) for x in spec.split(","))
@@ -319,6 +391,7 @@ def main() -> None:
         default=None,
         help="w(z) curves under the equal-energy-per-group dictionary",
     )
+    parser.add_argument("--out-anchor", type=Path, default=None)
     parser.add_argument(
         "--bins",
         default=None,
@@ -350,6 +423,8 @@ def main() -> None:
         plot_wz(cells, args.out_wz, mark_z=args.z)
     if args.out_wz_group is not None:
         plot_wz(cells, args.out_wz_group, mark_z=args.z, dictionary="group")
+    if args.out_anchor is not None:
+        plot_anchor(cells, args.out_anchor)
 
 
 def plot_sizes(cells: list[CellGroups], out: Path) -> None:
