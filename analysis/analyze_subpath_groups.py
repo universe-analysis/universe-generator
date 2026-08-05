@@ -119,22 +119,40 @@ class CellGroups:
         return rows
 
 
-def load_cells(paths: list[Path], zgrid: np.ndarray) -> list[CellGroups]:
-    """Pool dumps into per-T cells (seeds of one T are combined)."""
+DUMP_ROW_CAP = 60_000  # campaign-era engines stop dumping past this many rows
+
+
+def load_cells(
+    paths: list[Path], zgrid: np.ndarray, complete_only: bool = False
+) -> list[CellGroups]:
+    """Pool dumps into per-T cells (seeds of one T are combined).
+
+    A dump that hit the engine's row cap is truncated: group sizes are
+    censored and gids can appear with zero dumped rows (phantom groups).
+    Truncated dumps are skipped under ``complete_only``, else warned about;
+    phantom groups are always excluded.
+    """
     by_t: dict[int, CellGroups] = {}
     for path in sorted(paths):
         t = _t_of(path)
-        cell = by_t.setdefault(t, CellGroups(t=t, zgrid=zgrid))
-        if cell.tot_ev2.size == 0:
-            cell.tot_ev2 = np.zeros(len(zgrid))
         axes = load_axis_terms(path)
         with open(path) as f:
             gid = np.array([int(r["gid"]) for r in csv.DictReader(f)])
+        sizes = np.bincount(gid)
+        truncated = len(gid) >= DUMP_ROW_CAP or (sizes == 0).any()
+        if truncated:
+            note = "skipping" if complete_only else "sizes censored, keeping"
+            print(f"WARNING: {path.name} is truncated at the dump row cap; {note}")
+            if complete_only:
+                continue
+        cell = by_t.setdefault(t, CellGroups(t=t, zgrid=zgrid))
+        if cell.tot_ev2.size == 0:
+            cell.tot_ev2 = np.zeros(len(zgrid))
         e = np.sum([ax.b.sum(axis=1) for ax in axes], axis=0)
         v2_z = np.stack([velocity2(axes, float(z)) for z in zgrid])  # (nz, N)
-        sizes = np.bincount(gid)
         subs = sizes[gid] - 1
-        cell.group_sizes = np.concatenate([cell.group_sizes, sizes])
+        occupied = sizes > 0  # phantom (fully truncated) groups drop out
+        cell.group_sizes = np.concatenate([cell.group_sizes, sizes[occupied]])
         cell.tot_e += e.sum()
         cell.tot_ev2 += v2_z @ e
         # per-group internal w(z): E-weighted within the group (group dict.)
@@ -143,7 +161,7 @@ def load_cells(paths: list[Path], zgrid: np.ndarray) -> list[CellGroups]:
             [np.bincount(gid, weights=e * v2_z[k]) for k in range(len(zgrid))],
             axis=1,
         )
-        wz_g = ev2_g / e_g[:, None] / 3.0  # (n_groups, nz)
+        wz_g = (ev2_g / np.where(e_g > 0, e_g, 1.0)[:, None] / 3.0)[occupied]
         if cell.group_wz.size == 0:
             cell.group_wz = wz_g
         else:
@@ -275,10 +293,17 @@ def main() -> None:
         default=None,
         help="w(z) curves under the equal-energy-per-group dictionary",
     )
+    parser.add_argument(
+        "--complete-only",
+        action="store_true",
+        help="skip dumps truncated at the engine row cap (censored group sizes)",
+    )
     args = parser.parse_args()
     base = np.linspace(0.02 * np.pi, 0.98 * np.pi, 49)
     zgrid = np.unique(np.concatenate([base, [args.z, HALF_PI]]))
-    cells = load_cells([Path(p) for p in args.params], zgrid)
+    cells = load_cells(
+        [Path(p) for p in args.params], zgrid, complete_only=args.complete_only
+    )
     for cell in cells:
         report(cell, args.z)
     if args.out_bins is not None:
