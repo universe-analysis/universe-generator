@@ -557,6 +557,15 @@ binned by subpath count; per-bin turnaround w under the E ~ Σb dictionary:
   rises with T (59% at T=20 → 71% at T=100); largest groups ~45,000
   (T=20) / ~7,100 (T=100) members. A halo-mass-function analog; tail
   exponent and T-scaling unmeasured (open).
+- **Off-turnaround probe (z = π/8, Chris's ask) is also null**: away from
+  the turnaround the bin ratio measures anchor energy ⟨E·a₂²⟩ (the a₂cos z
+  velocity dominates there), so this tests anchor stratification the
+  turnaround is blind to. Pooled deviations appear (T=100 1-subpath bin
+  1.07×; T=40 10–99 bin 0.84× with a turnaround-symmetric V) but none
+  survive per-seed decomposition — single outlier seeds dominate the
+  sub-percent-energy bins (e.g. 7/8 seeds at ratio 0.95–1.13 plus one at
+  1.66). The 100+ megagroup bin sits at 1.00× at every z in every seed.
+  Multiplicity is w-inert across the whole cycle, wiggles and anchors both.
 - Anomaly noted in passing: sub-dump rows are NOT in the admission order
   the engine comment claims (uniques are not a row prefix); harmless for
   gid-based analyses, but the 2+1 dump writer deserves a look.
