@@ -46,6 +46,7 @@ from analysis.analyze_eos_history import velocity2
 from braidlab.corrdim import load_axis_terms
 
 HALF_PI = np.pi / 2.0
+#: default multiplicity brackets; override with --bins
 BINS: list[tuple[int, int, str]] = [
     (0, 0, "0 (sterile)"),
     (1, 1, "1 subpath"),
@@ -82,6 +83,8 @@ class CellGroups:
     tot_ev2: np.ndarray = field(default_factory=lambda: np.empty(0))
     #: per-group internal w(z), rows aligned with group_sizes (group dict.)
     group_wz: np.ndarray = field(default_factory=lambda: np.empty((0, 0)))
+    #: multiplicity brackets (lo, hi, label) used for binning
+    bins: list[tuple[int, int, str]] = field(default_factory=lambda: list(BINS))
 
     def zi(self, z: float) -> int:
         return int(np.argmin(np.abs(self.zgrid - z)))
@@ -99,7 +102,7 @@ class CellGroups:
     def bin_rows(self, z: float) -> list[tuple[str, int, int, float, float, float]]:
         """(label, n_groups, n_paths, E_share, w_path, w_group) at z per bin."""
         rows = []
-        for lo, hi, label in BINS:
+        for lo, hi, label in self.bins:
             gmask = self._bin_gmask(lo, hi)
             if self.bin_paths.get(label, 0) == 0:
                 rows.append((label, int(gmask.sum()), 0, 0.0, np.nan, np.nan))
@@ -123,7 +126,10 @@ DUMP_ROW_CAP = 60_000  # campaign-era engines stop dumping past this many rows
 
 
 def load_cells(
-    paths: list[Path], zgrid: np.ndarray, complete_only: bool = False
+    paths: list[Path],
+    zgrid: np.ndarray,
+    complete_only: bool = False,
+    bins: list[tuple[int, int, str]] | None = None,
 ) -> list[CellGroups]:
     """Pool dumps into per-T cells (seeds of one T are combined).
 
@@ -145,7 +151,9 @@ def load_cells(
             print(f"WARNING: {path.name} is truncated at the dump row cap; {note}")
             if complete_only:
                 continue
-        cell = by_t.setdefault(t, CellGroups(t=t, zgrid=zgrid))
+        cell = by_t.setdefault(
+            t, CellGroups(t=t, zgrid=zgrid, bins=list(bins if bins else BINS))
+        )
         if cell.tot_ev2.size == 0:
             cell.tot_ev2 = np.zeros(len(zgrid))
         e = np.sum([ax.b.sum(axis=1) for ax in axes], axis=0)
@@ -166,7 +174,7 @@ def load_cells(
             cell.group_wz = wz_g
         else:
             cell.group_wz = np.concatenate([cell.group_wz, wz_g])
-        for lo, hi, label in BINS:
+        for lo, hi, label in cell.bins:
             pmask = (subs >= lo) & (subs <= hi)
             gmask = (sizes - 1 >= lo) & (sizes - 1 <= hi)
             cell.bin_groups[label] = cell.bin_groups.get(label, 0) + int(gmask.sum())
@@ -214,7 +222,7 @@ def plot_bins(cells: list[CellGroups], z: float, out: Path) -> None:
     import matplotlib.pyplot as plt
 
     fig, ax = plt.subplots(figsize=(9, 4.4))
-    labels = [b[2] for b in BINS]
+    labels = [b[2] for b in cells[0].bins]
     width = 0.8 / len(cells)
     for k, cell in enumerate(cells):
         w_ens = cell.w_ensemble(z)
@@ -247,7 +255,7 @@ def plot_wz(
 
     fig, axs = plt.subplots(1, len(cells), figsize=(4.2 * len(cells), 4.2), sharey=True)
     for ax, cell in zip(np.atleast_1d(axs), cells):
-        for lo, hi, label in BINS:
+        for lo, hi, label in cell.bins:
             if cell.bin_paths.get(label, 0) == 0:
                 continue
             if dictionary == "group":
@@ -273,6 +281,24 @@ def plot_wz(
     print(f"wrote {out}")
 
 
+def parse_bins(spec: str) -> list[tuple[int, int, str]]:
+    """Turn "0,1,2,10,100,1000" into (lo, hi, label) brackets."""
+    los = sorted(int(x) for x in spec.split(","))
+    out: list[tuple[int, int, str]] = []
+    for i, lo in enumerate(los):
+        hi = (los[i + 1] - 1) if i + 1 < len(los) else 10**9
+        if lo == 0 and hi == 0:
+            label = "0 (sterile)"
+        elif lo == hi:
+            label = f"{lo} subpath" + ("s" if lo != 1 else "")
+        elif hi == 10**9:
+            label = f"{lo}+"
+        else:
+            label = f"{lo}-{hi}"
+        out.append((lo, hi, label))
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -294,6 +320,12 @@ def main() -> None:
         help="w(z) curves under the equal-energy-per-group dictionary",
     )
     parser.add_argument(
+        "--bins",
+        default=None,
+        help="comma-separated bracket lower bounds, e.g. 0,1,2,10,100,1000 "
+        "(each bracket runs to the next bound; the last is open-ended)",
+    )
+    parser.add_argument(
         "--complete-only",
         action="store_true",
         help="skip dumps truncated at the engine row cap (censored group sizes)",
@@ -301,8 +333,12 @@ def main() -> None:
     args = parser.parse_args()
     base = np.linspace(0.02 * np.pi, 0.98 * np.pi, 49)
     zgrid = np.unique(np.concatenate([base, [args.z, HALF_PI]]))
+    bins = parse_bins(args.bins) if args.bins else None
     cells = load_cells(
-        [Path(p) for p in args.params], zgrid, complete_only=args.complete_only
+        [Path(p) for p in args.params],
+        zgrid,
+        complete_only=args.complete_only,
+        bins=bins,
     )
     for cell in cells:
         report(cell, args.z)
