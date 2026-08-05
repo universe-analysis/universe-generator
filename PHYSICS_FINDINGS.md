@@ -577,6 +577,28 @@ binned by subpath count; per-bin turnaround w under the E ~ Σb dictionary:
   T=40, the known noise bin) at both π/2 and π/8, and shifts the total w
   by +2.7% (T=40) / +0.3% (T=100), shrinking with T. The subpopulations
   genuinely share one EOS; no weighting scheme can split them.
+- **The null holds at the extremes** (sterile vs 1000+-subpath groups;
+  T=100 has 42 such, max 7,130 members; T=40 has 64, max 35,381): at the
+  turnaround both extremes sit at 1.00× ensemble to ±2% seed-by-seed.
+  Pooled off-turnaround splits (100–999 at 1.11×, 1000+ at 0.92× at π/8,
+  T=100) are single-seed artifacts — the 1000+ ratio swings 0.63–1.17
+  across seeds in both directions.
+- **POSITIVE RESULT — accretion groups are iso-anchor objects**: the
+  anchor energy Σa₂² has intraclass correlation **ICC = 0.979 (T=40) /
+  0.996 (T=100)** within groups of ≥10 members (shuffled-gid null ≈ 0.00;
+  8/8 seeds both T). Members of a group share essentially one comoving
+  anchor speed — a per-group "peculiar velocity" — while groups span the
+  full range (0 to ~2); the group velocity is uncorrelated with size
+  (corr(log size, anchor energy) = +0.002 / −0.000, ±0.01 per seed).
+  Consequence: off-turnaround, a multiplicity bin's effective sample size
+  is its GROUP count, not its path count — the origin of all the seed
+  swings above. Groups genuinely have individual w(z) contributions, set
+  by their shared anchor, but the anchor is multiplicity-independent, so
+  multiplicity bins always average back to the ensemble. Likely mechanism:
+  admission requires staying in contact with exactly one group while
+  avoiding all others — co-moving (matched-a₂) candidates are the ones
+  that can. The model grows bound-structure analogs: coherent bulk
+  velocity + scale-free mass spectrum.
 - Anomaly noted in passing: sub-dump rows are NOT in the admission order
   the engine comment claims (uniques are not a row prefix); harmless for
   gid-based analyses, but the 2+1 dump writer deserves a look. The 60k
