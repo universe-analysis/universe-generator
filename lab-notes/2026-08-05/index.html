@@ -176,6 +176,57 @@
       </p>
     </article>
 
+    <article class="entry" id="subpath-groups-offturn">
+      <h2>Addendum: the &pi;/8 probe &mdash; multiplicity carries no w signal
+      off-turnaround either</h2>
+      <p class="meta">
+        Follow-up to the previous entry, on Chris's point that the turnaround
+        is exactly where contributions <em>should</em> agree: at z = &pi;/2
+        the comoving-anchor velocity a&#8322;cos z vanishes, so the previous
+        measurement only probed the wiggle terms. <code>analyze_subpath_groups</code>
+        extended with <code>--z</code> and whole-cycle per-bin w(z) curves
+        (commit
+        <a href="https://github.com/universe-analysis/universe-generator/commit/9246fbb">9246fbb</a>);
+        same FULLSUB cells (T = 20/40/100, 8 seeds). Off-turnaround the ratio
+        essentially measures each bin's anchor energy
+        &lang;E&middot;a&#8322;&sup2;&rang;, so this is an anchor-stratification
+        test the turnaround was blind to.
+      </p>
+      <p>
+        At z = &pi;/8 the pooled picture looks at first like a small
+        stratification &mdash; at T=100 the sterile bin reads 1.03&times;
+        ensemble, the 1-subpath bin 1.07&times;; at T=40 the 10&ndash;99 bin
+        dips to 0.84&times; with a striking V-shape symmetric about the
+        turnaround. <strong>None of it survives a per-seed decomposition.</strong>
+        The T=100 1-subpath bin is seven seeds at anchor-energy ratio
+        0.95&ndash;1.13 plus one outlier (seed 2 at 1.66) that dominates the
+        pool; the sterile bin is the same story (same outlier seed); the T=40
+        dip scatters 0.55&ndash;1.15 across seeds in both directions. These
+        sub-percent-energy bins are swung by a handful of high-|a&#8322;|,
+        high-E paths &mdash; heavy-tailed seed noise, not structure. The
+        megagroup (100+) bin, which carries 86&ndash;99.6% of the energy,
+        sits at 1.00&times; ensemble at <em>every</em> conformal time in
+        <em>every</em> seed.
+      </p>
+      <figure class="plot">
+        <img src="subpath_w_of_z.png"
+             alt="Three panels (T=20, 40, 100) of per-multiplicity-bin w(z) over ensemble w(z) across the conformal cycle: small-bin curves wander within about ten percent with no reproducible direction, while the 100+ megagroup curve is pinned flat at 1." />
+        <figcaption>
+          Per-bin w(z)/ensemble-w(z) across the whole cycle (dotted line:
+          z = &pi;/8; grey line: turnaround). Small bins wander within
+          &plusmn;10&ndash;15% (seed noise, per-seed medians &asymp; 1.00);
+          the energy-dominant 100+ bin is glued to 1.
+        </figcaption>
+      </figure>
+      <p>
+        Takeaway: accretion multiplicity is w-inert at <em>every</em>
+        conformal time, not just the turnaround &mdash; fertile and sterile
+        groups share both their wiggle temperature and their anchor-speed
+        distribution. The rigidity result of the previous entry holds across
+        the whole cycle.
+      </p>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
