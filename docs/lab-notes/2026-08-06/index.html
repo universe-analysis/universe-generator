@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-08-06</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-08-06</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="w-overlay">
+      <h2>The w(z) history under the original dictionary, with the groups
+      drawn on top: megagroups fan across the whole velocity range, the
+      ensemble doesn't notice</h2>
+      <p class="meta">
+        New <code>--out-wz-overlay</code> mode of
+        <code>analysis/analyze_subpath_groups.py</code> (commit
+        <a href="https://github.com/universe-analysis/universe-generator/commit/929c0dc">929c0dc</a>),
+        run on the stored FULLSUB dumps (2+1 full-spectrum terms=T with
+        phase-2 subpaths, campaign <code>fullsub2d_e6</code>): T = 40 and
+        100, 8 seeds each pooled, complete (untruncated) cells only. No new
+        packing runs. Question from Kevin: redo the group w(z) analysis
+        under the <em>original</em> energy dictionary &mdash; every path an
+        equal share of the budget, rather than every unique group an equal
+        share &mdash; and draw the group contributions onto the absolute
+        w(z) history: the largest accretion group's own w(z) against the
+        aggregate of all 1-path (sterile) groups.
+      </p>
+      <p>
+        First, the dictionary itself: at terms = T the original per-path
+        E&nbsp;~&nbsp;&Sigma;b dictionary weighs every worldline
+        <em>exactly</em> equally &mdash; each full-spectrum path carries the
+        entire frequency pool, so &Sigma;b is the same number for all of
+        them (measured spread 0, lab note 07-28). Kevin's expectation
+        &ldquo;the energy of all paths would probably contribute
+        evenly&rdquo; is not approximately but identically true in this
+        model, which makes the original dictionary the natural
+        one-path-one-vote accounting.
+      </p>
+      <ul>
+        <li><strong>The ensemble, the closed form, and the sterile
+            aggregate are one curve.</strong> The pooled w(z) tracks
+            (d/3)(cos&sup2;z/3 + 1/T) across the cycle, and the summed
+            contribution of the sterile groups (70&ndash;71% of groups,
+            0.4&ndash;3.4% of paths) lies on top of it &mdash; running only
+            a few percent hot at the extreme endpoints. Turnaround values:
+            0.00830 vs d/(6T) = 0.00833 at T=40; 0.00333 vs 0.00333 at
+            T=100. The equal-energy-per-group re-weighting of 08-05 moved
+            the ensemble by a third of a percent; the original dictionary
+            confirms the same picture from the other accounting.</li>
+        <li><strong>A single megagroup, though, has its own w(z) &mdash;
+            set by its bulk velocity.</strong> The largest group of each
+            seed (thin lines, one per seed) fans from ~0.02 to ~0.5 at the
+            bang: a direct corollary of the 08-05 iso-anchor discovery.
+            A group shares one comoving anchor speed, so away from the
+            turnaround &mdash; where the a&#8322;cos z anchor term dominates
+            v&sup2; &mdash; a group's w(z) is essentially a measurement of
+            its peculiar velocity, and different groups sit anywhere in the
+            velocity range. At the turnaround every group collapses onto
+            the ensemble curve: the same uniformity-at-&pi;/2 the rigidity
+            results established, now visible as geometry.</li>
+        <li><strong>The two biggest objects in the data disagree
+            politely.</strong> The overall-largest group at T=40 (35,381
+            paths) happens to ride near the ensemble curve; the largest at
+            T=100 (7,130 paths) is a slow one, flat near w &asymp; 0.03
+            across the whole cycle. Which is the point: megagroup w(z)
+            curves are draws from the velocity distribution, not tracers of
+            the equation of state.</li>
+        <li><strong>The accretion (iso-anchor) graph would not change at
+            all under the original dictionary.</strong> Checked in code
+            rather than by re-plotting: <code>plot_anchor</code> and the
+            ICC/size-corr statistics are unweighted means and variances of
+            the per-path anchor energy &mdash; no energy dictionary enters
+            anywhere. Kevin guessed the red bars would &ldquo;fill in with
+            dots&rdquo;; in fact the figure is bit-identical under both
+            accountings, since the dictionaries only re-weight w, and that
+            graph never weights.</li>
+      </ul>
+      <figure class="plot">
+        <img src="subpath_w_overlay_2d.png"
+             alt="Two panels, T=40 and T=100, of absolute w versus conformal time z. The black ensemble curve, dashed closed form, and blue sterile-group aggregate coincide as a U-shaped curve from about 0.22 at the endpoints to near zero at the turnaround. Thin orange lines, the largest accretion group of each seed, fan widely from about 0.02 to 0.5 at the endpoints but all collapse onto the ensemble at the turnaround." />
+        <figcaption>
+          Absolute w(z) under the per-path (original) dictionary, 8 seeds
+          pooled. Black: ensemble; dashed: closed form; blue: all sterile
+          groups aggregated; orange: each seed's largest accretion group
+          (bold: the overall largest). Groups are iso-anchor objects, so a
+          single group's off-turnaround w reads its bulk peculiar velocity;
+          the ensemble and the sterile fleet average over the velocity
+          distribution and land on the closed form.
+        </figcaption>
+      </figure>
+      <p>
+        The missing panel is the 3+1 twin &mdash; and it cannot be made from
+        stored data: subpaths exist only in the 2+1 engine. The port of the
+        phase-2 accretion mode into <code>braid_cuda3d.cu</code> plus a
+        first 3+1 subpath campaign (T=40 smoke run) is now queued; this
+        entry's overlay is the template the 3+1 data will drop into.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
