@@ -23,6 +23,12 @@ the total energy -- a sterile group counts as much as a megagroup. Under
 the group dictionary a group's own w is its internal E-weighted mean and
 the ensemble/bin w is the plain mean over groups.
 
+``--out-wz-overlay`` (Kevin, 2026-08-06) draws the absolute ensemble w(z)
+under the per-path (original) dictionary with the group contributions on
+top: the aggregate w(z) of all sterile (1-path) groups and each seed's
+largest accretion group. At terms=T the per-path dictionary weighs every
+path equally (sum(b) is degenerate across the full-spectrum ensemble).
+
 Usage::
 
     python -m analysis.analyze_subpath_groups \
@@ -73,6 +79,7 @@ class CellGroups:
 
     t: int
     zgrid: np.ndarray
+    dim: int = 2
     n_seeds: int = 0
     group_sizes: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=int))
     bin_groups: dict[str, int] = field(default_factory=dict)
@@ -83,6 +90,9 @@ class CellGroups:
     tot_ev2: np.ndarray = field(default_factory=lambda: np.empty(0))
     #: per-group internal w(z), rows aligned with group_sizes (group dict.)
     group_wz: np.ndarray = field(default_factory=lambda: np.empty((0, 0)))
+    #: per-group total energy and source-seed index, aligned with group_sizes
+    group_e: np.ndarray = field(default_factory=lambda: np.empty(0))
+    group_seed: np.ndarray = field(default_factory=lambda: np.empty(0, dtype=int))
     #: multiplicity brackets (lo, hi, label) used for binning
     bins: list[tuple[int, int, str]] = field(default_factory=lambda: list(BINS))
     #: per-path anchor energy sum(a2^2) and global group index (anchor stats)
@@ -176,8 +186,13 @@ def load_cells(
             if complete_only:
                 continue
         cell = by_t.setdefault(
-            t, CellGroups(t=t, zgrid=zgrid, bins=list(bins if bins else BINS))
+            t,
+            CellGroups(
+                t=t, zgrid=zgrid, dim=len(axes), bins=list(bins if bins else BINS)
+            ),
         )
+        if cell.dim != len(axes):
+            raise ValueError(f"{path.name}: {len(axes)} axes in a {cell.dim}+1 cell")
         if cell.tot_ev2.size == 0:
             cell.tot_ev2 = np.zeros(len(zgrid))
         e = np.sum([ax.b.sum(axis=1) for ax in axes], axis=0)
@@ -204,6 +219,10 @@ def load_cells(
             cell.group_wz = wz_g
         else:
             cell.group_wz = np.concatenate([cell.group_wz, wz_g])
+        cell.group_e = np.concatenate([cell.group_e, e_g[occupied]])
+        cell.group_seed = np.concatenate(
+            [cell.group_seed, np.full(int(occupied.sum()), cell.n_seeds)]
+        )
         for lo, hi, label in cell.bins:
             pmask = (subs >= lo) & (subs <= hi)
             gmask = (sizes - 1 >= lo) & (sizes - 1 <= hi)
@@ -220,11 +239,11 @@ def load_cells(
 
 def report(cell: CellGroups, z: float) -> None:
     gs = cell.group_sizes
-    d = 2  # subpaths are a 2+1 engine feature
+    d = cell.dim
     w_ens = cell.w_ensemble(z)
     w_ens_g = cell.w_ensemble_group(z)
     print(
-        f"\n=== 2+1 T={cell.t} ({cell.n_seeds} seeds): {len(gs)} groups, "
+        f"\n=== {d}+1 T={cell.t} ({cell.n_seeds} seeds): {len(gs)} groups, "
         f"{gs.sum()} paths; z = {z:.4f} ({z / np.pi:.3f} pi); "
         f"ensemble w(z) = {w_ens:.5f} path-dict / {w_ens_g:.5f} group-dict ==="
     )
@@ -272,7 +291,9 @@ def plot_bins(cells: list[CellGroups], z: float, out: Path) -> None:
     ax.set_xticklabels(labels)
     ax.set_xlabel("group subpath count")
     ax.set_ylabel(f"bin w / ensemble w  at z = {z / np.pi:.3f} pi")
-    ax.set_title("Accretion multiplicity vs w, off-turnaround (2+1, terms=T)")
+    ax.set_title(
+        f"Accretion multiplicity vs w, off-turnaround ({cells[0].dim}+1, terms=T)"
+    )
     ax.legend()
     fig.tight_layout()
     fig.savefig(out, dpi=140)
@@ -311,6 +332,59 @@ def plot_wz(
     np.atleast_1d(axs)[0].legend(fontsize=8)
     name = "equal-energy-per-group" if dictionary == "group" else "per-path E"
     fig.suptitle(f"Group-multiplicity w across the whole cycle ({name} dictionary)")
+    fig.tight_layout()
+    fig.savefig(out, dpi=140)
+    print(f"wrote {out}")
+
+
+def plot_wz_overlay(
+    cells: list[CellGroups], out: Path, mark_z: float | None = None
+) -> None:
+    """Absolute ensemble w(z) with per-group contribution lines, one panel/T.
+
+    Per-path (original) dictionary throughout: the ensemble curve, the
+    aggregate w(z) of the sterile (1-path) groups, and the internal w(z) of
+    each seed's largest accretion group (thin lines -- one group is ~one
+    independent draw, so max-group lines are drawn per seed, with the
+    global maximum emphasized). Closed form (d/3)(cos^2 z / 3 + 1/T) dashed.
+    """
+    import matplotlib.pyplot as plt
+
+    fig, axs = plt.subplots(1, len(cells), figsize=(4.6 * len(cells), 4.4), sharey=True)
+    zp = cells[0].zgrid / np.pi
+    for ax, cell in zip(np.atleast_1d(axs), cells):
+        w_ens = cell.tot_ev2 / cell.tot_e / 3.0
+        w_pred = (cell.dim / 3.0) * (np.cos(cell.zgrid) ** 2 / 3.0 + 1.0 / cell.t)
+        sterile = cell.group_sizes == 1
+        w_sterile = (cell.group_wz[sterile] * cell.group_e[sterile, None]).sum(
+            axis=0
+        ) / cell.group_e[sterile].sum()
+        for s in range(cell.n_seeds):
+            seed_groups = np.flatnonzero(cell.group_seed == s)
+            top = seed_groups[np.argmax(cell.group_sizes[seed_groups])]
+            ax.plot(zp, cell.group_wz[top], color="C1", lw=0.7, alpha=0.45)
+        top = int(np.argmax(cell.group_sizes))
+        ax.plot(
+            zp,
+            cell.group_wz[top],
+            color="C1",
+            lw=1.6,
+            label=f"largest group per seed (max: {cell.group_sizes[top]} paths)",
+        )
+        ax.plot(zp, w_sterile, color="C0", lw=1.6, label="all sterile (1-path) groups")
+        ax.plot(zp, w_ens, color="k", lw=2.0, label="ensemble")
+        ax.plot(zp, w_pred, color="0.4", lw=1.0, ls="--", label="closed form")
+        if mark_z is not None and abs(mark_z - HALF_PI) > 1e-9:
+            ax.axvline(mark_z / np.pi, color="0.6", lw=0.8, ls=":")
+        ax.axvline(0.5, color="0.85", lw=0.8)
+        ax.set_xlabel("z / pi")
+        ax.set_title(f"T={cell.t}")
+    np.atleast_1d(axs)[0].set_ylabel("w(z)")
+    np.atleast_1d(axs)[0].legend(fontsize=8)
+    fig.suptitle(
+        f"Ensemble w(z) with group contributions "
+        f"({cells[0].dim}+1, per-path E dictionary: all paths weigh equally)"
+    )
     fig.tight_layout()
     fig.savefig(out, dpi=140)
     print(f"wrote {out}")
@@ -391,6 +465,13 @@ def main() -> None:
         default=None,
         help="w(z) curves under the equal-energy-per-group dictionary",
     )
+    parser.add_argument(
+        "--out-wz-overlay",
+        type=Path,
+        default=None,
+        help="absolute ensemble w(z) with sterile-aggregate and per-seed "
+        "largest-group lines (per-path dictionary)",
+    )
     parser.add_argument("--out-anchor", type=Path, default=None)
     parser.add_argument(
         "--bins",
@@ -423,6 +504,8 @@ def main() -> None:
         plot_wz(cells, args.out_wz, mark_z=args.z)
     if args.out_wz_group is not None:
         plot_wz(cells, args.out_wz_group, mark_z=args.z, dictionary="group")
+    if args.out_wz_overlay is not None:
+        plot_wz_overlay(cells, args.out_wz_overlay, mark_z=args.z)
     if args.out_anchor is not None:
         plot_anchor(cells, args.out_anchor)
 
