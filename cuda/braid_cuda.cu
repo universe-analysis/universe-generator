@@ -18,9 +18,10 @@
 //
 // Differences from the 3+1 engine: the loop is synchronous (one survivor
 // buffer, kernel and host admission alternate -- the 2D grid is cheap enough
-// that pipelining never mattered), there is no --sparse mode and no
-// --euclid-collision / --angle-sample, and it adds the --subpaths second
-// packing phase described below.
+// that pipelining never mattered), and there is no --sparse mode and no
+// --euclid-collision / --angle-sample. The --subpaths second packing phase
+// described below originated here and was ported to the 3+1 engine 2026-08-06
+// (dense grid only there); this file remains the reference semantics.
 //
 // Mirrors the Rust engine's model and RNG exactly (xoshiro256** + the same
 // `propose`), so candidate generation is bit-identical. The collision test for
