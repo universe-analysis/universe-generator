@@ -156,7 +156,9 @@ class CellGroups:
         return rows
 
 
-DUMP_ROW_CAP = 60_000  # campaign-era engines stop dumping past this many rows
+#: Collection-time dump subsample of the classic campaigns (braidlab
+#: DUMP_SUBSAMPLE); campaigns with a raised Campaign.dump_rows need --row-cap.
+DUMP_ROW_CAP = 60_000
 
 
 def load_cells(
@@ -164,6 +166,7 @@ def load_cells(
     zgrid: np.ndarray,
     complete_only: bool = False,
     bins: list[tuple[int, int, str]] | None = None,
+    row_cap: int = DUMP_ROW_CAP,
 ) -> list[CellGroups]:
     """Pool dumps into per-T cells (seeds of one T are combined).
 
@@ -179,7 +182,7 @@ def load_cells(
         with open(path) as f:
             gid = np.array([int(r["gid"]) for r in csv.DictReader(f)])
         sizes = np.bincount(gid)
-        truncated = len(gid) >= DUMP_ROW_CAP or (sizes == 0).any()
+        truncated = len(gid) >= row_cap or (sizes == 0).any()
         if truncated:
             note = "skipping" if complete_only else "sizes censored, keeping"
             print(f"WARNING: {path.name} is truncated at the dump row cap; {note}")
@@ -484,6 +487,13 @@ def main() -> None:
         action="store_true",
         help="skip dumps truncated at the engine row cap (censored group sizes)",
     )
+    parser.add_argument(
+        "--row-cap",
+        type=int,
+        default=DUMP_ROW_CAP,
+        help="collection-time dump row cap used for truncation detection "
+        "(match the campaign's Campaign.dump_rows; default 60000)",
+    )
     args = parser.parse_args()
     base = np.linspace(0.02 * np.pi, 0.98 * np.pi, 49)
     zgrid = np.unique(np.concatenate([base, [args.z, HALF_PI]]))
@@ -493,6 +503,7 @@ def main() -> None:
         zgrid,
         complete_only=args.complete_only,
         bins=bins,
+        row_cap=args.row_cap,
     )
     for cell in cells:
         report(cell, args.z)

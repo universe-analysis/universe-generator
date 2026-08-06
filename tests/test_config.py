@@ -145,7 +145,7 @@ def test_campaign_validation() -> None:
 
 
 def test_subpaths_knob() -> None:
-    """Subpaths is a 2+1-only campaign knob: _sub name suffix + --subpaths."""
+    """Subpaths campaign knob: _sub name suffix + --subpaths, dense-only."""
     from braidlab.engine import build_command
 
     c = Campaign(
@@ -173,12 +173,37 @@ def test_subpaths_knob() -> None:
     # Small-T subpath admission never decays below the cutoff (subpaths do
     # not jam), so those cells carry a hard phase-2 budget.
     assert argvb[argvb.index("--sub-attempts") + 1] == repr(1e10)
-    # Off by default, and rejected outside 2+1.
+    # Off by default.
     plain = Job(dim=2, t=20, seed=1, accept_rate=1e-6, max_attempts=3e12)
     assert "--subpaths" not in build_command(plain, "bin", "curve.csv")
+    # 3+1 subpath jobs are allowed since the engine port (2026-08-06)...
+    c3 = Campaign(
+        name="t", dim=3, t_values=(20,), seeds=(1,), accept_rate=1e-6, subpaths=True
+    )
+    (j3,) = c3.jobs()
+    assert j3.name == "d3_nyq_T20_s1_ph_sub"
+    assert "--subpaths" in build_command(j3, "bin", "curve.csv")
+    # ...but only on the dense grid (the sparse fp32 prefilter cannot make
+    # sub mode's two-sided contact decisions).
     with pytest.raises(ValueError):
         Campaign(
-            name="t", dim=3, t_values=(20,), seeds=(1,), accept_rate=1e-6, subpaths=True
+            name="t",
+            dim=3,
+            t_values=(20,),
+            seeds=(1,),
+            accept_rate=1e-6,
+            subpaths=True,
+            sparse=True,
+        )
+    with pytest.raises(ValueError):
+        Job(
+            dim=3,
+            t=20,
+            seed=1,
+            accept_rate=1e-6,
+            max_attempts=3e12,
+            subpaths=True,
+            sparse=True,
         )
 
 
@@ -271,6 +296,20 @@ def test_fullspec_campaigns() -> None:
         assert c.terms_track_t and c.dump and not c.subpaths
         assert c.accept_rate == 1e-6
         assert c.seeds == tuple(range(1, 9))
+
+
+def test_fullsub3d_campaign() -> None:
+    """The 3+1 subpath smoke: single T=40, phase-2 budget, raised dump cap."""
+    from braidlab.campaigns import get
+
+    c = get("fullsub3d_e6")
+    assert c.dim == 3 and c.t_values == (40,)
+    assert c.terms_track_t and c.dump and c.subpaths and not c.sparse
+    assert c.sub_attempts == 1e9
+    assert c.dump_rows == 250000
+    (job, *rest) = c.jobs()
+    assert len(rest) == 7  # 8 seeds
+    assert job.name == "d3_nyq_T40_s1_ph_tm40_sub_fsub3e6"
 
 
 def test_match_terms_selector() -> None:

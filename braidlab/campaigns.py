@@ -94,12 +94,13 @@ FULLSPEC3DEXT_T = tuple(range(80, 101, 5))  # 80, 85, ..., 100
 FULLSPEC3DEXT2_T = (110, 120)
 FULLSPEC2DEXT_T = (125, 150)
 #: FULLSUB (2026-07-27): the full-spectrum model with second-phase subpath
-#: packing (2+1 only -- the 3+1 engine has no subpath mode). Mirrors
-#: fullspec2d_e6 exactly, so the unique phase doubles as an A/B control;
-#: the questions are whether the subpath admission decay matches the 2-term
-#: model's (subpaths never jam -- depth cutoff, not a jam) and whether the
-#: ensemble laws (w = d/(6T) dust, uniformity) survive when the packing is
-#: filled with arbitrarily many subpaths on top of the uniques.
+#: packing. Mirrors fullspec2d_e6 exactly, so the unique phase doubles as an
+#: A/B control; the questions are whether the subpath admission decay matches
+#: the 2-term model's (subpaths never jam -- depth cutoff, not a jam) and
+#: whether the ensemble laws (w = d/(6T) dust, uniformity) survive when the
+#: packing is filled with arbitrarily many subpaths on top of the uniques.
+#: fullsub3d_e6 (2026-08-06, after the engine port) opens the 3+1 arm as a
+#: single-T smoke: does 3+1 grow the same iso-anchor accretion groups?
 
 #: CONVERGE campaigns (2026-07-10): pin both headline exponents. 3+1 extends
 #: the T ladder past the dense-grid VRAM ceiling with the sparse engine (does
@@ -361,6 +362,29 @@ CAMPAIGNS: dict[str, Campaign] = {
         # first 1e10 cell was pacing toward ~2.8 h of phase 2.
         sub_attempts=1e9,
         tag="fsub2e6",
+    ),
+    "fullsub3d_e6": Campaign(
+        name="fullsub3d_e6",
+        dim=3,
+        # Single-T smoke (Kevin 2026-08-06): validate the ported engine and
+        # get the first 3+1 accretion groups at the T the 2+1 group analyses
+        # centered on; extend the ladder only after the data looks right.
+        t_values=(40,),
+        seeds=FULLSPEC_SEEDS,
+        accept_rate=1e-6,
+        max_attempts=MAX_ATTEMPTS,
+        dump=True,
+        terms_track_t=True,
+        subpaths=True,
+        # Same hard phase-2 budget rationale as fullsub2d_e6, with the 3+1
+        # per-attempt surcharge (3 axes, 27-cell neighbourhoods) on top.
+        sub_attempts=1e9,
+        # 3+1 N alone is ~10k/seed at T=40 and subpaths pile on top of it;
+        # keep the whole packing (dump censoring hides exactly the group
+        # sizes this campaign exists to measure). ~2.5 KB/row wide-terms ->
+        # ~600 MB/dump worst-case at 250k, acceptable on the LAN fleet.
+        dump_rows=250000,
+        tag="fsub3e6",
     ),
     # SUBPATH: post-jam filling by paths that join existing groups (engine
     # --subpaths, 2+1 only). Mirrors pack2d_e6 exactly (same ladder, seeds,

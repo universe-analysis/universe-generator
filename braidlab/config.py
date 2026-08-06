@@ -34,9 +34,9 @@ class Job:
     #: Sinusoid terms per axis incl. sin1 (--terms). 2 = the legacy
     #: single-wiggle model (flag omitted, RNG stream bit-identical).
     terms: int = 2
-    #: Second-phase subpath packing (--subpaths, 2+1 engine only): after the
-    #: unique packing jams, pack candidates that touch exactly one existing
-    #: group. Off by default.
+    #: Second-phase subpath packing (--subpaths): after the unique packing
+    #: jams, pack candidates that touch exactly one existing group. Off by
+    #: default. In 3+1 (ported 2026-08-06) it requires the dense grid.
     subpaths: bool = False
     #: Fixed phase-2 attempt budget (--sub-attempts). 0 = rate-stop only.
     #: Needed where the subpath admission rate never decays below the cutoff
@@ -53,8 +53,11 @@ class Job:
                 f"band must be 'nyq' (maxfreq = T is hard-coded since "
                 f"2026-07-09), got {self.band!r}"
             )
-        if self.subpaths and self.dim != 2:
-            raise ValueError("subpaths is a 2+1 engine feature (dim must be 2)")
+        if self.subpaths and self.sparse:
+            raise ValueError(
+                "subpaths requires the dense grid (the sparse fp32 prefilter "
+                "cannot make sub mode's two-sided contact decisions)"
+            )
 
     @property
     def key(self) -> tuple[int, str, int, int, float, int]:
@@ -117,10 +120,15 @@ class Campaign:
     #: axis carries the whole frequency pool [2, T]. Mutually exclusive with a
     #: non-default ``terms_values``.
     terms_track_t: bool = False
-    #: Second-phase subpath packing (2+1 only). Off by default.
+    #: Second-phase subpath packing. Off by default; dense grid only.
     subpaths: bool = False
     #: Fixed phase-2 attempt budget (0 = rate-stop only); see Job.sub_attempts.
     sub_attempts: float = 0
+    #: Rows kept per parameter dump (order-preserving random subsample at
+    #: collection). The 60k default suits unique-only campaigns; subpath
+    #: campaigns want more -- a capped dump censors group sizes (3+1 N alone
+    #: passes 60k/seed near T~115, before any subpaths).
+    dump_rows: int = 60000
     #: Variant tag appended to job names (e.g. "e6" for a different cutoff).
     tag: str = ""
 
@@ -133,8 +141,11 @@ class Campaign:
             raise ValueError(f"terms_values must all be >= 2, got {self.terms_values}")
         if self.terms_track_t and self.terms_values != (2,):
             raise ValueError("terms_track_t and terms_values are mutually exclusive")
-        if self.subpaths and self.dim != 2:
-            raise ValueError("subpaths is a 2+1 engine feature (dim must be 2)")
+        if self.subpaths and self.sparse:
+            raise ValueError(
+                "subpaths requires the dense grid (the sparse fp32 prefilter "
+                "cannot make sub mode's two-sided contact decisions)"
+            )
 
     def jobs(self) -> list[Job]:
         """Expand into the flat list of runs (T x seed x terms)."""

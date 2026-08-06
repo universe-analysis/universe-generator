@@ -46,9 +46,15 @@ def test_render_runner_dump_mode_emits_dump_and_subsample() -> None:
     script = render_runner(_jobs(1), "~/braidlab_run", dump=True)
     assert "--dump-params dumps/$name.csv" in script
     assert "mkdir -p dumps" in script
-    assert "shuf -n" in script  # host-side subsample to bound disk
+    assert "shuf -n 60000" in script  # host-side subsample to bound disk
     # default (no dump) stays clean
     assert "--dump-params" not in render_runner(_jobs(1), "~/braidlab_run")
+
+
+def test_render_runner_dump_rows_knob() -> None:
+    """Campaign.dump_rows raises the subsample cap (subpath group sizes)."""
+    script = render_runner(_jobs(1), "~/braidlab_run", dump=True, dump_rows=250000)
+    assert "shuf -n 250000" in script
 
 
 def test_plan_assignment_respects_host_caps() -> None:
@@ -134,7 +140,9 @@ def test_stalled_host_queue_is_relaunched(tmp_path: Path, monkeypatch) -> None:
         def runner_alive(self, host: str) -> bool:
             return False  # dead from the start: launch, then stall-heal
 
-        def launch(self, host: str, hjobs: list, dump: bool = False) -> None:
+        def launch(
+            self, host: str, hjobs: list, dump: bool = False, dump_rows: int = 60000
+        ) -> None:
             self.launches.append(len(hjobs))
 
         def poll(self, host: str, dest_dir: Path) -> list:

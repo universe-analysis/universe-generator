@@ -83,16 +83,21 @@ def host_parts(host: str) -> tuple[str, int | None]:
 
 
 def render_runner(
-    jobs: list[Job], remote_dir: str, dump: bool = False, gpu: int | None = None
+    jobs: list[Job],
+    remote_dir: str,
+    dump: bool = False,
+    gpu: int | None = None,
+    dump_rows: int = DUMP_SUBSAMPLE,
 ) -> str:
     """Render the bash runner that executes a host's job queue idempotently.
 
     When ``dump`` is set, each run also writes a `--dump-params` file, which is
-    immediately subsampled to ``DUMP_SUBSAMPLE`` random worldlines (header
+    immediately subsampled to ``dump_rows`` random worldlines (header
     preserved) so the collected `.sub.csv` stays small; the full dump is then
     removed. The correlation dimension is statistical, so the subsample costs
-    nothing in accuracy. ``gpu`` pins the whole queue to one device of a
-    multi-GPU host.
+    nothing in accuracy -- but subpath campaigns should raise ``dump_rows``
+    (Campaign.dump_rows), since a capped dump censors group sizes. ``gpu``
+    pins the whole queue to one device of a multi-GPU host.
     """
     engine_line = '  "$@" --curve curves/$name.csv'
     if dump:
@@ -126,7 +131,7 @@ def render_runner(
             # in row order (phase-1 uniques precede phase-2 subpaths, and a
             # unique's gid equals its own row index), so the sample is
             # re-sorted to original line order instead of left shuffled.
-            f"    tail -n +2 dumps/$name.csv | nl -ba | shuf -n {DUMP_SUBSAMPLE} "
+            f"    tail -n +2 dumps/$name.csv | nl -ba | shuf -n {dump_rows} "
             "| sort -n | cut -f2- >> dumps/$name.sub.csv",
             "    rm -f dumps/$name.csv",
             "  fi",
@@ -242,11 +247,17 @@ class Fleet:
                 timeout=400,
             )
 
-    def launch(self, host: str, jobs: list[Job], dump: bool = False) -> None:
+    def launch(
+        self,
+        host: str,
+        jobs: list[Job],
+        dump: bool = False,
+        dump_rows: int = DUMP_SUBSAMPLE,
+    ) -> None:
         """Write and nohup the host's runner queue."""
         rdir = self._dir(host)
         gpu = host_parts(host)[1]
-        script = render_runner(jobs, rdir, dump=dump, gpu=gpu)
+        script = render_runner(jobs, rdir, dump=dump, gpu=gpu, dump_rows=dump_rows)
         tmp = self.source / f".runner_{host.replace(':', '_')}.sh"
         tmp.write_text(script)
         self._scp_to(host, tmp, f"{rdir}/run_braidlab.sh")
@@ -311,6 +322,7 @@ def run_campaign(
     poll_seconds: int = 120,
     deploy: bool = True,
     dump: bool = False,
+    dump_rows: int = DUMP_SUBSAMPLE,
     host_max_t: dict[str, int] | None = None,
     notifier: DiscordNotifier | None = None,
     campaign_name: str = "campaign",
@@ -352,7 +364,7 @@ def run_campaign(
             if deploy:
                 fleet.deploy(host, binaries)
             if not fleet.runner_alive(host):
-                fleet.launch(host, host_jobs, dump=dump)
+                fleet.launch(host, host_jobs, dump=dump, dump_rows=dump_rows)
         except Exception as exc:  # surface to Discord, then abort as before
             notifier.campaign_failed(
                 campaign_name, f"deploy/launch failed on {host}: {exc}"
@@ -419,7 +431,7 @@ def run_campaign(
                 stalled_polls[host] = 0
                 todo = [j for j in assignment.get(host, []) if j.key in remaining]
                 try:
-                    fleet.launch(host, todo, dump=dump)
+                    fleet.launch(host, todo, dump=dump, dump_rows=dump_rows)
                     # Routine maintenance: queue handoffs after a re-plan land
                     # here by design. Log-only — no Discord (Kevin 2026-07-12:
                     # stall/self-heal chatter stays out of the channel; the

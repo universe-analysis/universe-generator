@@ -87,6 +87,7 @@ def _cmd_run(args: argparse.Namespace) -> None:
         poll_seconds=args.poll,
         deploy=not args.no_deploy,
         dump=camp.dump,
+        dump_rows=camp.dump_rows,
         host_max_t=host_max_t,
         campaign_name=camp.name,
         start_description=description,
