@@ -143,6 +143,18 @@
         <div class="row"><label><input type="checkbox" id="boxChk" checked> Box wireframe</label></div>
         <div class="row"><label><input type="checkbox" id="miniChk" checked> Minimap panels</label></div>
         <div class="row"><label><input type="checkbox" id="seedHlChk"> Highlight seed paths</label></div>
+        <div class="row"><label><input type="checkbox" id="ghostChk" checked> Ghost images (wraparound)</label></div>
+        <div class="row"><label>Ghost reach
+            <select id="ghostReachSel">
+                <option value="faces">faces</option>
+                <option value="edges">+ edges</option>
+                <option value="all" selected>full 27</option>
+            </select></label></div>
+        <div class="row"><label>Ghost depth <input type="range" id="ghostDepthRange" min="0.05" max="1" step="0.05" value="0.35"></label>
+            <span class="val" id="ghostDepthVal">0.35</span></div>
+        <div class="row"><label>Ghost fade <input type="range" id="ghostFadeRange" min="0.1" max="0.9" step="0.05" value="0.55"></label>
+            <span class="val" id="ghostFadeVal">0.55</span></div>
+        <div class="row"><label><input type="checkbox" id="ghostCloudChk"> Ghost the cloud too</label></div>
         <div class="row"><label>Slice glow <input type="range" id="sizeRange" min="0.3" max="6" step="0.1" value="2"></label></div>
         <div class="row"><label>Cloud glow <input type="range" id="cloudSizeRange" min="0.1" max="3" step="0.05" value="0.55"></label></div>
         <div class="row"><label>X offset <input type="range" id="offXRange" min="-1" max="1" step="0.01" value="0"></label>
@@ -218,7 +230,7 @@
  * THREE texels per term (one per axis), trajectories evaluated analytically
  * in the vertex shader with the term count baked in as a shader constant.
  */
-const VIEWER_VERSION = 'box3d-v2';
+const VIEWER_VERSION = 'box3d-v3';
 document.getElementById('version').textContent = VIEWER_VERSION;
 const statusEl = document.getElementById('status');
 
@@ -727,7 +739,8 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-// Box wireframe: the fundamental domain [-1,1]^3.
+// Box wireframe: the fundamental domain [-1,1]^3, plus a fainter outer box
+// marking the ghost fog band's extent.
 const boxWire = (function () {
     const g = new THREE.EdgesGeometry(new THREE.BoxGeometry(2, 2, 2));
     const m = new THREE.LineBasicMaterial({ color: 0x2a3450 });
@@ -735,6 +748,19 @@ const boxWire = (function () {
     scene.add(o);
     return o;
 })();
+const ghostWire = (function () {
+    const g = new THREE.EdgesGeometry(new THREE.BoxGeometry(2, 2, 2));
+    const m = new THREE.LineBasicMaterial({ color: 0x161d2e });
+    const o = new THREE.LineSegments(g, m);
+    scene.add(o);
+    return o;
+})();
+function updateGhostWire() {
+    const on = (typeof ghostOn === 'undefined' ? true : ghostOn) && boxWire.visible;
+    ghostWire.visible = on;
+    const s = 1 + (typeof ghostDepth === 'undefined' ? 0.35 : ghostDepth);
+    ghostWire.scale.set(s, s, s);
+}
 
 // soft round sprite for every point layer
 function makeGlow() {
@@ -765,6 +791,11 @@ const U = {
     // ortho cameras have no perspective attenuation: point size must come
     // from camera.zoom, never view depth. 0 = perspective sizing.
     uOrthoScale: { value: 0 },
+    // main-pass defaults for the ghost-image machinery: no shift, not a ghost
+    uShift: { value: new THREE.Vector3(0, 0, 0) },
+    uIsGhost: { value: 0 },
+    uGhostDim: { value: 1 },
+    uGhostDepth: { value: 0.35 },
 };
 
 /* ---- term texture + shader source generators ----
@@ -800,9 +831,9 @@ function vertSrc(nw, sliceMode) {
     attribute float aIsSub;      // 0 = seed (unique), 1 = subpath
     attribute float aIndex;      // instance index (term-texture row)
     uniform float uZ, uZ0, uStep, uT, uSize, uCloudSize, uGMin, uGMax,
-                  uFreqMin, uFreqMax, uOrthoScale;
-    uniform int uMode, uLog, uPecGlobal, uSeedHl, uGeoLocal;
-    uniform vec3 uOff;
+                  uFreqMin, uFreqMax, uOrthoScale, uGhostDim, uGhostDepth;
+    uniform int uMode, uLog, uPecGlobal, uSeedHl, uGeoLocal, uIsGhost;
+    uniform vec3 uOff, uShift;
     varying vec3 vColor;
     ${termFetchGLSL(nw)}
 
@@ -846,7 +877,25 @@ function vertSrc(nw, sliceMode) {
         }
         vec3 X = x / s;
         vec3 dX = (dx * s - x * c) / (s * s);
-        vec3 P = wrap3(X + uOff);
+        // uShift places this pass's periodic image (0 for the main cell;
+        // ghost passes use the 26 neighbour offsets in {-2, 0, 2}^3).
+        // Pw is the in-cell position — colors come from it so an image
+        // keeps its source point's paint.
+        vec3 Pw = wrap3(X + uOff);
+        vec3 P = Pw + uShift;
+        float ghostFog = 1.0;
+        if (uIsGhost == 1) {
+            // fog band: keep only the sliver within uGhostDepth of the seam,
+            // fading to nothing across it — the wraparound as a soft halo
+            float over = max(max(abs(P.x), abs(P.y)), abs(P.z)) - 1.0;
+            if (over > uGhostDepth) {
+                gl_Position = vec4(0.0, 0.0, -1e5, 1.0);
+                gl_PointSize = 0.0;
+                vColor = vec3(0.0);
+                return;
+            }
+            ghostFog = uGhostDim * (1.0 - smoothstep(0.0, uGhostDepth, over));
+        }
         if (uGeoLocal == 0) P *= s;                  // global (raw) geometry
 
         float v = max(max(abs(dX.x), abs(dX.y)), abs(dX.z));   // Chebyshev speed
@@ -872,7 +921,7 @@ function vertSrc(nw, sliceMode) {
         } else if (uMode == 4) {
             vColor = aIsSub > 0.5 ? vec3(1.0, 0.62, 0.3) : vec3(0.45, 0.7, 1.0);
         } else {
-            vColor = hsv2rgb((P.z + 1.0) * 0.5 * 0.83, 0.85, 1.0);
+            vColor = hsv2rgb((Pw.z + 1.0) * 0.5 * 0.83, 0.85, 1.0);
         }
 
         float sz = ${sliceMode === 1 ? 'uSize * 1.7' : 'uCloudSize'};
@@ -880,6 +929,7 @@ function vertSrc(nw, sliceMode) {
             if (aIsSub > 0.5) { sz *= 0.8; vColor *= 0.45; }
             else { sz *= 1.6; vColor *= 1.15; }
         }
+        vColor *= ghostFog;                          // 1.0 on the main cell
         vec4 mv = modelViewMatrix * vec4(P, 1.0);
         gl_Position = projectionMatrix * mv;
         float base = uOrthoScale > 0.0 ? uOrthoScale : 8.0 / max(-mv.z, 0.1);
@@ -993,6 +1043,82 @@ function addInstanced(geo, N) {
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 6);
 }
 
+/* ---- ghost images: fogged periodic neighbours past the wrap seams ----
+   The 26 neighbour cells of the 3-torus in {-2,0,2}^3 \ {0}: 6 face images
+   (one-axis shifts), 12 edge images (two-axis diagonals), 8 corner images.
+   Each ghost is another Points object SHARING the instanced geometry, with
+   a material that shares every uniform of U except its own uShift/uIsGhost/
+   uGhostDim — same shader source, so the program is compiled once. The
+   shader clips each image to a fog band uGhostDepth past its seam and fades
+   it to nothing across the band. */
+let ghostObjs = [];
+let ghostOn = true, ghostReach = 'all', ghostDepth = 0.35, ghostFade = 0.55;
+let ghostCloud = false;
+
+function ghostShifts() {
+    const out = [];
+    for (let sx = -2; sx <= 2; sx += 2)
+    for (let sy = -2; sy <= 2; sy += 2)
+    for (let sw = -2; sw <= 2; sw += 2) {
+        const cls = (sx !== 0) + (sy !== 0) + (sw !== 0);   // 1 face, 2 edge, 3 corner
+        if (cls === 0) continue;
+        if (ghostReach === 'faces' && cls > 1) continue;
+        if (ghostReach === 'edges' && cls > 2) continue;
+        out.push({ shift: [sx, sy, sw], cls: cls });
+    }
+    return out;
+}
+
+function disposeGhosts() {
+    for (const g of ghostObjs) {
+        scene.remove(g.obj);
+        g.obj.material.dispose();                    // geometry is shared, keep it
+    }
+    ghostObjs = [];
+}
+
+function ghostMaterial(nw, sliceMode, shift, cls) {
+    // deeper image classes fade harder: dim = fade^cls
+    const dim = Math.pow(ghostFade, cls);
+    return new THREE.RawShaderMaterial({
+        uniforms: Object.assign({}, U, {
+            uShift: { value: new THREE.Vector3(shift[0], shift[1], shift[2]) },
+            uIsGhost: { value: 1 },
+            uGhostDim: { value: dim },
+        }),
+        vertexShader: vertSrc(nw, sliceMode),
+        fragmentShader: FRAG_SRC,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+}
+
+function rebuildGhosts() {
+    disposeGhosts();
+    if (!ghostOn || !functions.length) { updateGhostWire(); return; }
+    U.uGhostDepth.value = ghostDepth;
+    for (const s of ghostShifts()) {
+        if (sweep) {
+            const o = new THREE.Points(sweep.geometry, ghostMaterial(matNW, 1, s.shift, s.cls));
+            o.frustumCulled = false;
+            o.visible = showSweep;
+            scene.add(o);
+            ghostObjs.push({ obj: o, layer: 'sweep' });
+        }
+        if (cloud && ghostCloud) {
+            const o = new THREE.Points(cloud.geometry, ghostMaterial(matNW, 0, s.shift, s.cls));
+            o.frustumCulled = false;
+            o.visible = showCloud;
+            scene.add(o);
+            ghostObjs.push({ obj: o, layer: 'cloud' });
+        }
+    }
+    updateGhostWire();
+}
+function setGhostVisibility() {
+    for (const g of ghostObjs)
+        g.obj.visible = g.layer === 'sweep' ? showSweep : showCloud;
+}
+
 function rebuildGPU() {
     const N = functions.length;
     if (!N) return;
@@ -1018,6 +1144,8 @@ function rebuildGPU() {
     cloud.frustumCulled = false;
     cloud.visible = showCloud;
     scene.add(cloud);
+
+    rebuildGhosts();
 }
 
 /* ================= playback ================= */
@@ -1240,9 +1368,29 @@ addEventListener('keydown', function (e) {
 /* view */
 onRadio('viewMode', function (v) { setView(v); });
 onCheck('spinChk', function (v) { autoRotateOn = v; controls.autoRotate = v; });
-onCheck('sweepChk', function (v) { showSweep = v; if (sweep) sweep.visible = v; });
-onCheck('cloudChk', function (v) { showCloud = v; if (cloud) cloud.visible = v; });
-onCheck('boxChk', function (v) { boxWire.visible = v; });
+onCheck('sweepChk', function (v) { showSweep = v; if (sweep) sweep.visible = v; setGhostVisibility(); });
+onCheck('cloudChk', function (v) { showCloud = v; if (cloud) cloud.visible = v; setGhostVisibility(); });
+onCheck('boxChk', function (v) { boxWire.visible = v; updateGhostWire(); });
+onCheck('ghostChk', function (v) { ghostOn = v; rebuildGhosts(); hudDirty = true; });
+document.getElementById('ghostReachSel').addEventListener('change', function (e) {
+    ghostReach = e.target.value;
+    rebuildGhosts();
+});
+document.getElementById('ghostDepthRange').addEventListener('input', function (e) {
+    ghostDepth = parseFloat(e.target.value);
+    document.getElementById('ghostDepthVal').textContent = ghostDepth.toFixed(2);
+    U.uGhostDepth.value = ghostDepth;
+    updateGhostWire();
+    hudDirty = true;
+});
+document.getElementById('ghostFadeRange').addEventListener('input', function (e) {
+    ghostFade = parseFloat(e.target.value);
+    document.getElementById('ghostFadeVal').textContent = ghostFade.toFixed(2);
+    // per-ghost dim depends on image class: rebuild the set
+    rebuildGhosts();
+    hudDirty = true;
+});
+onCheck('ghostCloudChk', function (v) { ghostCloud = v; rebuildGhosts(); });
 onCheck('miniChk', function (v) {
     document.getElementById('miniBox').style.display = v ? 'flex' : 'none';
     hudDirty = true;
@@ -1291,15 +1439,15 @@ applySpeedBounds();
 /* presets: bundles applied through the normal handlers via synthetic events */
 const PRESETS = {
     'slice-speed': {
-        checks: { sweepChk: true, cloudChk: false, boxChk: true, seedHlChk: false, logChk: true, localChk: true },
+        checks: { sweepChk: true, cloudChk: false, boxChk: true, seedHlChk: false, ghostChk: true, logChk: true, localChk: true },
         radios: { paintMode: 'pec', normMode: 'per' },
     },
     'cloud-group': {
-        checks: { sweepChk: false, cloudChk: true, boxChk: true, seedHlChk: false, logChk: true, localChk: true },
+        checks: { sweepChk: false, cloudChk: true, boxChk: true, seedHlChk: false, ghostChk: true, logChk: true, localChk: true },
         radios: { paintMode: 'group', normMode: 'per' },
     },
     'minimal': {
-        checks: { sweepChk: true, cloudChk: false, boxChk: false, seedHlChk: false, miniChk: false, logChk: true, localChk: true },
+        checks: { sweepChk: true, cloudChk: false, boxChk: false, seedHlChk: false, miniChk: false, ghostChk: false, logChk: true, localChk: true },
         radios: { paintMode: 'mono', normMode: 'per' },
     },
 };
@@ -1403,6 +1551,15 @@ function drawMini() {
     const geoLocal = U.uGeoLocal.value === 1;
     const seedHl = U.uSeedHl.value === 1;
     const size = 3 * miniDPR;
+    // with ghosts on, panels show the fog band too: the chart spans
+    // [-(1+depth), 1+depth] with the main cell outlined
+    const half = ghostOn ? 1 + ghostDepth : 1;
+    const shifts2 = [];
+    if (ghostOn) {
+        for (let a = -2; a <= 2; a += 2)
+            for (let b = -2; b <= 2; b += 2)
+                if (a !== 0 || b !== 0) shifts2.push([a, b]);
+    }
     for (const p of miniPanels) p.ctx.clearRect(0, 0, p.canvas.width, p.canvas.height);
     for (const f of functions) {
         const raw = comovXYW(f, z);
@@ -1419,13 +1576,32 @@ function drawMini() {
             if (f.isSub) { alpha = 0.25; sz = size * 0.8; }
             else { alpha = 0.9; sz = size * 1.5; }
         }
-        const style = 'rgba(' + Math.round(col[0] * 255) + ',' + Math.round(col[1] * 255) +
-            ',' + Math.round(col[2] * 255) + ',' + alpha + ')';
+        const rgb = Math.round(col[0] * 255) + ',' + Math.round(col[1] * 255) +
+            ',' + Math.round(col[2] * 255);
         for (const p of miniPanels) {
-            const px = (draw[p.ax] + 1) * 0.5 * p.canvas.width;
-            const py = (1 - (draw[p.ay] + 1) * 0.5) * p.canvas.height;
-            p.ctx.fillStyle = style;
-            p.ctx.fillRect(px - sz / 2, py - sz / 2, sz, sz);
+            const u = draw[p.ax], v = draw[p.ay];
+            const toPx = function (c) { return (c / half + 1) * 0.5 * p.canvas.width; };
+            const toPy = function (c) { return (1 - (c / half + 1) * 0.5) * p.canvas.height; };
+            p.ctx.fillStyle = 'rgba(' + rgb + ',' + alpha + ')';
+            p.ctx.fillRect(toPx(u) - sz / 2, toPy(v) - sz / 2, sz, sz);
+            // fogged periodic images of this point in the panel plane
+            for (const sh of shifts2) {
+                const gu = u + sh[0], gv = v + sh[1];
+                const over = Math.max(Math.abs(gu), Math.abs(gv)) - 1;
+                if (over > ghostDepth) continue;
+                const fog = ghostFade * (1 - over / ghostDepth);
+                p.ctx.fillStyle = 'rgba(' + rgb + ',' + (alpha * fog).toFixed(3) + ')';
+                p.ctx.fillRect(toPx(gu) - sz / 2, toPy(gv) - sz / 2, sz, sz);
+            }
+        }
+    }
+    if (ghostOn) {
+        // outline the main cell so the fog band reads as "outside"
+        for (const p of miniPanels) {
+            const w = p.canvas.width, x0 = (1 - 1 / half) * 0.5 * w, x1 = w - 2 * x0;
+            p.ctx.strokeStyle = 'rgba(90, 111, 174, 0.5)';
+            p.ctx.lineWidth = miniDPR;
+            p.ctx.strokeRect(x0, x0, x1, x1);
         }
     }
     document.getElementById('miniBar').textContent =
