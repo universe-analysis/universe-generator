@@ -366,10 +366,11 @@ CAMPAIGNS: dict[str, Campaign] = {
     "fullsub3d_e6": Campaign(
         name="fullsub3d_e6",
         dim=3,
-        # Single-T smoke (Kevin 2026-08-06): validate the ported engine and
-        # get the first 3+1 accretion groups at the T the 2+1 group analyses
-        # centered on; extend the ladder only after the data looks right.
-        t_values=(40,),
+        # Started as a single-T smoke at T=40 (Kevin 2026-08-06, engine-port
+        # validation); extended the same day to the ladder mirroring the
+        # fullspec3d comparison set once the data looked right. The store is
+        # resumable, so the original T=40 cells are never re-run.
+        t_values=(20, 40, 60, 75),
         seeds=FULLSPEC_SEEDS,
         accept_rate=1e-6,
         max_attempts=MAX_ATTEMPTS,

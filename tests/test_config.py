@@ -299,17 +299,17 @@ def test_fullspec_campaigns() -> None:
 
 
 def test_fullsub3d_campaign() -> None:
-    """The 3+1 subpath smoke: single T=40, phase-2 budget, raised dump cap."""
+    """The 3+1 subpath ladder: T=20-75, phase-2 budget, raised dump cap."""
     from braidlab.campaigns import get
 
     c = get("fullsub3d_e6")
-    assert c.dim == 3 and c.t_values == (40,)
+    assert c.dim == 3 and c.t_values == (20, 40, 60, 75)
     assert c.terms_track_t and c.dump and c.subpaths and not c.sparse
     assert c.sub_attempts == 1e9
     assert c.dump_rows == 250000
-    (job, *rest) = c.jobs()
-    assert len(rest) == 7  # 8 seeds
-    assert job.name == "d3_nyq_T40_s1_ph_tm40_sub_fsub3e6"
+    jobs = c.jobs()
+    assert len(jobs) == 32  # 4 T rungs x 8 seeds
+    assert jobs[0].name == "d3_nyq_T20_s1_ph_tm20_sub_fsub3e6"
 
 
 def test_match_terms_selector() -> None:
