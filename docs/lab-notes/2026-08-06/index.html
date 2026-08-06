@@ -103,6 +103,101 @@
       </p>
     </article>
 
+    <article class="entry" id="fullsub3d">
+      <h2>3+1 grows the same halos: the subpath phase ported to the 3+1
+      engine, and the first 3+1 accretion groups are iso-anchor</h2>
+      <p class="meta">
+        Engine port: <code>braid_cuda3d.cu</code> gained the
+        <code>--subpaths</code> phase-2 accretion mode (commit
+        <a href="https://github.com/universe-analysis/universe-generator/commit/130cdc1">130cdc1</a>;
+        dense grid only, synchronous phase 2 with a forced per-round grid
+        rebuild &mdash; a stale grid wrongfully rejects in sub mode, unlike
+        the conservative staleness of the unique phase). Gated before any
+        campaign by the new exact invariant checker
+        <code>analysis/verify_subpath_dump.py</code> (commit
+        <a href="https://github.com/universe-analysis/universe-generator/commit/cdd132c">cdd132c</a>):
+        gid layout, pairwise non-contact of uniques, no cross-group
+        contacts, no orphan subpaths, connected group contact graphs, curve
+        consistency &mdash; the checker itself validated against a 2+1
+        reference run, then passed on 3+1 output in both the Chebyshev and
+        euclid arms; phase-1 N with and without <code>--subpaths</code>
+        lands inside the stored fullspec3d seed spread. Campaign
+        <code>fullsub3d_e6</code> (commit
+        <a href="https://github.com/universe-analysis/universe-generator/commit/7f43ced">7f43ced</a>):
+        T=40 single-T smoke, terms=T, 8 seeds, 1e-6 cutoff, 1e9
+        sub-attempts per seed on mother+kitt; dumps complete at ~8k
+        rows/seed (the new <code>Campaign.dump_rows = 250000</code> knob
+        made censoring impossible rather than merely unlikely).
+      </p>
+      <p>
+        The open question from the 08-05 thread &mdash; &ldquo;does 3+1
+        grow the same objects?&rdquo; &mdash; is answered: yes, in every
+        structural signature, at about a tenth the accretion speed.
+      </p>
+      <ul>
+        <li><strong>Same mass function shape.</strong> Sterile fraction 74%
+            (2+1: 68&ndash;71%), median size 1, a scale-free-looking middle
+            &mdash; 36,548 groups over 63,555 paths, 8 seeds pooled.</li>
+        <li><strong>Same iso-anchor coherence.</strong> ICC = 0.981 for
+            groups &ge;10 members (shuffled null &asymp; 0), size-corr
+            +0.001. The exclusion-selects-comovers mechanism is not a 2+1
+            accident: three spatial dimensions grow the same coherent,
+            bulk-velocity-sharing objects.</li>
+        <li><strong>Same w rigidity.</strong> Every multiplicity bin within
+            1% of the ensemble at the turnaround under both dictionaries
+            (the 100+ bin reads 1.08&times; but contains two groups &mdash;
+            group-count statistics, per the coherence lesson). Ensemble
+            turnaround w = 0.01259 vs d/(6T) = 0.01250.</li>
+        <li><strong>Accretion is ~10&times; slower, and the tail is short
+            at this budget.</strong> 1e9 sub-attempts bought ~3,300
+            subpaths/seed vs ~36,000 in 2+1 at the same T and budget; the
+            largest group holds 193 members vs 35,381. Touching exactly one
+            group while dodging all others is much rarer with a third
+            spatial dimension to miss in. Subpaths never jam, so whether
+            3+1 megagroups appear at deeper budgets &mdash; or the tail
+            truncates intrinsically &mdash; is the natural follow-up.</li>
+      </ul>
+      <figure class="plot">
+        <img src="subpath_w_overlay_3d.png"
+             alt="Absolute w versus conformal time for 3+1 T=40: the black ensemble curve, dashed closed form, and blue sterile-group aggregate coincide as one U-shaped curve from about 0.35 at the endpoints to near zero at the turnaround; thin orange lines, the largest accretion group of each seed, fan from about 0.17 to 0.67 at the endpoints and collapse onto the ensemble at the turnaround." />
+        <figcaption>
+          The 3+1 twin of the morning's overlay: ensemble, closed form, and
+          the sterile aggregate are one curve under the original per-path
+          dictionary; each seed's largest group (orange, max 193 paths)
+          rides its own iso-anchor velocity and collapses onto the ensemble
+          at &pi;/2. Same geometry as 2+1, one dimension up.
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="subpath_group_sizes_3d.png"
+             alt="Log-log complementary CDF of 3+1 accretion group sizes at T=40: a roughly power-law decline from size 1 to about 40, then a steeper cutoff, largest group 193 members." />
+        <figcaption>
+          The 3+1 group mass function at the 1e9-attempt budget:
+          scale-free-looking middle, truncated tail (max 193 vs 35,381 in
+          2+1 at the same T and budget). Budget-conditional &mdash;
+          subpaths do not jam.
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="subpath_anchor_coherence_3d.png"
+             alt="Scatter of group mean anchor energy versus group size for 3+1 T=40 with red internal-spread bars on groups of ten or more members: bars are tight and the cloud shows no size trend; ICC 0.981, size correlation +0.001." />
+        <figcaption>
+          3+1 accretion groups are iso-anchor: tight internal spread, no
+          size trend &mdash; ICC 0.981. (And per the morning's check, this
+          figure is identical under either energy dictionary.)
+        </figcaption>
+      </figure>
+      <p>
+        <code>PHYSICS_FINDINGS.md</code> &sect;17 records the result;
+        <code>analyze_subpath_groups.py</code> is dimension-aware as of
+        today, so every group analysis now runs on either engine's dumps
+        unchanged. The freshly published
+        <a href="../../viewers/threeplusone_box.html">3+1 box viewer</a>
+        reads these dumps directly (gid column included &mdash; color mode
+        &ldquo;Group&rdquo;).
+      </p>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>

@@ -605,6 +605,46 @@ binned by subpath count; per-bin turnaround w under the E ~ Σb dictionary:
   dump row cap is engine-side; long phase-2 runs need it raised or made
   a flag if uncensored group sizes at small T matter.
 
+## 17. 3+1 subpaths: the same iso-anchor objects, grown ~10× slower (2026-08-06)
+(lab note 2026-08-06; engine port commit 130cdc1 — `braid_cuda3d.cu` gained
+the `--subpaths` phase-2 accretion mode (dense grid only, synchronous phase
+2), gated by `analysis/verify_subpath_dump.py` exact invariants and a
+phase-1 A/B inside the stored fullspec3d seed spread. Campaign
+`fullsub3d_e6`: T=40 single-T smoke, terms=T, 8 seeds, 1e-6 cutoff, 1e9
+sub-attempts/seed, dumps complete at ~8k rows/seed — no row-cap censoring.)
+
+The first accretion groups outside 2+1. Headline: **3+1 grows the same
+objects** — every structural signature of §16 reproduces — but accretion is
+roughly an order of magnitude slower per attempt.
+
+- **Same mass-function shape**: sterile fraction 74% (2+1: 68–71%), median
+  group size 1, scale-free-looking middle. 36,548 groups / 63,555 paths
+  pooled over 8 seeds.
+- **Same iso-anchor coherence**: ICC = **0.981** for groups ≥10 members
+  (shuffled null ≈ 0), corr(log size, group anchor energy) = +0.001. The
+  bound-structure mechanism — only co-moving candidates can shadow one
+  group for the whole cycle — is not a 2+1 accident.
+- **Same w rigidity**: every multiplicity bin within 1% of ensemble w at
+  the turnaround under both dictionaries (the 100+ bin reads 1.08× but
+  holds 2 groups — effective sample size is the group count, §16). Ensemble
+  turnaround w = 0.01259 vs d/(6T) = 0.01250 (+0.7%); the w(z) overlay
+  (per-path dictionary) shows ensemble = closed form = sterile aggregate
+  across the cycle, with per-seed largest-group w(z) fanning 0.17–0.67 at
+  the bang and collapsing onto the ensemble at π/2 — the 3+1 twin of the
+  2+1 overlay, same geometry.
+- **Accretion is ~10× slower and the tail is short (budget-conditional)**:
+  1e9 sub-attempts bought ~3,300 subpaths/seed (2+1 at the same T, budget:
+  ~36,000) and a largest group of 193 members (2+1 T=40: 35,381). Contact
+  with exactly one group is much rarer in three spatial dimensions.
+  Subpaths do not jam (§11), so the tail should extend with budget — the
+  mass-function tail exponent and its budget/T-scaling in 3+1 are open;
+  a deeper-budget or T-sweep follow-up decides whether 3+1 megagroups
+  exist or the tail truncates intrinsically.
+- Phase-1 N of the subpath runs (4476–4608 across seeds) is statistically
+  consistent with the stored fullspec3d spread (4532–4611); one seed sits
+  1.2% below the stored min, within expectation for 8 fresh atomicAdd-
+  nondeterministic draws.
+
 ## Caveats that bind the current results
 
 - Cutoff states, not literal jamming (section 3: no plateau through 1e-8);
