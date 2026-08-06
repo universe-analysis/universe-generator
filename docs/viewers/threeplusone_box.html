@@ -12,24 +12,58 @@
     }
     #stage { position: fixed; inset: 0; }
     #topbar {
-        position: fixed; top: 0; left: 0; right: 0; z-index: 10;
-        display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+        position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+        display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
         padding: 8px 12px;
-        background: rgba(10, 12, 20, 0.88);
+        background: rgba(10, 12, 20, 0.9);
         border-bottom: 1px solid #232a3a;
     }
     #topbar .sep { width: 1px; align-self: stretch; background: #232a3a; }
     button, select, input[type=number] {
         background: #151a28; color: #cfd6e4;
         border: 1px solid #2c3550; border-radius: 5px;
-        padding: 4px 10px; font: inherit; cursor: pointer;
+        padding: 4px 9px; font: inherit; cursor: pointer;
     }
     button:hover { border-color: #4a5a8a; }
-    button.active { background: #26304d; border-color: #5a6fae; }
+    button.on { background: #26304d; border-color: #5a6fae; }
     label { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
-    input[type=range] { width: 110px; }
-    #timeSlider { width: 260px; }
-    input[type=number] { width: 70px; }
+    input[type=range] { width: 100px; }
+    #timeScrub { width: 220px; }
+    input[type=number] { width: 64px; padding: 3px 6px; }
+    #status { margin-left: auto; color: #e8b04a; font-size: 12px; max-width: 46ch; }
+    /* ---- sliding settings panel ---- */
+    #sidepanel {
+        position: fixed; top: 0; bottom: 0; left: 0; z-index: 15;
+        width: 280px; box-sizing: border-box;
+        padding: 60px 14px 20px; overflow-y: auto;
+        background: rgba(10, 12, 20, 0.94);
+        border-right: 1px solid #232a3a;
+        transform: translateX(-100%); transition: transform 0.18s ease;
+    }
+    #sidepanel.open { transform: translateX(0); }
+    #sidepanel details { margin-bottom: 10px; border-bottom: 1px solid #1a2032; padding-bottom: 8px; }
+    #sidepanel summary { cursor: pointer; color: #9fb2d8; font-weight: 600; padding: 4px 0; }
+    #sidepanel .row {
+        display: flex; gap: 8px; align-items: center; justify-content: space-between;
+        margin: 6px 0; flex-wrap: wrap;
+    }
+    #sidepanel .row span.val { color: #7d8cae; min-width: 34px; text-align: right; }
+    #sidepanel .radios { display: flex; flex-direction: column; gap: 3px; margin: 4px 0; }
+    /* ---- minimap: three orthogonal projections ---- */
+    #miniBox {
+        position: fixed; right: 12px; top: 56px; z-index: 10;
+        display: flex; flex-direction: column; gap: 4px;
+    }
+    #miniBox .panel { position: relative; }
+    #miniBox canvas {
+        width: 170px; height: 170px; display: block;
+        background: #0a0d16; border: 1px solid #232a3a; border-radius: 4px;
+    }
+    #miniBox .tag {
+        position: absolute; left: 6px; top: 4px;
+        color: #58627e; font-size: 10px; pointer-events: none;
+    }
+    #miniBar { color: #7d8cae; font-size: 11px; text-align: right; }
     #hud {
         position: fixed; left: 12px; bottom: 12px; z-index: 10;
         color: #9fb2d8; font-size: 12px; pointer-events: none;
@@ -39,40 +73,126 @@
         position: fixed; right: 12px; bottom: 10px; z-index: 10;
         color: #58627e; font-size: 11px; pointer-events: none;
     }
-    #status {
-        position: fixed; left: 12px; top: 52px; z-index: 10;
-        color: #e8b04a; font-size: 12px; max-width: 60ch;
-        text-shadow: 0 1px 3px #000;
-    }
     #tWrap { display: none; }
     a { color: #7fa4e8; }
 </style>
 </head>
 <body>
 <div id="topbar">
+    <button id="menuBtn">☰</button>
+    <button id="generateBtn">Generate</button>
+    <button id="subsBtn">+ Subs</button>
+    <button id="skipBtn">Skip ▸</button>
+    <button id="abortBtn">Abort</button>
+    <div class="sep"></div>
     <button id="importBtn">Import CSV</button>
     <input type="file" id="importInput" accept=".csv,text/csv" hidden>
-    <button id="exampleBtn">Load example</button>
-    <label id="tWrap">T <input type="number" id="tInput" min="2" max="1000" value="40"></label>
+    <button id="exampleBtn">Example</button>
+    <label id="tWrap">T <input type="number" id="tFallbackInput" min="2" max="1000" value="40"></label>
     <div class="sep"></div>
-    <button id="playBtn">Play</button>
-    <label>speed <input type="range" id="speedSlider" min="0.2" max="20" step="0.2" value="4"></label>
-    <label>z <input type="range" id="timeSlider" min="0" max="39" step="0.01" value="19"></label>
+    <select id="presetSel">
+        <option value="">presets…</option>
+        <option value="slice-speed">slice · speed</option>
+        <option value="cloud-group">cloud · group</option>
+        <option value="minimal">minimal</option>
+    </select>
     <div class="sep"></div>
-    <label>color
-        <select id="colorMode">
-            <option value="0">W coordinate</option>
-            <option value="1">Comoving speed</option>
-            <option value="2" id="groupOpt" disabled>Group (gid)</option>
-            <option value="3">Single color</option>
-        </select>
-    </label>
-    <label>size <input type="range" id="sizeSlider" min="0.5" max="6" step="0.1" value="2"></label>
-    <button id="spinBtn">Spin</button>
+    <button id="playBtn" class="on">Play ▶</button>
+    <label>speed <input type="range" id="speedRange" min="0" max="1" step="0.001" value="0.5">
+        <span id="speedVal"></span></label>
+    <label>t <input type="range" id="timeScrub" min="0" max="1" step="0.0005" value="0.5"></label>
+    <button id="fsBtn">⛶ Fullscreen</button>
+    <div id="status"></div>
 </div>
-<div id="status"></div>
+
+<div id="sidepanel">
+    <details open>
+        <summary>Generation</summary>
+        <div class="row"><label>Time-steps <input type="number" id="timeInput" value="40" min="4" max="400"></label></div>
+        <div class="row"><label>Freq terms <input type="number" id="termsInput" value="3" min="2" max="40"></label></div>
+        <div class="row"><label>Gen time <input type="range" id="genTimeRange" min="1" max="120" value="6"></label>
+            <span class="val" id="genTimeVal">6s</span></div>
+        <div class="row"><label>Sub time <input type="range" id="subTimeRange" min="0" max="120" value="4"></label>
+            <span class="val" id="subTimeVal">4s</span></div>
+        <div class="row"><label>Max uniques <input type="number" id="maxUniquesInput" value="0" min="0"></label></div>
+        <div class="row"><label>Sub jam fails <input type="number" id="subFailsInput" value="500" min="10"></label></div>
+        <div class="row"><label>Vol jam hits <input type="number" id="volAcceptsInput" value="200" min="10"></label></div>
+        <div class="row"><label>Cloud res <input type="number" id="cloudResInput" value="48" min="2" max="400"></label>
+            <button id="cloudResBtn">Regenerate</button></div>
+    </details>
+    <details>
+        <summary>Playback</summary>
+        <div class="row"><label>Speed min <input type="number" id="speedMinInput" value="0.05" step="0.05"></label></div>
+        <div class="row"><label>Speed max <input type="number" id="speedMaxInput" value="5" step="0.5"></label></div>
+        <div class="radios">Speed slider scale:
+            <label><input type="radio" name="speedScale" value="linear" checked> linear</label>
+            <label><input type="radio" name="speedScale" value="log"> log</label>
+        </div>
+        <div class="row"><label>Time min (×π) <input type="number" id="timeMinInput" value="0" step="0.05"></label></div>
+        <div class="row"><label>Time max (×π) <input type="number" id="timeMaxInput" value="1" step="0.05"></label></div>
+    </details>
+    <details>
+        <summary>View</summary>
+        <div class="radios">Camera:
+            <label><input type="radio" name="viewMode" value="persp" checked> Perspective (3/4)</label>
+            <label><input type="radio" name="viewMode" value="ortho"> Orthographic</label>
+        </div>
+        <div class="row"><label><input type="checkbox" id="spinChk"> Auto-spin</label></div>
+        <div class="row"><label><input type="checkbox" id="sweepChk" checked> Present slice</label></div>
+        <div class="row"><label><input type="checkbox" id="cloudChk"> All-times cloud</label></div>
+        <div class="row"><label><input type="checkbox" id="boxChk" checked> Box wireframe</label></div>
+        <div class="row"><label><input type="checkbox" id="miniChk" checked> Minimap panels</label></div>
+        <div class="row"><label><input type="checkbox" id="seedHlChk"> Highlight seed paths</label></div>
+        <div class="row"><label>Slice glow <input type="range" id="sizeRange" min="0.3" max="6" step="0.1" value="2"></label></div>
+        <div class="row"><label>Cloud glow <input type="range" id="cloudSizeRange" min="0.1" max="3" step="0.05" value="0.55"></label></div>
+        <div class="row"><label>X offset <input type="range" id="offXRange" min="-1" max="1" step="0.01" value="0"></label>
+            <span class="val" id="offXVal">0</span></div>
+        <div class="row"><label>Y offset <input type="range" id="offYRange" min="-1" max="1" step="0.01" value="0"></label>
+            <span class="val" id="offYVal">0</span></div>
+        <div class="row"><label>W offset <input type="range" id="offWRange" min="-1" max="1" step="0.01" value="0"></label>
+            <span class="val" id="offWVal">0</span></div>
+        <div class="row"><label><input type="checkbox" id="autoXChk"> drift X</label>
+            <input type="range" id="driftXRange" min="0.005" max="0.3" step="0.005" value="0.05"></div>
+        <div class="row"><label><input type="checkbox" id="autoYChk"> drift Y</label>
+            <input type="range" id="driftYRange" min="0.005" max="0.3" step="0.005" value="0.05"></div>
+        <div class="row"><label><input type="checkbox" id="autoWChk"> drift W</label>
+            <input type="range" id="driftWRange" min="0.005" max="0.3" step="0.005" value="0.05"></div>
+    </details>
+    <details>
+        <summary>Coloring</summary>
+        <div class="radios">Paint:
+            <label><input type="radio" name="paintMode" value="mono"> Mono</label>
+            <label><input type="radio" name="paintMode" value="freq"> Frequency</label>
+            <label><input type="radio" name="paintMode" value="pec" checked> Comoving speed</label>
+            <label><input type="radio" name="paintMode" value="group"> Group</label>
+            <label><input type="radio" name="paintMode" value="role"> Role (seeds/subs)</label>
+            <label><input type="radio" name="paintMode" value="whue"> W coordinate</label>
+        </div>
+        <div class="radios">Speed normalisation:
+            <label><input type="radio" name="normMode" value="per" checked> Per-particle</label>
+            <label><input type="radio" name="normMode" value="global"> Global</label>
+        </div>
+        <div class="row"><label><input type="checkbox" id="logChk" checked> Log colour scale</label></div>
+        <div class="row"><label><input type="checkbox" id="localChk" checked> Local (comoving) geometry</label></div>
+    </details>
+    <details>
+        <summary>Export</summary>
+        <div class="row"><label>fps <input type="number" id="expFpsInput" value="30" min="1" max="60"></label>
+            <label>secs <input type="number" id="expSecsInput" value="8" min="1" max="60"></label></div>
+        <div class="row"><button id="expWebmBtn">⬇ WebM</button>
+            <button id="expPngBtn">⬇ PNG</button></div>
+    </details>
+</div>
+
+<div id="miniBox">
+    <div class="panel"><canvas id="miniXY" width="170" height="170"></canvas><div class="tag">X·Y</div></div>
+    <div class="panel"><canvas id="miniXW" width="170" height="170"></canvas><div class="tag">X·W</div></div>
+    <div class="panel"><canvas id="miniYW" width="170" height="170"></canvas><div class="tag">Y·W</div></div>
+    <div id="miniBar"></div>
+</div>
+
 <div id="stage"></div>
-<div id="hud">no data — Import CSV or Load example</div>
+<div id="hud">no data — Generate, Import CSV or Example</div>
 <div id="version"></div>
 
 <!-- Three.js classic UMD builds — load from file:// without CORS issues -->
@@ -83,30 +203,361 @@
 'use strict';
 /* 3+1 comoving box viewer ("box3d").
  *
- * Renders the (X, Y, W) comoving slice of a 3+1 packing dump as points inside
- * the period-2 box [-1,1)^3, scrubbed over conformal time z in (0, pi).
+ * Renders the (X, Y, W) comoving slice of a 3+1 packing as points inside the
+ * period-2 box [-1,1)^3, scrubbed over conformal time z in (0, pi), plus an
+ * all-times worldline cloud. Packings come from the in-page two-phase RSA
+ * generator (uniques then subpaths, the 2+1 wrapped viewer's packer with a
+ * third axis), from a CUDA --dump-params CSV, or from the bundled example.
  *
- * Worldline model (one axis shown; y and w are identical in form):
+ * Worldline model (one axis shown; y and w identical in form):
  *     x(z) = ax2*sin(z) + sum_j ax_j*(sin(bx_j*z + fx_j) - sin(fx_j))
- * Comoving position X = x(z)/sin(z), wrapped onto [-1,1). The engine z grid
- * is T interior points of (0, pi): z_i = (i+1)*pi/(T+1). z here is analytic,
- * so the slider scrubs continuously between grid points.
+ * Comoving X = x(z)/sin(z); the engine z grid is T interior points of (0, pi).
  *
- * Rendering mirrors the 2+1 wrapped viewer's architecture: one instanced
- * point per worldline, sin1 amplitudes as instanced attributes, the wiggle
- * terms in a float DataTexture at THREE texels per term (one per axis),
- * trajectory evaluated analytically in the vertex shader. The term count is
- * baked into the shader source, so the material is rebuilt on import.
+ * Rendering mirrors the 2+1 wrapped viewer: instanced points, per-path
+ * scalars as instanced attributes, wiggle terms in a float DataTexture at
+ * THREE texels per term (one per axis), trajectories evaluated analytically
+ * in the vertex shader with the term count baked in as a shader constant.
  */
-const VIEWER_VERSION = 'box3d-v1';
+const VIEWER_VERSION = 'box3d-v2';
 document.getElementById('version').textContent = VIEWER_VERSION;
+const statusEl = document.getElementById('status');
 
-/* ---------- CSV parsing (mirrors braidlab/corrdim.py field handling) ---------- */
+/* ================= worldline data + math ================= */
 
-/* Parse a --dump-params CSV. Returns {paths, nw, hasGid} or throws.
- * Multi-term layout: ax2,ay2,aw2, then ax_j,bx_j,fx_j,ay_j,by_j,fy_j,aw_j,bw_j,fw_j
- * per term. Legacy single-wiggle layout: ax,ay,aw,bx,by,bw,ax2,ay2,aw2[,fx,fy,fw].
- * Either layout may carry a trailing integer gid column (subpath dumps). */
+let functions = [];          // {ax2,ay2,aw2, terms[{ax,bx,fx,ay,by,fy,aw,bw,fw}],
+                             //  fsum, pecMin, pecMax, groupID, isSub}
+let Z_cache = [];
+let time_steps = 40, modulation_Max = 39, freqTerms = 3;
+let groupIDcount = 0, subCount = 0;
+let genEpoch = 0;            // every Generate / Import bumps this; stale async work bails
+
+function bakeZValues() {
+    const step = Math.PI / (time_steps + 1);
+    Z_cache = Array.from({ length: time_steps }, function (_, i) { return step + i * step; });
+}
+
+// periodic wrap to [-1,1); +1 maps to -1 (same identified point)
+function wrapComov(v) { return (((v + 1) % 2) + 2) % 2 - 1; }
+
+// Unwrapped comoving position of a path at z, all three axes.
+function comovXYW(f, z) {
+    const s = Math.sin(z);
+    let x = f.ax2 * s, y = f.ay2 * s, w = f.aw2 * s;
+    for (let j = 0; j < f.terms.length; j++) {
+        const t = f.terms[j];
+        x += t.ax * (Math.sin(t.bx * z + t.fx) - Math.sin(t.fx));
+        y += t.ay * (Math.sin(t.by * z + t.fy) - Math.sin(t.fy));
+        w += t.aw * (Math.sin(t.bw * z + t.fw) - Math.sin(t.fw));
+    }
+    return [x / s, y / s, w / s];
+}
+
+// Analytic d(comoving)/dz — used by the minimap's speed paint.
+function comovVelXYW(f, z) {
+    const s = Math.sin(z), c = Math.cos(z);
+    let x = f.ax2 * s, y = f.ay2 * s, w = f.aw2 * s;
+    let dx = f.ax2 * c, dy = f.ay2 * c, dw = f.aw2 * c;
+    for (let j = 0; j < f.terms.length; j++) {
+        const t = f.terms[j];
+        x += t.ax * (Math.sin(t.bx * z + t.fx) - Math.sin(t.fx));
+        y += t.ay * (Math.sin(t.by * z + t.fy) - Math.sin(t.fy));
+        w += t.aw * (Math.sin(t.bw * z + t.fw) - Math.sin(t.fw));
+        dx += t.ax * t.bx * Math.cos(t.bx * z + t.fx);
+        dy += t.ay * t.by * Math.cos(t.by * z + t.fy);
+        dw += t.aw * t.bw * Math.cos(t.bw * z + t.fw);
+    }
+    const s2 = s * s;
+    return [(dx * s - x * c) / s2, (dy * s - y * c) / s2, (dw * s - w * c) / s2];
+}
+
+// Full trajectory over the z grid + the per-path comoving speed range.
+// The range is measured on UNWRAPPED coords (differencing across a wrap
+// would inject period-sized jumps); accepted paths keep the result so
+// buildBuffers never rescans trajectories.
+function comovingTraj(f) {
+    const n = Z_cache.length;
+    const X = new Float32Array(n), Y = new Float32Array(n), W = new Float32Array(n);
+    let pecMin = Infinity, pecMax = -Infinity, px = 0, py = 0, pw = 0;
+    for (let i = 0; i < n; i++) {
+        const z = Z_cache[i];
+        const p = comovXYW(f, z);
+        if (i > 0) {
+            const dz = z - Z_cache[i - 1];
+            // Chebyshev norm — matches the packing metric (cubic cells)
+            const v = Math.max(
+                Math.abs(p[0] - px), Math.abs(p[1] - py), Math.abs(p[2] - pw)
+            ) / dz;
+            if (v < pecMin) pecMin = v;
+            if (v > pecMax) pecMax = v;
+        }
+        px = p[0]; py = p[1]; pw = p[2];
+        X[i] = wrapComov(p[0]);
+        Y[i] = wrapComov(p[1]);
+        W[i] = wrapComov(p[2]);
+    }
+    return { X: X, Y: Y, W: W, pecMin: pecMin, pecMax: pecMax };
+}
+
+// Frequency-paint scalar: per axis the amplitude-weighted mean wiggle
+// frequency (weights |a·b|, each term's share of the unit budget), summed
+// over the three axes.
+function freqSum(terms) {
+    let sx = 0, sy = 0, sw = 0, nx = 0, ny = 0, nw = 0;
+    for (const t of terms) {
+        sx += Math.abs(t.ax * t.bx) * t.bx; nx += Math.abs(t.ax * t.bx);
+        sy += Math.abs(t.ay * t.by) * t.by; ny += Math.abs(t.ay * t.by);
+        sw += Math.abs(t.aw * t.bw) * t.bw; nw += Math.abs(t.aw * t.bw);
+    }
+    return sx / (nx || 1) + sy / (ny || 1) + sw / (nw || 1);
+}
+
+/* ================= in-page two-phase 3D packer ================= */
+/* The 2+1 wrapped viewer's packer with a third axis: per-time-step spatial
+   hash of CELL = 2/T cubes (Map-keyed — a dense NCELL^3 array would be
+   64M cells at T=400), 27-neighbour wrap scan, Chebyshev exclusion.
+   Phase 1 packs uniques (any contact rejects); phase 2 packs subpaths
+   (adoption: touch exactly ONE group and join it; two groups or nothing
+   rejects). Jam signals: 500 consecutive failed candidates, and for subs a
+   volume jam (consecutive accepts claiming zero new collision cells). */
+
+let CELL = 1, NCELL = 1, gridByT = [], saturated = false;
+let fillCells = 0, totalCells = 1;
+let genBudgetMs = 6000, genStart = 0, consecFails = 0, lastLiveUpload = 0;
+let genPhase = 'unique', genSubBudgetMs = 4000, subStart = 0, maxUniques = 0;
+let subSaturated = false, subReason = '', consecZeroVol = 0;
+let subJamFails = 500, volJamAccepts = 200, skipPhase = false, abort_gen = false;
+const maxAttemptsPerFunction = 50;
+
+const wrapCell = function (c) { return ((c % NCELL) + NCELL) % NCELL; };
+function cellOf(v) { return wrapCell(Math.floor((v + 1) / CELL)); }
+function cellKey(cx, cy, cw) { return (cx * NCELL + cy) * NCELL + cw; }
+function resetGrid() {
+    CELL = 2 / time_steps; NCELL = time_steps;
+    gridByT = Array.from({ length: Z_cache.length }, function () { return new Map(); });
+    fillCells = 0; totalCells = Z_cache.length * NCELL * NCELL * NCELL;
+}
+function fillPct() { return 100 * fillCells / totalCells; }
+
+function collides(traj) {
+    const n = Z_cache.length;
+    for (let i = 0; i < n; i++) {
+        const Xi = traj.X[i], Yi = traj.Y[i], Wi = traj.W[i], m = gridByT[i];
+        const cx = cellOf(Xi), cy = cellOf(Yi), cw = cellOf(Wi);
+        for (let dx = -1; dx <= 1; dx++)
+        for (let dy = -1; dy <= 1; dy++)
+        for (let dw = -1; dw <= 1; dw++) {
+            const arr = m.get(cellKey(wrapCell(cx + dx), wrapCell(cy + dy), wrapCell(cw + dw)));
+            if (!arr) continue;
+            for (let j = 0; j < arr.length; j += 4) {
+                let dX = Xi - arr[j];     if (dX > 1) dX -= 2; else if (dX < -1) dX += 2;
+                let dY = Yi - arr[j + 1]; if (dY > 1) dY -= 2; else if (dY < -1) dY += 2;
+                let dW = Wi - arr[j + 2]; if (dW > 1) dW -= 2; else if (dW < -1) dW += 2;
+                if (Math.abs(dX) <= CELL && Math.abs(dY) <= CELL && Math.abs(dW) <= CELL)
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+
+// Subpath acceptance: scans EVERY contact; returns the single group joined,
+// or -1 on two groups / no contact at all.
+function subGroupOf(traj) {
+    const n = Z_cache.length;
+    let gid = -1;
+    for (let i = 0; i < n; i++) {
+        const Xi = traj.X[i], Yi = traj.Y[i], Wi = traj.W[i], m = gridByT[i];
+        const cx = cellOf(Xi), cy = cellOf(Yi), cw = cellOf(Wi);
+        for (let dx = -1; dx <= 1; dx++)
+        for (let dy = -1; dy <= 1; dy++)
+        for (let dw = -1; dw <= 1; dw++) {
+            const arr = m.get(cellKey(wrapCell(cx + dx), wrapCell(cy + dy), wrapCell(cw + dw)));
+            if (!arr) continue;
+            for (let j = 0; j < arr.length; j += 4) {
+                let dX = Xi - arr[j];     if (dX > 1) dX -= 2; else if (dX < -1) dX += 2;
+                let dY = Yi - arr[j + 1]; if (dY > 1) dY -= 2; else if (dY < -1) dY += 2;
+                let dW = Wi - arr[j + 2]; if (dW > 1) dW -= 2; else if (dW < -1) dW += 2;
+                if (Math.abs(dX) <= CELL && Math.abs(dY) <= CELL && Math.abs(dW) <= CELL) {
+                    const g = arr[j + 3];
+                    if (gid < 0) gid = g;
+                    else if (g !== gid) return -1;   // spans two groups
+                }
+            }
+        }
+    }
+    return gid;                                      // -1 when it touched nothing
+}
+
+function insertTraj(traj, gid) {
+    const n = Z_cache.length;
+    let newCells = 0;
+    for (let i = 0; i < n; i++) {
+        const m = gridByT[i];
+        const k = cellKey(cellOf(traj.X[i]), cellOf(traj.Y[i]), cellOf(traj.W[i]));
+        let arr = m.get(k);
+        if (!arr) { arr = []; m.set(k, arr); newCells++; }
+        arr.push(traj.X[i], traj.Y[i], traj.W[i], gid);
+    }
+    fillCells += newCells;
+    return newCells;
+}
+
+function drawOneFreq() { return Math.floor(Math.random() * modulation_Max) + 2; }
+function drawUniqueFreqs(count) {
+    const out = [];
+    let guard = 0;
+    while (out.length < count && guard < 400) {
+        const b = drawOneFreq();
+        if (out.includes(b)) { guard++; continue; }
+        out.push(b);
+    }
+    for (let b = 2; out.length < count; b++)
+        if (!out.includes(b)) out.push(b);
+    return out;
+}
+function splitUnit(count) {
+    if (count === 1) return [1];
+    const cuts = Array.from({ length: count - 1 }, Math.random).sort(function (a, b) { return a - b; });
+    const w = [cuts[0]];
+    for (let j = 1; j < count - 1; j++) w.push(cuts[j] - cuts[j - 1]);
+    w.push(1 - cuts[count - 2]);
+    return w;
+}
+// amplitude = share/frequency so Σ|a·b| = 1 exactly; phases only on even b
+function makeAxisTerms(freqs) {
+    const w = splitUnit(freqs.length);
+    return freqs.map(function (b, j) {
+        return {
+            a: (Math.random() > 0.5 ? 1 : -1) * w[j] / b,
+            b: b,
+            f: (b % 2 === 0) ? Math.random() * Math.PI : 0,
+        };
+    });
+}
+function makeCandidate() {
+    const NW = freqTerms - 1;
+    const tx = makeAxisTerms(drawUniqueFreqs(NW));
+    const ty = makeAxisTerms(drawUniqueFreqs(NW));
+    const tw = makeAxisTerms(drawUniqueFreqs(NW));
+    const terms = tx.map(function (t, j) {
+        return { ax: t.a, bx: t.b, fx: t.f,
+                 ay: ty[j].a, by: ty[j].b, fy: ty[j].f,
+                 aw: tw[j].a, bw: tw[j].b, fw: tw[j].f };
+    });
+    const f = {
+        ax2: Math.random() * 2 - 1,
+        ay2: Math.random() * 2 - 1,
+        aw2: Math.random() * 2 - 1,
+        terms: terms,
+    };
+    f.fsum = freqSum(terms);
+    return f;
+}
+function generateFunction() {
+    for (let attempt = 0; attempt < maxAttemptsPerFunction; attempt++) {
+        const f = makeCandidate();
+        const traj = comovingTraj(f);
+        if (!collides(traj)) {
+            insertTraj(traj, groupIDcount);
+            f.pecMin = traj.pecMin; f.pecMax = traj.pecMax;
+            f.groupID = groupIDcount; f.isSub = false;
+            return f;
+        }
+    }
+    return null;
+}
+function generateSubFunction() {
+    for (let attempt = 0; attempt < maxAttemptsPerFunction; attempt++) {
+        const f = makeCandidate();
+        const traj = comovingTraj(f);
+        const gid = subGroupOf(traj);
+        if (gid >= 0) {
+            f.newCells = insertTraj(traj, gid);
+            f.pecMin = traj.pecMin; f.pecMax = traj.pecMax;
+            f.groupID = gid; f.isSub = true;
+            return f;
+        }
+    }
+    return null;
+}
+
+function uniquePhaseOver() {
+    return saturated || skipPhase || performance.now() - genStart >= genBudgetMs ||
+           (maxUniques > 0 && groupIDcount >= maxUniques);
+}
+// The hash is freed after every run; "+ Subs" (incl. on an import) needs it back.
+function rebuildPackingHash() {
+    resetGrid();
+    for (const f of functions) insertTraj(comovingTraj(f), f.groupID);
+}
+function make_groups(epoch) {
+    if (epoch !== genEpoch) return;                  // superseded by a newer run/import
+    const t0 = performance.now();
+    let finished = false;
+    while (!abort_gen && !finished && performance.now() - t0 <= 12) {   // 12 ms then yield
+        if (genPhase === 'unique') {
+            if (uniquePhaseOver()) {
+                skipPhase = false;
+                if (genSubBudgetMs > 0) {
+                    genPhase = 'sub'; consecFails = 0; subStart = performance.now();
+                } else finished = true;
+                continue;
+            }
+            const nf = generateFunction();
+            if (nf) { functions.push(nf); groupIDcount++; consecFails = 0; }
+            else if (++consecFails > 500) saturated = true;
+        } else {
+            if (subSaturated || skipPhase || performance.now() - subStart >= genSubBudgetMs) {
+                skipPhase = false;
+                finished = true;
+                continue;
+            }
+            const nf = generateSubFunction();
+            if (nf) {
+                functions.push(nf); subCount++; consecFails = 0;
+                if (nf.newCells === 0) {
+                    if (++consecZeroVol > volJamAccepts) { subSaturated = true; subReason = 'volume jam'; }
+                } else consecZeroVol = 0;
+            } else if (++consecFails > subJamFails) { subSaturated = true; subReason = 'sub jam'; }
+        }
+    }
+    const done = abort_gen || finished;
+    if (!done) {
+        if (genPhase === 'unique') {
+            const secsLeft = Math.ceil((genBudgetMs - (performance.now() - genStart)) / 1000);
+            statusEl.textContent = 'Generating… ' + functions.length + ' paths · fill ' +
+                fillPct().toFixed(2) + '% · ' + secsLeft + 's left';
+        } else {
+            const secsLeft = Math.ceil((genSubBudgetMs - (performance.now() - subStart)) / 1000);
+            statusEl.textContent = 'Subpaths… ' + groupIDcount + ' uniques + ' + subCount +
+                ' subs · ' + secsLeft + 's left';
+        }
+        if (performance.now() - lastLiveUpload > 800) {
+            lastLiveUpload = performance.now();
+            buildBuffers(); rebuildGPU(); hudDirty = true;
+        }
+        setTimeout(function () { make_groups(epoch); }, 0);
+    } else {
+        const notes = [];
+        if (saturated) notes.push('space saturated');
+        if (subReason) notes.push(subReason);
+        const note = notes.length ? ' (' + notes.join(', ') + ')' : '';
+        setTimeout(function () {
+            if (epoch !== genEpoch) return;
+            buildBuffers(); rebuildGPU();
+            gridByT = [];                            // the page's only O(N·T) storage
+            hudDirty = true;
+            const subTxt = subCount ? groupIDcount + ' uniques + ' + subCount + ' subs'
+                                    : functions.length + ' paths';
+            statusEl.textContent = subTxt + note + ' · T=' + time_steps +
+                ' · fill ' + fillPct().toFixed(2) + '%';
+            updateHud();
+        }, 0);
+    }
+}
+
+/* ================= CSV import ================= */
+
 function parseDumpCSV(text) {
     const lines = text.split(/\r?\n/).filter(function (ln) { return ln.trim().length > 0; });
     if (lines.length < 2) throw new Error('empty CSV');
@@ -119,7 +570,6 @@ function parseDumpCSV(text) {
     if (!multiTerm && !('aw' in idx)) throw new Error('2+1 dump — use the 2-torus viewer');
     const hasGid = ('gid' in idx);
 
-    // Count the wiggle terms of the multi-term layout by probing ax_1, ax_2, ...
     let nw = 1;
     if (multiTerm) {
         while (('ax_' + (nw + 1)) in idx) nw += 1;
@@ -149,7 +599,7 @@ function parseDumpCSV(text) {
                 }],
             };
         }
-        p.gid = hasGid ? v[idx.gid] : -1;
+        p.gid = hasGid ? v[idx.gid] : r - 1;
         let ok = isFinite(p.ax2) && isFinite(p.ay2) && isFinite(p.aw2);
         for (let j = 0; ok && j < p.terms.length; j++) {
             const t = p.terms[j];
@@ -163,7 +613,65 @@ function parseDumpCSV(text) {
     return { paths: paths, nw: nw, hasGid: hasGid, skipped: skipped };
 }
 
-/* ---------- three.js scene ---------- */
+function tFromName(name) {
+    const m = /_T(\d+)[_.]/.exec(name);
+    return m ? parseInt(m[1], 10) : null;
+}
+
+function applyImportedDump(parsed, T) {
+    genEpoch++;                                      // kill any in-flight generation
+    abort_gen = true;
+    gridByT = [];                                    // rebuilt lazily by "+ Subs"
+    time_steps = T;
+    modulation_Max = Math.max(2, time_steps - 1);
+    document.getElementById('timeInput').value = T;
+    bakeZValues();
+    functions = [];
+    groupIDcount = 0; subCount = 0;
+    for (let i = 0; i < parsed.paths.length; i++) {
+        const p = parsed.paths[i];
+        const f = {
+            ax2: p.ax2, ay2: p.ay2, aw2: p.aw2, terms: p.terms,
+            groupID: p.gid,
+            // a unique's gid equals its own row index (engine dump contract)
+            isSub: parsed.hasGid ? (p.gid !== i) : false,
+        };
+        f.fsum = freqSum(f.terms);
+        const traj = comovingTraj(f);
+        f.pecMin = traj.pecMin; f.pecMax = traj.pecMax;
+        if (f.isSub) subCount++; else groupIDcount++;
+        functions.push(f);
+    }
+    framePos = (Z_cache.length - 1) / 2;
+    buildBuffers(); rebuildGPU();
+    hudDirty = true;
+    updateHud();
+}
+
+function importText(text, filename) {
+    let parsed;
+    try {
+        parsed = parseDumpCSV(text);
+    } catch (err) {
+        statusEl.textContent = 'Import failed: ' + err.message;
+        return;
+    }
+    let T = tFromName(filename);
+    const tWrap = document.getElementById('tWrap');
+    if (T === null) {
+        tWrap.style.display = 'flex';
+        T = parseInt(document.getElementById('tFallbackInput').value, 10) || 40;
+        statusEl.textContent = 'No _T<N>_ in the filename — using the T input.';
+    } else {
+        tWrap.style.display = 'none';
+        statusEl.textContent = parsed.skipped ? parsed.skipped + ' unparseable rows skipped' : '';
+    }
+    applyImportedDump(parsed, T);
+    statusEl.textContent = (statusEl.textContent ? statusEl.textContent + ' · ' : '') +
+        'imported ' + functions.length + ' paths';
+}
+
+/* ================= three.js scene ================= */
 
 const stage = document.getElementById('stage');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -171,35 +679,101 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 stage.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05060a);
-const camera = new THREE.PerspectiveCamera(55, 1, 0.01, 100);
-camera.position.set(2.6, 1.9, 2.6);
-const controls = new THREE.OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.08;
-controls.autoRotate = false;
-controls.autoRotateSpeed = 0.8;
+
+// ---- swappable camera: 55° perspective (3/4) ↔ orthographic ----
+let viewMode = 'persp', autoRotateOn = false;
+let camera, controls;
+function makeCamera() {
+    const aspect = window.innerWidth / window.innerHeight;
+    if (viewMode === 'ortho') {
+        const h = 2.2;                               // half-height framing the ±1 box
+        const c = new THREE.OrthographicCamera(-h * aspect, h * aspect, h, -h, -100, 200);
+        c.position.set(3.2, 2.3, 3.2);
+        c.up.set(0, 1, 0);
+        return c;
+    }
+    const c = new THREE.PerspectiveCamera(55, aspect, 0.01, 100);
+    c.position.set(2.6, 1.9, 2.6);
+    c.up.set(0, 1, 0);
+    return c;
+}
+function rebuildControls() {
+    const tgt = controls ? controls.target.clone() : new THREE.Vector3();
+    if (controls) controls.dispose();
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.autoRotate = autoRotateOn;
+    controls.autoRotateSpeed = 0.8;
+    controls.target.copy(tgt);
+    controls.update();
+}
+function setView(mode) { viewMode = mode; camera = makeCamera(); rebuildControls(); resize(); }
+camera = makeCamera(); rebuildControls();
 
 function resize() {
     const w = window.innerWidth, h = window.innerHeight;
     renderer.setSize(w, h);
-    camera.aspect = w / h;
+    const aspect = w / h;
+    if (camera.isOrthographicCamera) {
+        const hh = 2.2;
+        camera.left = -hh * aspect; camera.right = hh * aspect;
+        camera.top = hh; camera.bottom = -hh;
+    } else {
+        camera.aspect = aspect;
+    }
     camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize);
 resize();
 
-// Wireframe box: the fundamental domain [-1,1]^3.
-(function addBox() {
+// Box wireframe: the fundamental domain [-1,1]^3.
+const boxWire = (function () {
     const g = new THREE.EdgesGeometry(new THREE.BoxGeometry(2, 2, 2));
     const m = new THREE.LineBasicMaterial({ color: 0x2a3450 });
-    scene.add(new THREE.LineSegments(g, m));
+    const o = new THREE.LineSegments(g, m);
+    scene.add(o);
+    return o;
 })();
 
-/* ---------- instanced point cloud, terms in a DataTexture ---------- */
+// soft round sprite for every point layer
+function makeGlow() {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d');
+    const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grd.addColorStop(0.0, 'rgba(255,255,255,1)');
+    grd.addColorStop(0.16, 'rgba(255,255,255,0.85)');
+    grd.addColorStop(0.45, 'rgba(255,255,255,0.18)');
+    grd.addColorStop(1.0, 'rgba(255,255,255,0)');
+    g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
+    const t = new THREE.Texture(c); t.needsUpdate = true; return t;
+}
+const glowTex = makeGlow();
 
-const TERMTEX_W = 2048;   // fixed texture width; rows grow with N * 3 * nw
+/* ---- shared uniforms: one object, referenced by sweep + cloud ---- */
+const U = {
+    uZ: { value: Math.PI / 2 },                      // present-slice time
+    uZ0: { value: 0 }, uStep: { value: 1 }, uT: { value: 1 },   // cloud z reconstruction
+    uSize: { value: 2 }, uCloudSize: { value: 0.55 },
+    uMode: { value: 2 }, uLog: { value: 1 }, uPecGlobal: { value: 0 },
+    uGMin: { value: 1e-3 }, uGMax: { value: 10 },
+    uFreqMin: { value: 4 }, uFreqMax: { value: 8 },
+    uTerms: { value: null }, uTexH: { value: 1 },
+    uSeedHl: { value: 0 }, uGeoLocal: { value: 1 },
+    uOff: { value: new THREE.Vector3(0, 0, 0) },
+    uTex: { value: glowTex },
+    // ortho cameras have no perspective attenuation: point size must come
+    // from camera.zoom, never view depth. 0 = perspective sizing.
+    uOrthoScale: { value: 0 },
+};
 
-// GLSL: fetch texel k of this instance's term table (3 texels per term).
+/* ---- term texture + shader source generators ----
+   Three texels per term (one per axis): texel 3j+k = (a, b, f, 0) of axis k.
+   nw is a compile-time GLSL constant (WebGL1 loop bounds), so materials are
+   rebuilt whenever the widest path's term count changes. */
+const TERMTEX_W = 2048;
+const PAINT_ORDER = ['mono', 'freq', 'pec', 'group', 'role', 'whue'];
+
 function termFetchGLSL(nw) {
     return `
     uniform sampler2D uTerms;
@@ -212,16 +786,23 @@ function termFetchGLSL(nw) {
     }`;
 }
 
-function vertSrc(nw) {
+// sliceMode 1 = present slice (z from uZ); 0 = cloud (z from the vertex's
+// time index in position.x, via uZ0/uStep).
+function vertSrc(nw, sliceMode) {
     return `
     precision highp float;
     uniform mat4 modelViewMatrix, projectionMatrix;
-    attribute vec3 position;      // unused dummy (single-vertex instancing)
-    attribute vec3 aSin1;         // ax2, ay2, aw2 — the sin(1*z) amplitudes
-    attribute float aGroup;       // gid (or -1 without subpaths)
-    attribute float aIndex;       // instance index 0..N-1 (term texture row)
-    uniform float uZ, uSize, uGMin, uGMax;
-    uniform int uMode;
+    attribute vec3 position;
+    attribute vec3 aSin1;        // ax2, ay2, aw2
+    attribute float aFsum;       // amplitude-weighted mean wiggle frequency
+    attribute vec2 aPec;         // per-path comoving speed min, max
+    attribute float aGroup;      // group ID
+    attribute float aIsSub;      // 0 = seed (unique), 1 = subpath
+    attribute float aIndex;      // instance index (term-texture row)
+    uniform float uZ, uZ0, uStep, uT, uSize, uCloudSize, uGMin, uGMax,
+                  uFreqMin, uFreqMax, uOrthoScale;
+    uniform int uMode, uLog, uPecGlobal, uSeedHl, uGeoLocal;
+    uniform vec3 uOff;
     varying vec3 vColor;
     ${termFetchGLSL(nw)}
 
@@ -229,7 +810,6 @@ function vertSrc(nw) {
         vec3 p = abs(fract(h + vec3(0.0, 2.0/3.0, 1.0/3.0)) * 6.0 - 3.0);
         return v * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), s);
     }
-    // period-2 wrap onto [-1,1); positions wrap, velocities never do
     vec3 wrap3(vec3 c) { return fract((c + 1.0) * 0.5) * 2.0 - 1.0; }
     vec3 ramp(float t) {
         t = clamp(t, 0.0, 1.0);
@@ -241,18 +821,22 @@ function vertSrc(nw) {
         if (t < 0.8)  return mix(c2, c3, (t - 0.6) / 0.2);
         return mix(c3, c4, (t - 0.8) / 0.2);
     }
+    vec3 hotCold(float t) {
+        t = clamp(t, 0.0, 1.0);
+        if (t < 0.5) return mix(vec3(1.0, 0.35, 0.25), vec3(1.0), t / 0.5);
+        return mix(vec3(1.0), vec3(0.35, 0.55, 1.0), (t - 0.5) / 0.5);
+    }
 
     void main() {
-        float z = uZ;
+        float z = ${sliceMode === 1 ? 'uZ' : 'uZ0 + position.x * uStep'};
         float s = sin(z);
         float c = cos(z);
-        // physical position and its z-derivative, per axis
         vec3 x = aSin1 * s;
         vec3 dx = aSin1 * c;
         for (int j = 0; j < ${nw}; j++) {
-            vec4 tx = termTexel(float(3 * j));       // ax, bx, fx
-            vec4 ty = termTexel(float(3 * j + 1));   // ay, by, fy
-            vec4 tw = termTexel(float(3 * j + 2));   // aw, bw, fw
+            vec4 tx = termTexel(float(3 * j));
+            vec4 ty = termTexel(float(3 * j + 1));
+            vec4 tw = termTexel(float(3 * j + 2));
             x.x  += tx.x * (sin(tx.y * z + tx.z) - sin(tx.z));
             x.y  += ty.x * (sin(ty.y * z + ty.z) - sin(ty.z));
             x.z  += tw.x * (sin(tw.y * z + tw.z) - sin(tw.z));
@@ -260,297 +844,758 @@ function vertSrc(nw) {
             dx.y += ty.x * ty.y * cos(ty.y * z + ty.z);
             dx.z += tw.x * tw.y * cos(tw.y * z + tw.z);
         }
-        vec3 X = x / s;                       // comoving position
-        vec3 dX = (dx * s - x * c) / (s * s); // comoving velocity dX/dz
-        vec3 P = wrap3(X);
+        vec3 X = x / s;
+        vec3 dX = (dx * s - x * c) / (s * s);
+        vec3 P = wrap3(X + uOff);
+        if (uGeoLocal == 0) P *= s;                  // global (raw) geometry
 
+        float v = max(max(abs(dX.x), abs(dX.y)), abs(dX.z));   // Chebyshev speed
         if (uMode == 0) {
-            // hue from the wrapped W coordinate
-            vColor = hsv2rgb((P.z + 1.0) * 0.5 * 0.83, 0.85, 1.0);
-        } else if (uMode == 1) {
-            // Chebyshev comoving speed (the packing metric), log ramp
-            float v = max(max(abs(dX.x), abs(dX.y)), abs(dX.z));
-            float t = (log(max(v, 1e-6)) - log(uGMin)) / (log(uGMax) - log(uGMin));
-            vColor = ramp(t);
-        } else if (uMode == 2) {
-            // golden-ratio hue per accretion group
-            vColor = hsv2rgb(fract(aGroup * 0.6180339887), 0.8, 1.0);
-        } else {
             vColor = vec3(0.65, 0.78, 1.0);
+        } else if (uMode == 1) {
+            float t = (aFsum - uFreqMin) / max(uFreqMax - uFreqMin, 1e-6);
+            if (uLog == 1)
+                t = log(1.0 + 9.0 * clamp(t, 0.0, 1.0)) / log(10.0);
+            vColor = hotCold(t);
+        } else if (uMode == 2) {
+            float lo = uPecGlobal == 1 ? uGMin : aPec.x;
+            float hi = uPecGlobal == 1 ? uGMax : aPec.y;
+            float t;
+            if (uLog == 1)
+                t = (log(max(v, 1e-6)) - log(max(lo, 1e-6))) /
+                    max(log(max(hi, 1e-5)) - log(max(lo, 1e-6)), 1e-6);
+            else
+                t = (v - lo) / max(hi - lo, 1e-6);
+            vColor = ramp(t);
+        } else if (uMode == 3) {
+            vColor = hsv2rgb(fract(aGroup * 0.6180339887), 0.8, 1.0);
+        } else if (uMode == 4) {
+            vColor = aIsSub > 0.5 ? vec3(1.0, 0.62, 0.3) : vec3(0.45, 0.7, 1.0);
+        } else {
+            vColor = hsv2rgb((P.z + 1.0) * 0.5 * 0.83, 0.85, 1.0);
         }
 
+        float sz = ${sliceMode === 1 ? 'uSize * 1.7' : 'uCloudSize'};
+        if (uSeedHl == 1) {
+            if (aIsSub > 0.5) { sz *= 0.8; vColor *= 0.45; }
+            else { sz *= 1.6; vColor *= 1.15; }
+        }
         vec4 mv = modelViewMatrix * vec4(P, 1.0);
         gl_Position = projectionMatrix * mv;
-        gl_PointSize = uSize * 14.0 / max(-mv.z, 0.1);
+        float base = uOrthoScale > 0.0 ? uOrthoScale : 8.0 / max(-mv.z, 0.1);
+        gl_PointSize = clamp(sz * base, 0.5, 60.0);
     }`;
 }
 
 const FRAG_SRC = `
     precision highp float;
+    uniform sampler2D uTex;
     varying vec3 vColor;
     void main() {
-        vec2 d = gl_PointCoord - vec2(0.5);
-        float r2 = dot(d, d);
-        if (r2 > 0.25) discard;
-        float a = smoothstep(0.25, 0.05, r2);
-        gl_FragColor = vec4(vColor, a * 0.75);
+        vec4 t = texture2D(uTex, gl_PointCoord);
+        gl_FragColor = vec4(vColor, t.a * 0.75);
     }`;
 
-const state = {
-    paths: [], T: 40, hasGid: false,
-    zIdx: 19,          // fractional index into the interior grid, 0..T-1
-    playing: false, points: null, material: null, matNW: -1,
-    uniforms: null, termTex: null,
-};
+/* ---- buffers + GPU objects ---- */
+let sweep = null, cloud = null, sweepMat = null, cloudMat = null, matNW = -1;
+let termTex = null;
+let instSin1, instFsum, instPec, instGroup, instSub, instIndex;
+let showSweep = true, showCloud = false;
 
-function zOfIdx(idx) {
-    const step = Math.PI / (state.T + 1);
-    return (idx + 1) * step;
-}
-
-function buildMaterial(nw) {
-    if (state.material) state.material.dispose();
-    state.uniforms = {
-        uTerms: { value: state.termTex },
-        uTexH: { value: 1 },
-        uZ: { value: zOfIdx(state.zIdx) },
-        uSize: { value: parseFloat(document.getElementById('sizeSlider').value) },
-        uGMin: { value: 1e-3 },
-        uGMax: { value: 10 },
-        uMode: { value: parseInt(document.getElementById('colorMode').value, 10) },
-    };
-    state.material = new THREE.RawShaderMaterial({
-        uniforms: state.uniforms,
-        vertexShader: vertSrc(nw),
+function buildMaterials(nw) {
+    if (sweepMat) sweepMat.dispose();
+    if (cloudMat) cloudMat.dispose();
+    sweepMat = new THREE.RawShaderMaterial({
+        uniforms: U,
+        vertexShader: vertSrc(nw, 1),
         fragmentShader: FRAG_SRC,
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     });
-    state.matNW = nw;
+    cloudMat = new THREE.RawShaderMaterial({
+        uniforms: U,
+        vertexShader: vertSrc(nw, 0),
+        fragmentShader: FRAG_SRC,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    matNW = nw;
 }
 
-// CPU pass over a coarse z sample: global Chebyshev-speed range for the ramp.
-function speedRange(paths, T) {
-    const nSamples = Math.min(T, 48);
-    let mn = Infinity, mx = -Infinity;
-    for (let k = 0; k < nSamples; k++) {
-        const z = zOfIdx((k + 0.5) * (T / nSamples) - 0.5);
-        const s = Math.sin(z), c = Math.cos(z);
-        for (let p = 0; p < paths.length; p++) {
-            const f = paths[p];
-            let xs = [f.ax2 * s, f.ay2 * s, f.aw2 * s];
-            let ds = [f.ax2 * c, f.ay2 * c, f.aw2 * c];
-            for (let j = 0; j < f.terms.length; j++) {
-                const t = f.terms[j];
-                xs[0] += t.ax * (Math.sin(t.bx * z + t.fx) - Math.sin(t.fx));
-                xs[1] += t.ay * (Math.sin(t.by * z + t.fy) - Math.sin(t.fy));
-                xs[2] += t.aw * (Math.sin(t.bw * z + t.fw) - Math.sin(t.fw));
-                ds[0] += t.ax * t.bx * Math.cos(t.bx * z + t.fx);
-                ds[1] += t.ay * t.by * Math.cos(t.by * z + t.fy);
-                ds[2] += t.aw * t.bw * Math.cos(t.bw * z + t.fw);
-            }
-            let v = 0;
-            for (let a = 0; a < 3; a++) {
-                const dX = (ds[a] * s - xs[a] * c) / (s * s);
-                v = Math.max(v, Math.abs(dX));
-            }
-            if (v < mn) mn = v;
-            if (v > mx) mx = v;
-        }
-    }
-    return [Math.max(mn, 1e-6), Math.max(mx, 1e-5)];
-}
-
-function applyImport(parsed, T) {
-    state.paths = parsed.paths;
-    state.T = T;
-    state.hasGid = parsed.hasGid;
-    const N = parsed.paths.length;
+function buildBuffers() {
+    const N = functions.length;
+    if (!N) return;
     let nw = 1;
-    for (let p = 0; p < N; p++) {
-        if (parsed.paths[p].terms.length > nw) nw = parsed.paths[p].terms.length;
-    }
+    for (let p = 0; p < N; p++)
+        if (functions[p].terms.length > nw) nw = functions[p].terms.length;
+    if (nw !== matNW) buildMaterials(nw);
 
-    // term texture: 3 texels per term, one per axis
+    instSin1 = new Float32Array(N * 3);
+    instFsum = new Float32Array(N);
+    instPec = new Float32Array(N * 2);
+    instGroup = new Float32Array(N);
+    instSub = new Float32Array(N);
+    instIndex = new Float32Array(N);
     const tpi = 3 * nw;
     const texH = Math.max(1, Math.ceil(N * tpi / TERMTEX_W));
     const tdata = new Float32Array(TERMTEX_W * texH * 4);
-    const sin1 = new Float32Array(N * 3);
-    const group = new Float32Array(N);
-    const index = new Float32Array(N);
+    let gmn = Infinity, gmx = -Infinity, fmn = Infinity, fmx = -Infinity;
     for (let p = 0; p < N; p++) {
-        const f = parsed.paths[p];
-        sin1[p * 3] = f.ax2; sin1[p * 3 + 1] = f.ay2; sin1[p * 3 + 2] = f.aw2;
-        group[p] = f.gid;
-        index[p] = p;
+        const f = functions[p];
+        instSin1[p * 3] = f.ax2; instSin1[p * 3 + 1] = f.ay2; instSin1[p * 3 + 2] = f.aw2;
+        instFsum[p] = f.fsum;
+        instGroup[p] = f.groupID;
+        instSub[p] = f.isSub ? 1 : 0;
+        instIndex[p] = p;
+        instPec[p * 2] = f.pecMin; instPec[p * 2 + 1] = f.pecMax;
+        if (f.pecMin < gmn) gmn = f.pecMin;
+        if (f.pecMax > gmx) gmx = f.pecMax;
+        if (f.fsum < fmn) fmn = f.fsum;
+        if (f.fsum > fmx) fmx = f.fsum;
         for (let j = 0; j < f.terms.length; j++) {
-            const t = f.terms[j];
-            const base = (p * tpi + 3 * j) * 4;
+            const t = f.terms[j], base = (p * tpi + 3 * j) * 4;
             tdata[base]     = t.ax; tdata[base + 1] = t.bx; tdata[base + 2]  = t.fx;
             tdata[base + 4] = t.ay; tdata[base + 5] = t.by; tdata[base + 6]  = t.fy;
             tdata[base + 8] = t.aw; tdata[base + 9] = t.bw; tdata[base + 10] = t.fw;
         }
     }
-    if (state.termTex) state.termTex.dispose();
-    state.termTex = new THREE.DataTexture(tdata, TERMTEX_W, texH, THREE.RGBAFormat, THREE.FloatType);
-    state.termTex.magFilter = state.termTex.minFilter = THREE.NearestFilter;
-    state.termTex.wrapS = state.termTex.wrapT = THREE.ClampToEdgeWrapping;
-    state.termTex.needsUpdate = true;
+    if (termTex) termTex.dispose();
+    termTex = new THREE.DataTexture(tdata, TERMTEX_W, texH, THREE.RGBAFormat, THREE.FloatType);
+    termTex.magFilter = termTex.minFilter = THREE.NearestFilter;
+    termTex.wrapS = termTex.wrapT = THREE.ClampToEdgeWrapping;
+    termTex.needsUpdate = true;
+    U.uTerms.value = termTex;
+    U.uTexH.value = texH;
+    U.uGMin.value = Math.max(gmn, 1e-6);
+    U.uGMax.value = Math.max(gmx, 1e-5);
+    U.uFreqMin.value = fmn;
+    U.uFreqMax.value = Math.max(fmx, fmn + 1e-6);
+    const n = Z_cache.length;
+    U.uZ0.value = Z_cache[0];
+    U.uStep.value = n > 1 ? (Z_cache[n - 1] - Z_cache[0]) / (n - 1) : 1;
+    U.uT.value = n;
+}
 
-    buildMaterial(nw);
-    state.uniforms.uTerms.value = state.termTex;
-    state.uniforms.uTexH.value = texH;
-    const range = speedRange(parsed.paths, T);
-    state.uniforms.uGMin.value = range[0];
-    state.uniforms.uGMax.value = range[1];
+// Cloud base geometry: strided time indices, capped at Cloud res samples/path.
+function cloudSamples(n) {
+    const cap = Math.max(2, parseInt(document.getElementById('cloudResInput').value, 10) || 48);
+    const stride = Math.max(1, Math.ceil(n / cap));
+    const count = Math.ceil(n / stride);
+    return { stride: stride, count: count };
+}
 
-    if (state.points) {
-        scene.remove(state.points);
-        state.points.geometry.dispose();
-    }
-    const geo = new THREE.InstancedBufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3));
-    geo.setAttribute('aSin1', new THREE.InstancedBufferAttribute(sin1, 3));
-    geo.setAttribute('aGroup', new THREE.InstancedBufferAttribute(group, 1));
-    geo.setAttribute('aIndex', new THREE.InstancedBufferAttribute(index, 1));
+function addInstanced(geo, N) {
+    geo.setAttribute('aSin1', new THREE.InstancedBufferAttribute(instSin1, 3));
+    geo.setAttribute('aFsum', new THREE.InstancedBufferAttribute(instFsum, 1));
+    geo.setAttribute('aPec', new THREE.InstancedBufferAttribute(instPec, 2));
+    geo.setAttribute('aGroup', new THREE.InstancedBufferAttribute(instGroup, 1));
+    geo.setAttribute('aIsSub', new THREE.InstancedBufferAttribute(instSub, 1));
+    geo.setAttribute('aIndex', new THREE.InstancedBufferAttribute(instIndex, 1));
     geo.instanceCount = N;
-    // one point per instance; bounding sphere = the whole box (skip culling)
-    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 4);
-    state.points = new THREE.Points(geo, state.material);
-    scene.add(state.points);
-
-    // group coloring only makes sense on subpath (gid) dumps
-    document.getElementById('groupOpt').disabled = !parsed.hasGid;
-    const sel = document.getElementById('colorMode');
-    if (!parsed.hasGid && sel.value === '2') sel.value = '0';
-    state.uniforms.uMode.value = parseInt(sel.value, 10);
-
-    const slider = document.getElementById('timeSlider');
-    slider.max = T - 1;
-    if (state.zIdx > T - 1) state.zIdx = (T - 1) / 2;
-    slider.value = state.zIdx;
-    updateHud();
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 6);
 }
 
-/* ---------- HUD + status ---------- */
+function rebuildGPU() {
+    const N = functions.length;
+    if (!N) return;
+    if (sweep) { scene.remove(sweep); sweep.geometry.dispose(); }
+    if (cloud) { scene.remove(cloud); cloud.geometry.dispose(); }
 
-function updateHud() {
-    const hud = document.getElementById('hud');
-    if (!state.paths.length) {
-        hud.textContent = 'no data — Import CSV or Load example';
-        return;
-    }
-    let countTxt = state.paths.length + ' paths';
-    if (state.hasGid) {
-        let uniques = 0;
-        for (let p = 0; p < state.paths.length; p++) {
-            if (state.paths[p].gid === p) uniques += 1;
-        }
-        countTxt = uniques + ' uniques + ' + (state.paths.length - uniques) + ' subpaths';
-    }
-    const zpi = zOfIdx(state.zIdx) / Math.PI;
-    hud.textContent = countTxt + '  ·  T=' + state.T + '  ·  z=' + zpi.toFixed(3) + 'π';
+    const gs = new THREE.InstancedBufferGeometry();
+    gs.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3));
+    addInstanced(gs, N);
+    sweep = new THREE.Points(gs, sweepMat);
+    sweep.frustumCulled = false;
+    sweep.visible = showSweep;
+    scene.add(sweep);
+
+    const n = Z_cache.length;
+    const cs = cloudSamples(n);
+    const cpos = new Float32Array(cs.count * 3);
+    for (let k = 0; k < cs.count; k++) cpos[k * 3] = Math.min(k * cs.stride, n - 1);
+    const gc = new THREE.InstancedBufferGeometry();
+    gc.setAttribute('position', new THREE.BufferAttribute(cpos, 3));
+    addInstanced(gc, N);
+    cloud = new THREE.Points(gc, cloudMat);
+    cloud.frustumCulled = false;
+    cloud.visible = showCloud;
+    scene.add(cloud);
 }
 
-function setStatus(msg) {
-    document.getElementById('status').textContent = msg || '';
+/* ================= playback ================= */
+
+let playing = true, playSpeed = 1, framePos = 0;
+let timeMin = 0, timeMax = Math.PI;
+let hudDirty = true;
+
+function zAt(pos) {
+    const n = Z_cache.length;
+    if (n < 2) return Math.PI / 2;
+    const eps = 1e-4;
+    let z = Math.max(timeMin + pos * ((timeMax - timeMin) / (n - 1)), eps);
+    const k = Math.round(z / Math.PI);
+    if (k > 0 && Math.abs(z - k * Math.PI) < eps) z = k * Math.PI - eps;
+    return z;
 }
 
-/* ---------- import wiring ---------- */
-
-function tFromName(name) {
-    const m = /_T(\d+)[_.]/.exec(name);
-    return m ? parseInt(m[1], 10) : null;
-}
-
-function importText(text, filename) {
-    let parsed;
-    try {
-        parsed = parseDumpCSV(text);
-    } catch (err) {
-        setStatus('Import failed: ' + err.message);
-        return;
-    }
-    let T = tFromName(filename);
-    const tWrap = document.getElementById('tWrap');
-    if (T === null) {
-        tWrap.style.display = 'flex';
-        T = parseInt(document.getElementById('tInput').value, 10) || 40;
-        setStatus('No _T<N>_ in the filename — using the T input (set it and re-import if wrong).');
-    } else {
-        tWrap.style.display = 'none';
-        document.getElementById('tInput').value = T;
-        setStatus(parsed.skipped ? parsed.skipped + ' unparseable rows skipped' : '');
-    }
-    applyImport(parsed, T);
-}
-
-document.getElementById('importBtn').addEventListener('click', function () {
-    document.getElementById('importInput').click();
+const playBtn = document.getElementById('playBtn');
+playBtn.addEventListener('click', function () {
+    playing = !playing;
+    playBtn.classList.toggle('on', playing);
+    playBtn.textContent = playing ? 'Play ▶' : 'Paused';
 });
-document.getElementById('importInput').addEventListener('change', function (ev) {
-    const file = ev.target.files[0];
+const timeScrub = document.getElementById('timeScrub');
+timeScrub.addEventListener('input', function (e) {
+    playing = false;
+    playBtn.classList.remove('on');
+    playBtn.textContent = 'Paused';
+    if (Z_cache.length) framePos = parseFloat(e.target.value) * (Z_cache.length - 1);
+    hudDirty = true;
+});
+
+/* speed knob: normalized 0..1, mapped onto [speedMin, speedMax] */
+const speedRange = document.getElementById('speedRange');
+const speedValEl = document.getElementById('speedVal');
+const speedMinInput = document.getElementById('speedMinInput');
+const speedMaxInput = document.getElementById('speedMaxInput');
+let speedMin = 0.05, speedMax = 5, speedLogScale = false;
+function speedFromPos(p) {
+    return speedLogScale ? speedMin * Math.pow(speedMax / speedMin, p)
+                         : speedMin + p * (speedMax - speedMin);
+}
+function posFromSpeed(v) {
+    return speedLogScale ? Math.log(v / speedMin) / Math.log(speedMax / speedMin)
+                         : (v - speedMin) / (speedMax - speedMin);
+}
+function showSpeed() {
+    speedValEl.textContent = playSpeed.toFixed(2).replace(/0$/, '') + '×';
+}
+function applySpeedBounds() {
+    speedMin = Math.max(0.001, parseFloat(speedMinInput.value) || 0.05);
+    speedMax = Math.max(speedMin * 1.01, parseFloat(speedMaxInput.value) || 5);
+    speedMinInput.value = speedMin; speedMaxInput.value = speedMax;
+    playSpeed = Math.min(Math.max(playSpeed, speedMin), speedMax);
+    speedRange.value = posFromSpeed(playSpeed).toFixed(3);
+    showSpeed();
+}
+speedRange.addEventListener('input', function (e) {
+    playSpeed = speedFromPos(parseFloat(e.target.value));
+    showSpeed();
+});
+speedMinInput.addEventListener('change', applySpeedBounds);
+speedMaxInput.addEventListener('change', applySpeedBounds);
+
+const timeMinInput = document.getElementById('timeMinInput');
+const timeMaxInput = document.getElementById('timeMaxInput');
+function applyTimeBounds() {
+    const lo = Math.max(0, parseFloat(timeMinInput.value) || 0);
+    const hi = Math.max(lo + 0.05, parseFloat(timeMaxInput.value) || 1);
+    timeMinInput.value = lo; timeMaxInput.value = hi;
+    timeMin = lo * Math.PI; timeMax = hi * Math.PI;
+    hudDirty = true;
+}
+timeMinInput.addEventListener('change', applyTimeBounds);
+timeMaxInput.addEventListener('change', applyTimeBounds);
+
+/* ================= control wiring ================= */
+
+function onCheck(id, apply) {
+    const el = document.getElementById(id);
+    el.addEventListener('change', function () { apply(el.checked); });
+}
+function onRadio(name, apply) {
+    document.querySelectorAll('input[name=' + name + ']').forEach(function (el) {
+        el.addEventListener('change', function () { if (el.checked) apply(el.value); });
+    });
+}
+
+/* generation */
+document.getElementById('generateBtn').addEventListener('click', function () {
+    genEpoch++;
+    abort_gen = false; saturated = false; groupIDcount = 0; framePos = 0;
+    consecFails = 0;
+    genPhase = 'unique'; subCount = 0; subSaturated = false; subReason = '';
+    consecZeroVol = 0; skipPhase = false;
+    maxUniques = Math.max(0, parseInt(document.getElementById('maxUniquesInput').value, 10) || 0);
+    readSubConfig();
+    genSubBudgetMs = parseFloat(document.getElementById('subTimeRange').value) * 1000;
+    time_steps = Math.max(4, parseInt(document.getElementById('timeInput').value, 10) || 40);
+    modulation_Max = Math.max(2, time_steps - 1);
+    freqTerms = Math.min(
+        Math.max(2, parseInt(document.getElementById('termsInput').value, 10) || 3),
+        modulation_Max + 1
+    );
+    document.getElementById('termsInput').value = freqTerms;
+    functions = [];
+    genBudgetMs = parseFloat(document.getElementById('genTimeRange').value) * 1000;
+    genStart = performance.now(); lastLiveUpload = genStart;
+    bakeZValues(); resetGrid();
+    make_groups(genEpoch);
+});
+document.getElementById('abortBtn').addEventListener('click', function () { abort_gen = true; });
+document.getElementById('skipBtn').addEventListener('click', function () { skipPhase = true; });
+function readSubConfig() {
+    subJamFails = Math.max(10, parseInt(document.getElementById('subFailsInput').value, 10) || 500);
+    volJamAccepts = Math.max(10, parseInt(document.getElementById('volAcceptsInput').value, 10) || 200);
+}
+// "+ Subs": pack another sub round into the CURRENT packing (works after Import).
+document.getElementById('subsBtn').addEventListener('click', function () {
+    if (!functions.length || !Z_cache.length) {
+        statusEl.textContent = 'No packing to extend — Generate or Import first';
+        return;
+    }
+    genSubBudgetMs = parseFloat(document.getElementById('subTimeRange').value) * 1000;
+    if (genSubBudgetMs <= 0) {
+        statusEl.textContent = 'Sub time is 0 — slide it up first';
+        return;
+    }
+    genEpoch++;
+    abort_gen = false; saturated = false; subSaturated = false; subReason = '';
+    consecFails = 0; consecZeroVol = 0; skipPhase = false;
+    genPhase = 'sub';
+    modulation_Max = Math.max(2, time_steps - 1);
+    freqTerms = Math.min(
+        Math.max(2, parseInt(document.getElementById('termsInput').value, 10) || 2),
+        modulation_Max + 1
+    );
+    document.getElementById('termsInput').value = freqTerms;
+    readSubConfig();
+    if (!gridByT.length) rebuildPackingHash();
+    subStart = performance.now(); lastLiveUpload = subStart;
+    make_groups(genEpoch);
+});
+document.getElementById('genTimeRange').addEventListener('input', function (e) {
+    document.getElementById('genTimeVal').textContent = e.target.value + 's';
+});
+document.getElementById('subTimeRange').addEventListener('input', function (e) {
+    document.getElementById('subTimeVal').textContent =
+        e.target.value === '0' ? 'off' : e.target.value + 's';
+});
+document.getElementById('cloudResBtn').addEventListener('click', function () {
+    if (functions.length) { buildBuffers(); rebuildGPU(); }
+});
+
+/* import */
+const importInput = document.getElementById('importInput');
+document.getElementById('importBtn').addEventListener('click', function () { importInput.click(); });
+importInput.addEventListener('change', function () {
+    const file = importInput.files[0];
+    importInput.value = '';                          // allow re-picking the same file
     if (!file) return;
     const reader = new FileReader();
     reader.onload = function () { importText(reader.result, file.name); };
     reader.readAsText(file);
 });
 document.getElementById('exampleBtn').addEventListener('click', function () {
-    setStatus('loading example…');
+    statusEl.textContent = 'loading example…';
     fetch('../examples/d3_nyq_T40_s1.csv')
         .then(function (r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.text();
         })
-        .then(function (text) {
-            setStatus('');
-            importText(text, 'd3_nyq_T40_s1.csv');
-        })
+        .then(function (text) { importText(text, 'd3_nyq_T40_s1.csv'); })
         .catch(function () {
-            setStatus('Fetch failed — serve this page over http (or the Pages site) or use Import CSV.');
+            statusEl.textContent = 'Fetch failed — serve over http (or the Pages site) or use Import CSV.';
         });
 });
 
-/* ---------- playback + controls ---------- */
+/* sidepanel + fullscreen */
+const sidepanel = document.getElementById('sidepanel');
+document.getElementById('menuBtn').addEventListener('click', function (e) {
+    e.currentTarget.classList.toggle('on', sidepanel.classList.toggle('open'));
+});
+const topbarEl = document.getElementById('topbar');
+function fitSidepanel() {
+    sidepanel.style.paddingTop = (topbarEl.offsetHeight + 10) + 'px';
+}
+window.addEventListener('resize', fitSidepanel);
+fitSidepanel();
 
-document.getElementById('playBtn').addEventListener('click', function () {
-    state.playing = !state.playing;
-    this.textContent = state.playing ? 'Pause' : 'Play';
-    this.classList.toggle('active', state.playing);
-});
-document.getElementById('spinBtn').addEventListener('click', function () {
-    controls.autoRotate = !controls.autoRotate;
-    this.classList.toggle('active', controls.autoRotate);
-});
-document.getElementById('timeSlider').addEventListener('input', function () {
-    state.zIdx = parseFloat(this.value);
-    updateHud();
-});
-document.getElementById('colorMode').addEventListener('change', function () {
-    if (state.uniforms) state.uniforms.uMode.value = parseInt(this.value, 10);
-});
-document.getElementById('sizeSlider').addEventListener('input', function () {
-    if (state.uniforms) state.uniforms.uSize.value = parseFloat(this.value);
-});
-
-let lastFrame = performance.now();
-function animate(now) {
-    requestAnimationFrame(animate);
-    const dt = Math.min((now - lastFrame) / 1000, 0.1);
-    lastFrame = now;
-    if (state.playing && state.paths.length) {
-        const stepsPerSec = parseFloat(document.getElementById('speedSlider').value);
-        state.zIdx += stepsPerSec * dt;
-        if (state.zIdx > state.T - 1) state.zIdx = 0;   // loop the cycle
-        document.getElementById('timeSlider').value = state.zIdx;
-        updateHud();
+const fsBtn = document.getElementById('fsBtn');
+function fsElement() {
+    return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+function toggleFullscreen() {
+    const root = document.documentElement;
+    if (fsElement()) {
+        if (document.exitFullscreen) document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    } else {
+        if (root.requestFullscreen) root.requestFullscreen();
+        else if (root.webkitRequestFullscreen) root.webkitRequestFullscreen();
     }
-    if (state.uniforms) state.uniforms.uZ.value = zOfIdx(state.zIdx);
-    controls.update();
+}
+function onFsChange() {
+    const on = !!fsElement();
+    fsBtn.classList.toggle('on', on);
+    fsBtn.textContent = on ? '⛶ Exit full' : '⛶ Fullscreen';
+}
+fsBtn.addEventListener('click', toggleFullscreen);
+document.addEventListener('fullscreenchange', onFsChange);
+document.addEventListener('webkitfullscreenchange', onFsChange);
+addEventListener('keydown', function (e) {
+    const tag = document.activeElement && document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+});
+
+/* view */
+onRadio('viewMode', function (v) { setView(v); });
+onCheck('spinChk', function (v) { autoRotateOn = v; controls.autoRotate = v; });
+onCheck('sweepChk', function (v) { showSweep = v; if (sweep) sweep.visible = v; });
+onCheck('cloudChk', function (v) { showCloud = v; if (cloud) cloud.visible = v; });
+onCheck('boxChk', function (v) { boxWire.visible = v; });
+onCheck('miniChk', function (v) {
+    document.getElementById('miniBox').style.display = v ? 'flex' : 'none';
+    hudDirty = true;
+});
+onCheck('seedHlChk', function (v) { U.uSeedHl.value = v ? 1 : 0; hudDirty = true; });
+document.getElementById('sizeRange').addEventListener('input', function (e) {
+    U.uSize.value = parseFloat(e.target.value);
+});
+document.getElementById('cloudSizeRange').addEventListener('input', function (e) {
+    U.uCloudSize.value = parseFloat(e.target.value);
+});
+
+/* offsets + drift */
+const off = { x: 0, y: 0, w: 0 };
+const offEls = {
+    x: [document.getElementById('offXRange'), document.getElementById('offXVal')],
+    y: [document.getElementById('offYRange'), document.getElementById('offYVal')],
+    w: [document.getElementById('offWRange'), document.getElementById('offWVal')],
+};
+function applyOffset(axis, v) {
+    off[axis] = wrapComov(v);
+    offEls[axis][0].value = off[axis].toFixed(2);
+    offEls[axis][1].textContent = off[axis].toFixed(2);
+    U.uOff.value.set(off.x, off.y, off.w);
+    hudDirty = true;
+}
+for (const axis of ['x', 'y', 'w']) {
+    offEls[axis][0].addEventListener('input', function (e) {
+        applyOffset(axis, parseFloat(e.target.value));
+    });
+}
+const drift = {
+    x: { chk: document.getElementById('autoXChk'), spd: document.getElementById('driftXRange') },
+    y: { chk: document.getElementById('autoYChk'), spd: document.getElementById('driftYRange') },
+    w: { chk: document.getElementById('autoWChk'), spd: document.getElementById('driftWRange') },
+};
+
+/* coloring */
+onRadio('paintMode', function (v) { U.uMode.value = PAINT_ORDER.indexOf(v); hudDirty = true; });
+onRadio('normMode', function (v) { U.uPecGlobal.value = v === 'global' ? 1 : 0; hudDirty = true; });
+onCheck('logChk', function (v) { U.uLog.value = v ? 1 : 0; hudDirty = true; });
+onCheck('localChk', function (v) { U.uGeoLocal.value = v ? 1 : 0; hudDirty = true; });
+onRadio('speedScale', function (v) { speedLogScale = (v === 'log'); applySpeedBounds(); });
+applySpeedBounds();
+
+/* presets: bundles applied through the normal handlers via synthetic events */
+const PRESETS = {
+    'slice-speed': {
+        checks: { sweepChk: true, cloudChk: false, boxChk: true, seedHlChk: false, logChk: true, localChk: true },
+        radios: { paintMode: 'pec', normMode: 'per' },
+    },
+    'cloud-group': {
+        checks: { sweepChk: false, cloudChk: true, boxChk: true, seedHlChk: false, logChk: true, localChk: true },
+        radios: { paintMode: 'group', normMode: 'per' },
+    },
+    'minimal': {
+        checks: { sweepChk: true, cloudChk: false, boxChk: false, seedHlChk: false, miniChk: false, logChk: true, localChk: true },
+        radios: { paintMode: 'mono', normMode: 'per' },
+    },
+};
+document.getElementById('presetSel').addEventListener('change', function (e) {
+    const p = PRESETS[e.target.value];
+    if (!p) return;
+    for (const id in p.checks) {
+        const el = document.getElementById(id);
+        if (el.checked !== p.checks[id]) {
+            el.checked = p.checks[id];
+            el.dispatchEvent(new Event('change'));
+        }
+    }
+    for (const name in p.radios) {
+        const el = document.querySelector('input[name=' + name + '][value=' + p.radios[name] + ']');
+        if (el && !el.checked) {
+            el.checked = true;
+            el.dispatchEvent(new Event('change'));
+        }
+    }
+    e.target.value = '';
+});
+
+/* ================= minimap: three orthogonal projections ================= */
+
+const miniDPR = Math.min(2, window.devicePixelRatio || 1);
+const miniPanels = [
+    { canvas: document.getElementById('miniXY'), ax: 0, ay: 1 },
+    { canvas: document.getElementById('miniXW'), ax: 0, ay: 2 },
+    { canvas: document.getElementById('miniYW'), ax: 1, ay: 2 },
+];
+for (const p of miniPanels) {
+    p.canvas.width = 170 * miniDPR;
+    p.canvas.height = 170 * miniDPR;
+    p.ctx = p.canvas.getContext('2d');
+}
+
+// CPU twins of the shader color modes (minimap must match the GPU exactly).
+function cpuRamp(t) {
+    t = Math.min(Math.max(t, 0), 1);
+    const stops = [
+        [0.10, 0.18, 0.55], [0.30, 0.55, 0.95], [0.55, 0.85, 0.75],
+        [1.0, 0.82, 0.35], [1.0, 0.97, 0.92],
+    ];
+    const cuts = [0, 0.35, 0.6, 0.8, 1.0001];
+    for (let k = 1; k < cuts.length; k++) {
+        if (t < cuts[k]) {
+            const u = (t - cuts[k - 1]) / (cuts[k] - cuts[k - 1]);
+            return stops[k - 1].map(function (a, i) { return a + (stops[k][i] - a) * u; });
+        }
+    }
+    return stops[4];
+}
+function cpuHotCold(t) {
+    t = Math.min(Math.max(t, 0), 1);
+    if (t < 0.5) {
+        const u = t / 0.5;
+        return [1, 0.35 + 0.65 * u, 0.25 + 0.75 * u];
+    }
+    const u = (t - 0.5) / 0.5;
+    return [1 - 0.65 * u, 1 - 0.45 * u, 1];
+}
+function cpuHsv(h, s, v) {
+    const rgb = [];
+    for (const o of [0, 2 / 3, 1 / 3]) {
+        const p = Math.abs(((h + o) % 1) * 6 - 3);
+        rgb.push(v * (1 + s * (Math.min(Math.max(p - 1, 0), 1) - 1)));
+    }
+    return rgb;
+}
+function sliceColor(f, pos, vel) {
+    const mode = U.uMode.value;
+    if (mode === 0) return [0.65, 0.78, 1.0];
+    if (mode === 1) {
+        let t = (f.fsum - U.uFreqMin.value) /
+            Math.max(U.uFreqMax.value - U.uFreqMin.value, 1e-6);
+        if (U.uLog.value === 1) t = Math.log(1 + 9 * Math.min(Math.max(t, 0), 1)) / Math.log(10);
+        return cpuHotCold(t);
+    }
+    if (mode === 2) {
+        const v = Math.max(Math.abs(vel[0]), Math.abs(vel[1]), Math.abs(vel[2]));
+        const lo = U.uPecGlobal.value === 1 ? U.uGMin.value : f.pecMin;
+        const hi = U.uPecGlobal.value === 1 ? U.uGMax.value : f.pecMax;
+        let t;
+        if (U.uLog.value === 1)
+            t = (Math.log(Math.max(v, 1e-6)) - Math.log(Math.max(lo, 1e-6))) /
+                Math.max(Math.log(Math.max(hi, 1e-5)) - Math.log(Math.max(lo, 1e-6)), 1e-6);
+        else
+            t = (v - lo) / Math.max(hi - lo, 1e-6);
+        return cpuRamp(t);
+    }
+    if (mode === 3) return cpuHsv((f.groupID * 0.6180339887) % 1, 0.8, 1);
+    if (mode === 4) return f.isSub ? [1.0, 0.62, 0.3] : [0.45, 0.7, 1.0];
+    return cpuHsv((pos[2] + 1) * 0.5 * 0.83, 0.85, 1);
+}
+
+function drawMini() {
+    if (!functions.length || !Z_cache.length) return;
+    const z = zAt(framePos);
+    const s = Math.sin(z);
+    const geoLocal = U.uGeoLocal.value === 1;
+    const seedHl = U.uSeedHl.value === 1;
+    const size = 3 * miniDPR;
+    for (const p of miniPanels) p.ctx.clearRect(0, 0, p.canvas.width, p.canvas.height);
+    for (const f of functions) {
+        const raw = comovXYW(f, z);
+        const vel = U.uMode.value === 2 ? comovVelXYW(f, z) : [0, 0, 0];
+        const pos = [
+            wrapComov(raw[0] + off.x),
+            wrapComov(raw[1] + off.y),
+            wrapComov(raw[2] + off.w),
+        ];
+        const draw = geoLocal ? pos : pos.map(function (c) { return c * s; });
+        const col = sliceColor(f, pos, vel);
+        let alpha = 0.55, sz = size;
+        if (seedHl) {
+            if (f.isSub) { alpha = 0.25; sz = size * 0.8; }
+            else { alpha = 0.9; sz = size * 1.5; }
+        }
+        const style = 'rgba(' + Math.round(col[0] * 255) + ',' + Math.round(col[1] * 255) +
+            ',' + Math.round(col[2] * 255) + ',' + alpha + ')';
+        for (const p of miniPanels) {
+            const px = (draw[p.ax] + 1) * 0.5 * p.canvas.width;
+            const py = (1 - (draw[p.ay] + 1) * 0.5) * p.canvas.height;
+            p.ctx.fillStyle = style;
+            p.ctx.fillRect(px - sz / 2, py - sz / 2, sz, sz);
+        }
+    }
+    document.getElementById('miniBar').textContent =
+        (geoLocal ? 'local (comoving)' : 'global (raw)') +
+        ' · t = ' + (z / Math.PI).toFixed(3) + 'π · a = ' + s.toFixed(3);
+}
+
+/* ================= HUD ================= */
+
+function updateHud() {
+    const hud = document.getElementById('hud');
+    if (!functions.length) {
+        hud.textContent = 'no data — Generate, Import CSV or Example';
+        return;
+    }
+    const countTxt = subCount
+        ? groupIDcount + ' uniques + ' + subCount + ' subpaths'
+        : functions.length + ' paths';
+    hud.textContent = countTxt + '  ·  T=' + time_steps + '  ·  z=' +
+        (zAt(framePos) / Math.PI).toFixed(3) + 'π';
+}
+
+/* ================= export: WebM / PNG of the main canvas ================= */
+
+const EXPORT_DPR = 1;                                // main canvas is already DPR-scaled
+let exportState = null;
+function compositeCanvas() {
+    const src = renderer.domElement;
+    const c = document.createElement('canvas');
+    c.width = src.width * EXPORT_DPR;
+    c.height = src.height * EXPORT_DPR + 30;
+    return c;
+}
+function drawComposite(ctx, comp, label) {
+    const src = renderer.domElement;
+    ctx.fillStyle = '#05060a';
+    ctx.fillRect(0, 0, comp.width, comp.height);
+    ctx.drawImage(src, 0, 0, comp.width, comp.height - 30);
+    ctx.fillStyle = '#9fb2d8';
+    ctx.font = '14px sans-serif';
+    ctx.fillText(label, 10, comp.height - 10);
+    ctx.textAlign = 'right';
+    ctx.fillText(VIEWER_VERSION, comp.width - 10, comp.height - 10);
+    ctx.textAlign = 'left';
+}
+function downloadBlob(blob, name) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
+}
+function renderOnce() {
+    U.uZ.value = zAt(framePos);
+    if (camera.isOrthographicCamera) U.uOrthoScale.value = 9.0 * camera.zoom;
+    else U.uOrthoScale.value = 0;
     renderer.render(scene, camera);
 }
-requestAnimationFrame(animate);
+document.getElementById('expPngBtn').addEventListener('click', function () {
+    if (!functions.length) { statusEl.textContent = 'Nothing to snapshot yet'; return; }
+    const comp = compositeCanvas();
+    renderOnce();
+    drawComposite(comp.getContext('2d'), comp,
+        't = ' + (zAt(framePos) / Math.PI).toFixed(3) + 'π · ' + functions.length + ' paths');
+    comp.toBlob(function (blob) {
+        if (blob) downloadBlob(blob, 'box3d_T' + time_steps + '.png');
+    });
+});
+document.getElementById('expWebmBtn').addEventListener('click', function () {
+    if (exportState) {                               // the button doubles as Cancel
+        exportState.cancelled = true;
+        clearInterval(exportState.interval);
+        if (exportState.recorder.state !== 'inactive') exportState.recorder.stop();
+        return;
+    }
+    if (!functions.length) { statusEl.textContent = 'Nothing to record yet'; return; }
+    if (!window.MediaRecorder) {
+        statusEl.textContent = 'This browser has no MediaRecorder — video export unavailable';
+        return;
+    }
+    const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4']
+        .find(function (m) { return MediaRecorder.isTypeSupported(m); });
+    if (!mime) {
+        statusEl.textContent = 'No supported video format for MediaRecorder';
+        return;
+    }
+    const fps = Math.min(60, Math.max(1, parseInt(document.getElementById('expFpsInput').value, 10) || 30));
+    const secs = Math.min(60, Math.max(1, parseInt(document.getElementById('expSecsInput').value, 10) || 8));
+    const F = fps * secs;
+    const comp = compositeCanvas();
+    const ctx = comp.getContext('2d');
+    // frame-accurate where possible: a zero-fps stream only emits a frame
+    // when requestFrame() is called, one per drawn export frame
+    let stream = comp.captureStream(0);
+    let track = stream.getVideoTracks()[0];
+    const canReq = track && typeof track.requestFrame === 'function';
+    if (!canReq) { stream = comp.captureStream(fps); track = null; }
+    const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8e6 });
+    const chunks = [];
+    recorder.ondataavailable = function (e) { if (e.data.size) chunks.push(e.data); };
+    const btn = document.getElementById('expWebmBtn');
+    const savedPos = framePos, savedPlaying = playing;
+    playing = false;
+    recorder.onstop = function () {
+        const ex = exportState;
+        exportState = null;
+        btn.textContent = '⬇ WebM';
+        btn.classList.remove('on');
+        framePos = savedPos; playing = savedPlaying;
+        if (!ex || ex.cancelled) { statusEl.textContent = 'Export cancelled'; return; }
+        const ext = mime.startsWith('video/mp4') ? 'mp4' : 'webm';
+        downloadBlob(new Blob(chunks, { type: mime }), 'box3d_T' + time_steps + '_' + F + 'f.' + ext);
+        statusEl.textContent = 'Exported ' + F + ' frames at ' + fps + ' fps (' + ext + ')';
+    };
+    const drawFrame = function (k) {
+        framePos = (k / Math.max(F - 1, 1)) * (Z_cache.length - 1);
+        renderOnce();
+        drawComposite(ctx, comp,
+            't = ' + (zAt(framePos) / Math.PI).toFixed(3) + 'π · ' + (k + 1) + '/' + F);
+        if (track) track.requestFrame();
+    };
+    drawFrame(0);                                    // frame 0 is never blank
+    recorder.start();
+    let k = 1;
+    const interval = setInterval(function () {
+        if (k >= F) {
+            clearInterval(interval);
+            recorder.stop();
+            return;
+        }
+        drawFrame(k);
+        statusEl.textContent = 'Exporting… ' + (k + 1) + '/' + F;
+        k++;
+    }, 1000 / fps);
+    exportState = { recorder: recorder, interval: interval, cancelled: false };
+    btn.textContent = 'Cancel';
+    btn.classList.add('on');
+    statusEl.textContent = 'Exporting… 1/' + F + ' (' + secs + 's of video)';
+});
+
+/* ================= render loop ================= */
+
+let lastFrame = performance.now();
+function tick(now) {
+    requestAnimationFrame(tick);
+    const dt = Math.min((now - lastFrame) / 1000, 0.1);
+    lastFrame = now;
+    const dtNorm = dt * 60;                          // 60 Hz-normalized frames
+    if (playing && Z_cache.length > 1 && !exportState) {
+        framePos = (framePos + playSpeed * dtNorm) % (Z_cache.length - 1);
+        timeScrub.value = (framePos / (Z_cache.length - 1)).toFixed(4);
+        updateHud();
+    }
+    for (const axis of ['x', 'y', 'w']) {
+        if (drift[axis].chk.checked) {
+            applyOffset(axis, off[axis] + parseFloat(drift[axis].spd.value) * dt);
+        }
+    }
+    if (!exportState) renderOnce();
+    controls.update();
+    const miniOn = document.getElementById('miniChk').checked;
+    if (miniOn && functions.length && (playing || hudDirty)) {
+        drawMini();
+        hudDirty = false;
+    }
+}
+requestAnimationFrame(tick);
+
+/* auto-generate a small pack on load, like the 2+1 viewer */
+setTimeout(function () { document.getElementById('generateBtn').click(); }, 60);
 </script>
 </body>
 </html>
