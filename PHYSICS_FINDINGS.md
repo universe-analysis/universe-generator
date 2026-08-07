@@ -610,8 +610,28 @@ binned by subpath count; per-bin turnaround w under the E ~ Σb dictionary:
 the `--subpaths` phase-2 accretion mode (dense grid only, synchronous phase
 2), gated by `analysis/verify_subpath_dump.py` exact invariants and a
 phase-1 A/B inside the stored fullspec3d seed spread. Campaign
-`fullsub3d_e6`: T=40 single-T smoke, terms=T, 8 seeds, 1e-6 cutoff, 1e9
-sub-attempts/seed, dumps complete at ~8k rows/seed — no row-cap censoring.)
+`fullsub3d_e6`: first a T=40 smoke, extended the same day to the ladder
+T = 20/40/60/75, terms=T, 8 seeds, 1e-6 cutoff, 1e9 sub-attempts/seed;
+all 32 cells complete and uncensored.)
+
+**Ladder results (T = 20/40/60/75, same-day extension):**
+
+- **Sterile fraction is T-invariant: 74–76% at every rung** (2+1 has its own
+  constant, 68–71%). The fertile fraction (~1 in 4 uniques) looks like a
+  constant of the accretion process, mildly dimension-dependent.
+- **Iso-anchor coherence sharpens with T**: ICC = 0.954 / 0.981 / 0.991 /
+  0.993 up the ladder (size-corr ≤ 0.015 everywhere) — same direction as
+  2+1 (0.979 → 0.996 over T=40→100).
+- **Dust law holds with subpaths at every rung**: turnaround w = 0.02522 /
+  0.01259 / 0.00838 / 0.00661 vs d/(6T) = 0.02500 / 0.01250 / 0.00833 /
+  0.00667 (±1%), both dictionaries, sterile bin 1.00–1.01× ensemble.
+- **The tail is budget-starved, not resolution-limited**: at fixed 1e9
+  sub-attempts the largest group FALLS with T (263 / 193 / 63 / 45) while
+  accepted subpaths per seed RISE (0.8k / 3.3k / 7.0k / 9.9k) — shrinking
+  cells make each contact rarer, so the budget spreads accretion across
+  more groups instead of deepening any. One universal head shape; tails
+  peel off in depth. Whether deeper budgets grow true 3+1 megagroups is
+  the open follow-up (2+1 tails are 2–3 orders deeper at matched budget).
 
 The first accretion groups outside 2+1. Headline: **3+1 grows the same
 objects** — every structural signature of §16 reproduces — but accretion is

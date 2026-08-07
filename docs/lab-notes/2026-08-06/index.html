@@ -198,6 +198,78 @@
       </p>
     </article>
 
+    <article class="entry" id="fullsub3d-ladder">
+      <h2>The 3+1 accretion ladder: sterile fraction is a constant of the
+      process, coherence sharpens with resolution, and the megagroup tail is
+      budget-starved</h2>
+      <p class="meta">
+        Campaign <code>fullsub3d_e6</code> extended from the T=40 smoke to
+        the ladder T = 20 / 40 / 60 / 75 (8 seeds each, terms=T, 1e-6
+        cutoff, 1e9 sub-attempts per seed; campaign commit
+        <a href="https://github.com/universe-analysis/universe-generator/commit/a016950">a016950</a>,
+        analysis code unchanged from the morning's
+        <a href="https://github.com/universe-analysis/universe-generator/commit/929c0dc">929c0dc</a>).
+        All 32 cells complete, dumps uncensored (largest 32k rows against
+        the 250k cap). Phase-1 N at each rung matches the stored fullspec3d
+        seed spreads.
+      </p>
+      <ul>
+        <li><strong>The sterile fraction is T-invariant: 74&ndash;76% at
+            every rung.</strong> (2+1 sits at its own constant,
+            68&ndash;71%.) One in four uniques accretes anything, at every
+            resolution &mdash; the fertile fraction looks like a constant
+            of the accretion process, slightly dimension-dependent.</li>
+        <li><strong>Iso-anchor coherence sharpens with T</strong>: ICC =
+            0.954 / 0.981 / 0.991 / 0.993 up the ladder (size-corr &le;
+            0.015 everywhere) &mdash; same direction as 2+1 (0.979 at
+            T=40 &rarr; 0.996 at T=100). The bound-structure mechanism gets
+            cleaner, not weaker, as the exclusion cell shrinks.</li>
+        <li><strong>The dust law holds with subpaths included, at every
+            rung</strong>: turnaround w = 0.02522 / 0.01259 / 0.00838 /
+            0.00661 vs d/(6T) = 0.02500 / 0.01250 / 0.00833 / 0.00667 —
+            within &plusmn;1% throughout, both dictionaries, sterile bin at
+            1.00&ndash;1.01&times; ensemble everywhere. The w-rigidity
+            results are now ladder-wide in 3+1.</li>
+        <li><strong>The mass-function tail is budget-starved, not
+            resolution-limited</strong>: at the fixed 1e9 sub-attempt
+            budget the largest group FALLS with T &mdash; 263 / 193 / 63 /
+            45 members &mdash; while accepted subpaths per seed RISE (0.8k
+            / 3.3k / 7.0k / 9.9k). Shrinking cells make each contact
+            rarer, so the same budget spreads accretion across ever more
+            groups instead of piling onto few. The distributions share one
+            head shape (the figure) and peel off in tail depth. Whether a
+            fixed-T deeper budget grows true 3+1 megagroups remains the
+            open follow-up &mdash; the 2+1 tails (35k at T=40) are still
+            two to three orders of magnitude beyond anything 3+1 has shown
+            at this budget.</li>
+      </ul>
+      <figure class="plot">
+        <img src="subpath_group_sizes_3d_ladder.png"
+             alt="Log-log complementary CDF of group sizes for T equal 20, 40, 60 and 75: all four curves share the same head with about 75 percent sterile groups, then peel off at successively smaller maximum sizes as T grows — 263, 193, 63 and 45 members." />
+        <figcaption>
+          The 3+1 group mass function across the ladder at fixed phase-2
+          budget: one universal head, tails truncating earlier as T grows
+          &mdash; the budget, not the physics, sets the visible tail.
+        </figcaption>
+      </figure>
+      <figure class="plot">
+        <img src="subpath_w_overlay_3d_ladder.png"
+             alt="Four panels, T equal 20 through 75, of absolute w versus conformal time: in each the ensemble, closed form and sterile aggregate coincide while each seed's largest group fans across the velocity range and collapses onto the ensemble at the turnaround." />
+        <figcaption>
+          The w(z) overlay at every rung: ensemble = closed form = sterile
+          aggregate; largest groups ride their own iso-anchor velocities
+          and meet the ensemble at &pi;/2.
+        </figcaption>
+      </figure>
+      <p>
+        <code>PHYSICS_FINDINGS.md</code> &sect;17 updated with the ladder
+        numbers. Viewer note: the box viewer gained a
+        <em>proper peculiar speed</em> paint mode today (box3d-v4) — the
+        sin z &middot; |dX/dz| companion to the comoving-speed paint, calm
+        at the endpoints where the comoving version runs hot.
+      </p>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>
