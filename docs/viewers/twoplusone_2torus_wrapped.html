@@ -188,6 +188,8 @@
                 <label><input type="radio" name="paintMode" value="mono"> Mono</label>
                 <label><input type="radio" name="paintMode" value="freq"> Frequency (bx+by) — red low, blue high</label>
                 <label><input type="radio" name="paintMode" value="pec" checked> Peculiar speed (local)</label>
+                <label><input type="radio" name="paintMode" value="pecp"> Proper peculiar speed (&times; sin z)</label>
+                <label><input type="radio" name="paintMode" value="phys"> Physical slope (w dictionary)</label>
                 <label><input type="radio" name="paintMode" value="group"> Group ID — subpath families</label>
                 <label><input type="radio" name="paintMode" value="role"> Seeds vs subs</label>
                 <span class="group-name">Speed normalisation</span>
@@ -397,7 +399,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v37';
+    const VIEWER_VERSION = 'v38';
 
     let functions = [];
     let Z_cache = [];
@@ -480,20 +482,32 @@
         // would inject period-sized jumps). Accepted paths keep the result, so
         // buildBuffers never has to rescan trajectories.
         let pecMin = Infinity, pecMax = -Infinity, pcx = 0, pcy = 0;
+        // proper-peculiar (x sin z) and physical-slope (d(X sin z)/dz)
+        // ranges, measured in the same pass for the paint modes
+        let pecPMin = Infinity, pecPMax = -Infinity;
+        let physMin = Infinity, physMax = -Infinity, ppx = 0, ppy = 0;
         for (let i = 0; i < n; i++) {
             const z = Z_cache[i];
             const [cx, cy] = comovXY(f, z);
+            const sz = Math.sin(z);
             if (i > 0){
+                const dz = z - Z_cache[i-1];
                 // Chebyshev norm — matches the packing metric (square cells)
-                const v = Math.max(Math.abs(cx - pcx), Math.abs(cy - pcy)) / (z - Z_cache[i-1]);
+                const v = Math.max(Math.abs(cx - pcx), Math.abs(cy - pcy)) / dz;
                 if (v < pecMin) pecMin = v;
                 if (v > pecMax) pecMax = v;
+                const vp = v * Math.sin((z + Z_cache[i-1]) / 2);
+                if (vp < pecPMin) pecPMin = vp;
+                if (vp > pecPMax) pecPMax = vp;
+                const vf = Math.max(Math.abs(cx*sz - ppx), Math.abs(cy*sz - ppy)) / dz;
+                if (vf < physMin) physMin = vf;
+                if (vf > physMax) physMax = vf;
             }
-            pcx = cx; pcy = cy;
+            pcx = cx; pcy = cy; ppx = cx*sz; ppy = cy*sz;
             X[i] = wrapComov(cx);
             Y[i] = wrapComov(cy);
         }
-        return { X, Y, pecMin, pecMax };
+        return { X, Y, pecMin, pecMax, pecPMin, pecPMax, physMin, physMax };
     }
     function collides(traj) {
         const n = Z_cache.length;
@@ -615,7 +629,7 @@
             const traj = comovingTraj(f);
             if (!collides(traj)) {
                 insertTraj(traj, groupIDcount);
-                f.pecMin = traj.pecMin; f.pecMax = traj.pecMax;
+                f.pecMin = traj.pecMin; f.pecMax = traj.pecMax; f.pecPMin = traj.pecPMin; f.pecPMax = traj.pecPMax; f.physMin = traj.physMin; f.physMax = traj.physMax;
                 f.groupID = groupIDcount; f.isSub = false;
                 return f;
             }
@@ -634,7 +648,7 @@
             const gid = subGroupOf(traj);
             if (gid >= 0) {
                 f.newCells = insertTraj(traj, gid);
-                f.pecMin = traj.pecMin; f.pecMax = traj.pecMax;
+                f.pecMin = traj.pecMin; f.pecMax = traj.pecMax; f.pecPMin = traj.pecPMin; f.pecPMax = traj.pecPMax; f.physMin = traj.physMin; f.physMax = traj.physMax;
                 f.groupID = gid; f.isSub = true;
                 return f;
             }
@@ -830,7 +844,7 @@
         for (const r of rows) {
             const f = { ax2: r.ax2, ay2: r.ay2, terms: r.terms, fsum: freqSum(r.terms) };
             const traj = comovingTraj(f);
-            f.pecMin = traj.pecMin; f.pecMax = traj.pecMax;
+            f.pecMin = traj.pecMin; f.pecMax = traj.pecMax; f.pecPMin = traj.pecPMin; f.pecPMax = traj.pecPMax; f.physMin = traj.physMin; f.physMax = traj.physMax;
             f.groupID = (r.gid != null) ? r.gid : rowIdx;
             f.isSub = seenGids.has(f.groupID);
             if (f.isSub) subCount++; else groupIDcount++;
@@ -925,6 +939,7 @@
         uR:{value:R}, uS:{value:S}, uGeoLocal:{value:1},
         uMode:{value:2}, uLog:{value:1}, uPecGlobal:{value:0}, uAngK:{value:Math.PI},
         uGMin:{value:0}, uGMax:{value:1}, uFreqMin:{value:4}, uFreqMax:{value:8},
+        uGPMin:{value:0}, uGPMax:{value:1}, uGFMin:{value:0}, uGFMax:{value:1},
         uTerms:{value:null}, uTexH:{value:1}, uSeedHl:{value:0},
         uOffX:{value:0}, uOffY:{value:0},
         uConeRate:{value:0.6}, uConeBase:{value:0.0}, uConeRings:{value:3}, uRedNorm:{value:1.2}, uConeColor:{value:1}, uConeSpeed:{value:1.0},
@@ -977,10 +992,12 @@
         attribute vec2 aSin1;        // ax2, ay2 — the sin(1·z) amplitudes
         attribute float aFsum;       // amplitude-weighted mean wiggle freq, x+y
         attribute vec2 aPec;         // per-particle comoving speed min, max
+        attribute vec2 aPecP;        // per-particle PROPER peculiar speed min, max
+        attribute vec2 aPhys;        // per-particle physical-slope min, max
         attribute float aGroup;      // unique-group ID (subpaths share their group's)
         attribute float aIsSub;      // 0 = seed (unique), 1 = subpath
         attribute float aIndex;      // instance index 0..N-1 (term texture row + emitter highlight)
-        uniform float uZ0, uStep, uT, uR, uS, uFreqMin, uFreqMax, uSize, uCloudSize, uGMin, uGMax, uTime, uAngK, uConeMax, uOrthoScale, uOffX, uOffY;
+        uniform float uZ0, uStep, uT, uR, uS, uFreqMin, uFreqMax, uSize, uCloudSize, uGMin, uGMax, uGPMin, uGPMax, uGFMin, uGFMax, uTime, uAngK, uConeMax, uOrthoScale, uOffX, uOffY;
         uniform int uGeoLocal, uMode, uLog, uPecGlobal, uSliceMode, uConeOn, uSeedHl;
         varying vec3 vColor;
         ${comovGLSL(nw)}
@@ -1046,12 +1063,29 @@
                 // role paint: seeds cool blue-white, subpaths warm orange
                 vColor = (aIsSub < 0.5) ? vec3(0.55,0.75,1.0) : vec3(1.0,0.55,0.25);
             }
-            else {
+            else if(uMode==2 || uMode==5){
                 float zN = (uSliceMode==1) ? z+uStep : (i < uT-1.0 ? z+uStep : z-uStep);
                 vec2 dcm = abs(comovRaw(zN)-cmR);                  // unwrapped difference
                 float v = max(dcm.x, dcm.y) / abs(uStep);          // Chebyshev, matches packing metric
-                float lo = (uPecGlobal==1)? uGMin : aPec.x;
-                float hi = (uPecGlobal==1)? uGMax : aPec.y;
+                if (uMode==5) v *= s;    // proper peculiar = sin z x comoving rate
+                float lo = (uMode==5) ? ((uPecGlobal==1)? uGPMin : aPecP.x)
+                                      : ((uPecGlobal==1)? uGMin  : aPec.x);
+                float hi = (uMode==5) ? ((uPecGlobal==1)? uGPMax : aPecP.y)
+                                      : ((uPecGlobal==1)? uGMax  : aPec.y);
+                float t = (uLog==1)
+                    ? (log(v+1e-6)-log(lo+1e-6)) / max(1e-6, log(hi+1e-6)-log(lo+1e-6))
+                    : (v-lo) / max(1e-6, hi-lo);
+                vColor = ramp(t);
+            }
+            else {
+                // physical slope dx/dz (the w dictionary): finite difference
+                // of the PHYSICAL positions x = X*sin z — peculiar motion
+                // plus the anchors' Hubble recession
+                float zN = (uSliceMode==1) ? z+uStep : (i < uT-1.0 ? z+uStep : z-uStep);
+                vec2 dph = abs(comovRaw(zN)*sin(zN) - cmR*s);
+                float v = max(dph.x, dph.y) / abs(uStep);
+                float lo = (uPecGlobal==1)? uGFMin : aPhys.x;
+                float hi = (uPecGlobal==1)? uGFMax : aPhys.y;
                 float t = (uLog==1)
                     ? (log(v+1e-6)-log(lo+1e-6)) / max(1e-6, log(hi+1e-6)-log(lo+1e-6))
                     : (v-lo) / max(1e-6, hi-lo);
@@ -1190,7 +1224,7 @@
     buildMaterials(Math.max(1, freqTerms - 1));
 
     /* ---- instance param buffers + term texture (built once per Generate) ---- */
-    let instSin1=null, instFsum=null, instPec=null, instGroup=null, instSub=null, termTex=null;
+    let instSin1=null, instFsum=null, instPec=null, instPecP=null, instPhys=null, instGroup=null, instSub=null, termTex=null;
     const maxRaw=1, maxComov=1;        // wrapped domain is exactly [-1,1] — extent is fixed
     // domain = exactly one period: a comoving wrap of 2 is 2π of tube angle,
     // the identical torus point, so the seam is exactly seamless on the surface
@@ -1204,11 +1238,13 @@
         for (let p=0;p<N;p++) if (functions[p].terms.length > nw) nw = functions[p].terms.length;
         if (nw !== matNW) buildMaterials(nw);          // term count is a shader constant
         instSin1 = new Float32Array(N*2); instFsum = new Float32Array(N); instPec = new Float32Array(N*2);
+        instPecP = new Float32Array(N*2); instPhys = new Float32Array(N*2);
         instGroup = new Float32Array(N); instSub = new Float32Array(N);
         const tpi = 2*nw;                              // texels per instance
         const texH = Math.max(1, Math.ceil(N*tpi / TERMTEX_W));
         const tdata = new Float32Array(TERMTEX_W*texH*4);
         let gmn = Infinity, gmx = -Infinity, fmn = Infinity, fmx = -Infinity;
+        let gpmn = Infinity, gpmx = -Infinity, gfmn = Infinity, gfmx = -Infinity;
         for (let p=0;p<N;p++){
             const f = functions[p];
             instSin1[p*2]=f.ax2; instSin1[p*2+1]=f.ay2;
@@ -1223,7 +1259,11 @@
             // speed range was measured at acceptance (comovingTraj) — just copy,
             // so this loop is O(N) instead of O(N·T·terms)
             instPec[p*2]=f.pecMin; instPec[p*2+1]=f.pecMax;
+            instPecP[p*2]=f.pecPMin; instPecP[p*2+1]=f.pecPMax;
+            instPhys[p*2]=f.physMin; instPhys[p*2+1]=f.physMax;
             if(f.pecMin<gmn)gmn=f.pecMin; if(f.pecMax>gmx)gmx=f.pecMax;
+            if(f.pecPMin<gpmn)gpmn=f.pecPMin; if(f.pecPMax>gpmx)gpmx=f.pecPMax;
+            if(f.physMin<gfmn)gfmn=f.physMin; if(f.physMax>gfmx)gfmx=f.physMax;
             if(f.fsum<fmn)fmn=f.fsum;    if(f.fsum>fmx)fmx=f.fsum;
         }
         if (termTex) termTex.dispose();
@@ -1234,6 +1274,8 @@
         U.uTerms.value = termTex; U.uTexH.value = texH;
         if (N){
             U.uGMin.value=gmn; U.uGMax.value=gmx;
+            U.uGPMin.value=gpmn; U.uGPMax.value=gpmx;
+            U.uGFMin.value=gfmn; U.uGFMax.value=gfmx;
             U.uFreqMin.value=fmn; U.uFreqMax.value=Math.max(fmx, fmn+1e-6);
         }
         setAngK();
@@ -1262,6 +1304,8 @@
         const sin1A = new THREE.InstancedBufferAttribute(instSin1,2);
         const fsumA = new THREE.InstancedBufferAttribute(instFsum,1);
         const pecA  = new THREE.InstancedBufferAttribute(instPec,2);
+        const pecPA = new THREE.InstancedBufferAttribute(instPecP,2);
+        const physA = new THREE.InstancedBufferAttribute(instPhys,2);
         const grpA  = new THREE.InstancedBufferAttribute(instGroup,1);
         const subA  = new THREE.InstancedBufferAttribute(instSub,1);
         const idx = new Float32Array(N); for (let p=0;p<N;p++) idx[p]=p;
@@ -1273,6 +1317,7 @@
         const gc = new THREE.InstancedBufferGeometry();
         gc.setAttribute('position', new THREE.Float32BufferAttribute(baseC,3));
         gc.setAttribute('aSin1', sin1A); gc.setAttribute('aFsum', fsumA); gc.setAttribute('aPec', pecA);
+        gc.setAttribute('aPecP', pecPA); gc.setAttribute('aPhys', physA);
         gc.setAttribute('aGroup', grpA); gc.setAttribute('aIsSub', subA); gc.setAttribute('aIndex', idxA);
         gc.instanceCount = N;
         cloud = new THREE.Points(gc, cloudMat); cloud.frustumCulled=false; cloud.visible=showCloud; scene.add(cloud);
@@ -1280,6 +1325,7 @@
         const gs = new THREE.InstancedBufferGeometry();  // sweep = one vertex (the present moment)
         gs.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(3),3));
         gs.setAttribute('aSin1', sin1A); gs.setAttribute('aFsum', fsumA); gs.setAttribute('aPec', pecA);
+        gs.setAttribute('aPecP', pecPA); gs.setAttribute('aPhys', physA);
         gs.setAttribute('aGroup', grpA); gs.setAttribute('aIsSub', subA); gs.setAttribute('aIndex', idxA);
         gs.instanceCount = N;
         sweep = new THREE.Points(gs, sweepMat); sweep.frustumCulled=false; sweep.visible=showSweep; scene.add(sweep);
@@ -1518,7 +1564,7 @@
     document.getElementById('driftYRange').addEventListener('input', e=>{ driftY = parseFloat(e.target.value); });
 
     /* coloring */
-    const paintOrder = ['mono','freq','pec','group','role'];
+    const paintOrder = ['mono','freq','pec','group','role','pecp','phys'];
     let paintMode = 'pec';
     onRadio('paintMode', v=>{ paintMode = v; U.uMode.value = paintOrder.indexOf(v); hudDirty = true; });
     let pecGlobal = false;
@@ -1729,8 +1775,23 @@
         if(!instPec) return [0.78,0.85,1.0];       // speed ranges not baked yet (mid-generation)
         const [cx, cy]   = comovXY(f, z);
         const [cxN, cyN] = comovXY(f, zN);
-        const v=Math.max(Math.abs(cxN-cx),Math.abs(cyN-cy))/Math.abs(zN-z);   // Chebyshev, matches packing metric
-        const lo=pecGlobal?U.uGMin.value:instPec[p*2], hi=pecGlobal?U.uGMax.value:instPec[p*2+1];
+        const dz = Math.abs(zN - z);
+        let v, lo, hi;
+        if(paintMode==='phys'){
+            // physical slope: finite difference of x = X*sin z
+            const sz = Math.sin(z), szN = Math.sin(zN);
+            v = Math.max(Math.abs(cxN*szN - cx*sz), Math.abs(cyN*szN - cy*sz)) / dz;
+            lo = pecGlobal ? U.uGFMin.value : instPhys[p*2];
+            hi = pecGlobal ? U.uGFMax.value : instPhys[p*2+1];
+        } else if(paintMode==='pecp'){
+            v = Math.max(Math.abs(cxN-cx), Math.abs(cyN-cy)) / dz * Math.sin(z);
+            lo = pecGlobal ? U.uGPMin.value : instPecP[p*2];
+            hi = pecGlobal ? U.uGPMax.value : instPecP[p*2+1];
+        } else {
+            v = Math.max(Math.abs(cxN-cx), Math.abs(cyN-cy)) / dz;   // Chebyshev, matches packing metric
+            lo = pecGlobal ? U.uGMin.value : instPec[p*2];
+            hi = pecGlobal ? U.uGMax.value : instPec[p*2+1];
+        }
         const t = logColor ? (Math.log(v+1e-6)-Math.log(lo+1e-6))/Math.max(1e-6,Math.log(hi+1e-6)-Math.log(lo+1e-6))
                            : (v-lo)/Math.max(1e-6,hi-lo);
         return ramp(t);
