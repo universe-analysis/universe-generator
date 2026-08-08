@@ -665,6 +665,33 @@ roughly an order of magnitude slower per attempt.
   1.2% below the stored min, within expectation for 8 fresh atomicAdd-
   nondeterministic draws.
 
+## 18. The w(z) U-shape belongs to the Hubble flow; peculiar w is near-constant (2026-08-08)
+(lab note 2026-08-08; `analysis/analyze_eos_speeds.py` on the stored FULLSUB
+dumps, 3+1 T=40 and 2+1 T=100, 8 seeds pooled, subpaths included, E ~ Σb.)
+
+The equation of state was recomputed under the three velocity definitions
+the model carries: the standard physical slope dx/dz (peculiar + anchor
+Hubble recession), the proper peculiar speed sin z·dX/dz, and the comoving
+coordinate rate dX/dz.
+
+- **The dust law is velocity-definition-independent at the turnaround**:
+  cos(π/2) = 0 and sin(π/2) = 1 collapse all three definitions; measured
+  w(π/2) = 0.01259 (3+1) / 0.00333 (2+1) under every definition.
+- **The comoving rate is not an EOS velocity**: per axis dX/dz =
+  v_pec/sin z, so its "w" is the peculiar w × 1/sin²z — chart-dependent,
+  unbounded by c, divergent at the endpoints. Confirmed pathology, usable
+  nowhere.
+- **NEW SHAPE — proper peculiar w(z) is nearly flat**: stripping the
+  Hubble term leaves an almost-constant w ≈ 2× the turnaround value
+  across the cycle, with a narrow cold notch exactly at π/2 and a droop
+  at the extreme endpoints. The familiar radiation-like U of the
+  published w(z) = (d/3)(cos²z/3 + 1/T) is carried entirely by the
+  anchors' Hubble flow; the matter's peculiar-motion temperature is
+  close to a constant of the cycle. (The standard dictionary remains the
+  published convention — this is a decomposition, not a replacement —
+  but the near-flat peculiar sector is a new measured regularity; its
+  exact shape/derivation is open.)
+
 ## Caveats that bind the current results
 
 - Cutoff states, not literal jamming (section 3: no plateau through 1e-8);
