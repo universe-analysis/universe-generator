@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-08-08</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-08-08</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="eos-speeds">
+      <h2>One equation of state, three velocities: the U-shape belongs to the
+      Hubble flow, the peculiar temperature is nearly a constant of the
+      cycle</h2>
+      <p class="meta">
+        New analysis <code>analysis/analyze_eos_speeds.py</code> (commit
+        <a href="https://github.com/universe-analysis/universe-generator/commit/94b652b">94b652b</a>),
+        run on the stored FULLSUB dumps: 3+1 T=40 and 2+1 T=100, 8 seeds
+        each pooled, subpaths included, standard E&nbsp;~&nbsp;&Sigma;b
+        dictionary. Question from Kevin: the codebase carries three related
+        speeds &mdash; the w-dictionary's physical slope dx/dz, the proper
+        peculiar speed sin&nbsp;z&middot;dX/dz, and the comoving coordinate
+        rate dX/dz &mdash; what does the equation of state look like under
+        the other two, and is one of them unusable?
+      </p>
+      <ul>
+        <li><strong>All three agree exactly at the turnaround.</strong>
+            cos(&pi;/2) = 0 kills the Hubble term and sin(&pi;/2) = 1
+            collapses the definitions onto each other: measured turnaround
+            w = 0.01259 / 0.00333 under every definition, in both
+            dimensions. The dust law w = d/(6T) is
+            velocity-definition-independent &mdash; another layer of armor
+            on the headline number.</li>
+        <li><strong>The comoving speed cannot make an equation of state
+            &mdash; confirmed and quantified.</strong> Per axis dX/dz =
+            v_pec/sin z, so its &ldquo;w&rdquo; is exactly the peculiar w
+            divided by sin&sup2;z: chart-dependent, unbounded by c, and
+            diverging at the Bang and Crunch as a pure coordinate artifact
+            (the dotted curve leaves the top of the panel). Kevin's
+            suspicion was right: this one is not usable.</li>
+        <li><strong>The proper peculiar w(z) IS a legitimate EOS &mdash;
+            and it is nearly flat.</strong> The genuinely new measurement:
+            strip the Hubble-recession term and the matter's
+            peculiar-motion temperature barely changes across the whole
+            cycle &mdash; an almost-constant w&nbsp;&asymp;&nbsp;2&times;
+            the turnaround value, with a narrow cold notch exactly at
+            &pi;/2 (where the wiggle displacement&ndash;velocity
+            correlation vanishes) and a droop at the extreme endpoints.
+            The familiar radiation-like U-shape of the published w(z) is
+            carried ENTIRELY by the anchors' Hubble flow: the standard
+            dictionary reads the expansion itself as pressure away from
+            the turnaround, while the matter underneath stays kinetically
+            cold and steady from bang to crunch.</li>
+      </ul>
+      <figure class="plot">
+        <img src="eos_speed_definitions.png"
+             alt="Two panels, 3+1 T=40 and 2+1 T=100, of w versus conformal time under three velocity definitions: the black physical-slope curve traces the familiar U shape matching the dashed closed form; the blue proper-peculiar curve is nearly flat and low across the cycle, meeting the black curve at the turnaround; the red dotted comoving-coordinate curve diverges toward the top of the panel at both ends." />
+        <figcaption>
+          w(z) under the three velocity definitions, subpaths included.
+          Black: physical slope (standard dictionary) with the closed form
+          dashed; blue: proper peculiar &mdash; near-constant; red dotted:
+          comoving coordinate rate &mdash; the 1/sin&sup2;z coordinate
+          pathology, not an EOS. All meet at &pi;/2.
+        </figcaption>
+      </figure>
+      <p>
+        Viewer companion: the box viewer now paints all three speeds
+        (box3d-v5 adds <em>Physical slope (w dictionary)</em> next to the
+        comoving and proper-peculiar modes added earlier), so the
+        decomposition in this figure can be watched point-by-point on a
+        live packing. <code>PHYSICS_FINDINGS.md</code> &sect;18 records
+        the result.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
