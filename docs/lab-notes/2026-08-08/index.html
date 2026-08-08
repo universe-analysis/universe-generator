@@ -78,6 +78,100 @@
       </p>
     </article>
 
+    <article class="entry" id="viewer-changelogs">
+      <h2>Viewer changelogs: the version history of all four visualizers,
+      reconstructed from the commit log</h2>
+      <p class="meta">
+        Housekeeping (Kevin's request): the viewers carry a
+        <code>VIEWER_VERSION</code> stamp bumped on every commit, but the
+        what-changed-when history lived only in commit messages. This entry
+        is the consolidated changelog; from here on, every version bump gets
+        a line in that day's lab note. Each version links its commit.
+      </p>
+
+      <h3>3+1 comoving box &mdash; <code>threeplusone_box.html</code></h3>
+      <ul class="changelog">
+        <li><strong>box3d-v1</strong> &middot; 2026-08-06 &middot;
+            first 3+1 visualizer: comoving (X,Y,W) slice as instanced
+            shader-evaluated points in the period-2 box, CSV import, bundled
+            T=40 fullspec example
+            (<a href="https://github.com/universe-analysis/universe-generator/commit/0dbd7df">0dbd7df</a>)</li>
+        <li><strong>box3d-v2</strong> &middot; 2026-08-06 &middot;
+            wrapped-viewer parity: in-page 3D two-phase packer (subpath
+            adoption, jam signals), all-times cloud, sidepanel settings,
+            ortho/persp camera, six paint modes + normalization/log/local
+            toggles, XYZ offsets/drift, three-panel minimap, WebM/PNG export
+            (<a href="https://github.com/universe-analysis/universe-generator/commit/15c08c7">15c08c7</a>)</li>
+        <li><strong>box3d-v3</strong> &middot; 2026-08-06 &middot;
+            ghost images: the 26 periodic neighbour cells as a fading fog
+            band past every wrap seam, reach/depth/fade controls, outer band
+            wireframe, minimap fog tiling
+            (<a href="https://github.com/universe-analysis/universe-generator/commit/0d32d14">0d32d14</a>)</li>
+        <li><strong>box3d-v4</strong> &middot; 2026-08-06 &middot;
+            proper-peculiar-speed paint mode (sin z &times; comoving rate,
+            own normalization ranges)
+            (<a href="https://github.com/universe-analysis/universe-generator/commit/25f261b">25f261b</a>)</li>
+        <li><strong>box3d-v5</strong> &middot; 2026-08-08 &middot;
+            physical-slope (w-dictionary) paint mode &mdash; all three EOS
+            speeds paintable
+            (<a href="https://github.com/universe-analysis/universe-generator/commit/bc59b58">bc59b58</a>)</li>
+      </ul>
+
+      <h3>2+1 wrapped torus &mdash; <code>twoplusone_2torus_wrapped.html</code></h3>
+      <p>Born 2026-07-01 as the toroidal fork of the original hard-wall
+      viewer (<a href="https://github.com/universe-analysis/universe-generator/commit/e730a99">e730a99</a>);
+      version-stamped since 07-04. Highlights by era (v9/v13 left no
+      surviving commit &mdash; folded into neighbours):</p>
+      <ul class="changelog">
+        <li><strong>v1&ndash;v5</strong> &middot; 07-04 &middot; version
+            stamp, circle/square light cones, sidepanel + timed-generation
+            redesign, frequency-sum paint
+            (<a href="https://github.com/universe-analysis/universe-generator/commit/399c40e">399c40e</a>&hellip;<a href="https://github.com/universe-analysis/universe-generator/commit/5386b32">5386b32</a>)</li>
+        <li><strong>v6&ndash;v12</strong> &middot; 07-05 &middot; cloud draw
+            cap + hash freeing, acceptance-time speed ranges, torus X/Y
+            offsets + auto-drift, log freq paint, CUDA CSV import
+            (<a href="https://github.com/universe-analysis/universe-generator/commit/1a8f32e">1a8f32e</a>&hellip;<a href="https://github.com/universe-analysis/universe-generator/commit/3065486">3065486</a>)</li>
+        <li><strong>v14&ndash;v17</strong> &middot; 07-07 &middot; the
+            subpath packing phase + seed/sub visualization, split glow
+            sliders, adjustable cloud resolution; K-term model generalization
+            (<a href="https://github.com/universe-analysis/universe-generator/commit/e6ed318">e6ed318</a>&hellip;<a href="https://github.com/universe-analysis/universe-generator/commit/1a32f04">1a32f04</a>)</li>
+        <li><strong>v18&ndash;v21</strong> &middot; 07-09 to 07-12 &middot;
+            canonical engine z grid, Chebyshev peculiar-speed paint,
+            fullscreen + playback settings, scrub-window [min,max]&times;&pi;
+            (<a href="https://github.com/universe-analysis/universe-generator/commit/121dbd6">121dbd6</a>&hellip;<a href="https://github.com/universe-analysis/universe-generator/commit/cf36f52">cf36f52</a>)</li>
+        <li><strong>v22&ndash;v33</strong> &middot; 07-15 to 07-18 &middot;
+            the reference-frame era: observer past-light-cone map, front
+            laws (speed scalar / fit / wiggle-budget), aberration fix,
+            frame painted on slice and torus, frame-torus mode
+            (<a href="https://github.com/universe-analysis/universe-generator/commit/e8753b1">e8753b1</a>&hellip;<a href="https://github.com/universe-analysis/universe-generator/commit/8271a1c">8271a1c</a>)</li>
+        <li><strong>v34&ndash;v37</strong> &middot; 07-24 &middot; frame
+            animations: one or two observers side by side, particle
+            tagging, WebM/PNG export, static comoving-point observers
+            (<a href="https://github.com/universe-analysis/universe-generator/commit/380f97c">380f97c</a>&hellip;<a href="https://github.com/universe-analysis/universe-generator/commit/f68460a">f68460a</a>)</li>
+        <li><strong>v38</strong> &middot; 2026-08-08 &middot; proper-peculiar
+            and physical-slope paint modes ported back from box3d-v5 &mdash;
+            all three EOS speeds paintable in 2+1
+            (<a href="https://github.com/universe-analysis/universe-generator/commit/8f5fa12">8f5fa12</a>)</li>
+      </ul>
+
+      <h3>2+1 braid view &mdash; <code>twoplusone_braids.html</code></h3>
+      <ul class="changelog">
+        <li><strong>braid v1&ndash;v4</strong> &middot; 2026-07-20 &middot;
+            worldlines as 3D strands (column + ring closure), future
+            dimming + census closure arcs + per-component colours,
+            one-sided seam mode, sin1-pin and full-band experiment toggles
+            (<a href="https://github.com/universe-analysis/universe-generator/commit/bf59537">bf59537</a>&hellip;<a href="https://github.com/universe-analysis/universe-generator/commit/1d7afe9">1d7afe9</a>)</li>
+      </ul>
+
+      <h3>2+1 squeeze fork &mdash; <code>twoplusone_2torus_squeeze.html</code></h3>
+      <ul class="changelog">
+        <li><strong>squeeze-v1</strong> &middot; 2026-07-11 &middot; fork of
+            wrapped v19 for the k &times; 1/k cell-deformation experiment;
+            tracks the wrapped viewer loosely
+            (<a href="https://github.com/universe-analysis/universe-generator/commit/11633eb">11633eb</a>)</li>
+      </ul>
+    </article>
+
     <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
 
   </div>

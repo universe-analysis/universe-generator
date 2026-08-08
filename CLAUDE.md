@@ -175,11 +175,13 @@ Lab-note plots **are** committed (they're site content) — the exception to the
   per line; the engines are read by people who aren't CUDA specialists.
 - **JS/HTML** (viewers): same readability rule — no dense one-liners or chained
   ternaries; these are read by non-JS-specialists.
-- **Viewer versioning:** `docs/viewers/twoplusone_2torus_wrapped.html` shows a
-  version stamp (the `VIEWER_VERSION` constant near the top of its script) in
-  the lower right of the 2D slice HUD. Increment it (`v1` → `v2` → …) as part
-  of every commit that touches that file, so a screenshot or a deployed page
-  can be matched to the code that produced it.
+- **Viewer versioning:** every viewer under `docs/viewers/` shows a version
+  stamp (the `VIEWER_VERSION` constant near the top of its script; each file
+  has its own namespace, e.g. `v38`, `braid v4`, `box3d-v5`, `squeeze-v1`).
+  Increment it as part of every commit that touches that file, so a
+  screenshot or a deployed page can be matched to the code that produced it,
+  AND add a one-line changelog entry to that day's lab note (consolidated
+  history: lab note 2026-08-08 `#viewer-changelogs`).
 - **Commits:** never mention co-authored-by or the tool used. Commit locally;
   push only when asked. Use `git commit --trailer "Reported-by:<name>"` for
   user-reported bug fixes.
