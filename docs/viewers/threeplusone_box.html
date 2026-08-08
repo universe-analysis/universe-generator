@@ -177,6 +177,7 @@
             <label><input type="radio" name="paintMode" value="freq"> Frequency</label>
             <label><input type="radio" name="paintMode" value="pec" checked> Comoving speed</label>
             <label><input type="radio" name="paintMode" value="pecp"> Proper peculiar speed</label>
+            <label><input type="radio" name="paintMode" value="phys"> Physical slope (w dictionary)</label>
             <label><input type="radio" name="paintMode" value="group"> Group</label>
             <label><input type="radio" name="paintMode" value="role"> Role (seeds/subs)</label>
             <label><input type="radio" name="paintMode" value="whue"> W coordinate</label>
@@ -231,7 +232,7 @@
  * THREE texels per term (one per axis), trajectories evaluated analytically
  * in the vertex shader with the term count baked in as a shader constant.
  */
-const VIEWER_VERSION = 'box3d-v4';
+const VIEWER_VERSION = 'box3d-v5';
 document.getElementById('version').textContent = VIEWER_VERSION;
 const statusEl = document.getElementById('status');
 
@@ -295,9 +296,14 @@ function comovingTraj(f) {
     // measured in the same pass — its own range, since the sin z weighting
     // moves the extremes to different parts of the cycle
     let pecPMin = Infinity, pecPMax = -Infinity;
+    // physical-slope range (the w-dictionary speed): finite differences of
+    // the PHYSICAL positions x = X * sin z, Chebyshev across axes
+    let physMin = Infinity, physMax = -Infinity;
+    let fx = 0, fy = 0, fw = 0;
     for (let i = 0; i < n; i++) {
         const z = Z_cache[i];
         const p = comovXYW(f, z);
+        const sz = Math.sin(z);
         if (i > 0) {
             const dz = z - Z_cache[i - 1];
             // Chebyshev norm — matches the packing metric (cubic cells)
@@ -309,14 +315,22 @@ function comovingTraj(f) {
             const vp = v * Math.sin((z + Z_cache[i - 1]) / 2);
             if (vp < pecPMin) pecPMin = vp;
             if (vp > pecPMax) pecPMax = vp;
+            const vf = Math.max(
+                Math.abs(p[0] * sz - fx), Math.abs(p[1] * sz - fy),
+                Math.abs(p[2] * sz - fw)
+            ) / dz;
+            if (vf < physMin) physMin = vf;
+            if (vf > physMax) physMax = vf;
         }
+        fx = p[0] * sz; fy = p[1] * sz; fw = p[2] * sz;
         px = p[0]; py = p[1]; pw = p[2];
         X[i] = wrapComov(p[0]);
         Y[i] = wrapComov(p[1]);
         W[i] = wrapComov(p[2]);
     }
     return { X: X, Y: Y, W: W, pecMin: pecMin, pecMax: pecMax,
-             pecPMin: pecPMin, pecPMax: pecPMax };
+             pecPMin: pecPMin, pecPMax: pecPMax,
+             physMin: physMin, physMax: physMax };
 }
 
 // Frequency-paint scalar: per axis the amplitude-weighted mean wiggle
@@ -482,6 +496,7 @@ function generateFunction() {
             insertTraj(traj, groupIDcount);
             f.pecMin = traj.pecMin; f.pecMax = traj.pecMax;
             f.pecPMin = traj.pecPMin; f.pecPMax = traj.pecPMax;
+            f.physMin = traj.physMin; f.physMax = traj.physMax;
             f.groupID = groupIDcount; f.isSub = false;
             return f;
         }
@@ -497,6 +512,7 @@ function generateSubFunction() {
             f.newCells = insertTraj(traj, gid);
             f.pecMin = traj.pecMin; f.pecMax = traj.pecMax;
             f.pecPMin = traj.pecPMin; f.pecPMax = traj.pecPMax;
+            f.physMin = traj.physMin; f.physMax = traj.physMax;
             f.groupID = gid; f.isSub = true;
             return f;
         }
@@ -663,6 +679,7 @@ function applyImportedDump(parsed, T) {
         const traj = comovingTraj(f);
         f.pecMin = traj.pecMin; f.pecMax = traj.pecMax;
         f.pecPMin = traj.pecPMin; f.pecPMax = traj.pecPMax;
+        f.physMin = traj.physMin; f.physMax = traj.physMax;
         if (f.isSub) subCount++; else groupIDcount++;
         functions.push(f);
     }
@@ -796,6 +813,7 @@ const U = {
     uMode: { value: 2 }, uLog: { value: 1 }, uPecGlobal: { value: 0 },
     uGMin: { value: 1e-3 }, uGMax: { value: 10 },
     uGPMin: { value: 1e-3 }, uGPMax: { value: 10 },
+    uGFMin: { value: 1e-3 }, uGFMax: { value: 10 },
     uFreqMin: { value: 4 }, uFreqMax: { value: 8 },
     uTerms: { value: null }, uTexH: { value: 1 },
     uSeedHl: { value: 0 }, uGeoLocal: { value: 1 },
@@ -816,7 +834,7 @@ const U = {
    nw is a compile-time GLSL constant (WebGL1 loop bounds), so materials are
    rebuilt whenever the widest path's term count changes. */
 const TERMTEX_W = 2048;
-const PAINT_ORDER = ['mono', 'freq', 'pec', 'group', 'role', 'whue', 'pecp'];
+const PAINT_ORDER = ['mono', 'freq', 'pec', 'group', 'role', 'whue', 'pecp', 'phys'];
 
 function termFetchGLSL(nw) {
     return `
@@ -841,12 +859,13 @@ function vertSrc(nw, sliceMode) {
     attribute float aFsum;       // amplitude-weighted mean wiggle frequency
     attribute vec2 aPec;         // per-path comoving speed min, max
     attribute vec2 aPecP;        // per-path PROPER peculiar speed min, max
+    attribute vec2 aPhys;        // per-path physical-slope min, max
     attribute float aGroup;      // group ID
     attribute float aIsSub;      // 0 = seed (unique), 1 = subpath
     attribute float aIndex;      // instance index (term-texture row)
     uniform float uZ, uZ0, uStep, uT, uSize, uCloudSize, uGMin, uGMax,
-                  uGPMin, uGPMax, uFreqMin, uFreqMax, uOrthoScale,
-                  uGhostDim, uGhostDepth;
+                  uGPMin, uGPMax, uGFMin, uGFMax, uFreqMin, uFreqMax,
+                  uOrthoScale, uGhostDim, uGhostDepth;
     uniform int uMode, uLog, uPecGlobal, uSeedHl, uGeoLocal, uIsGhost;
     uniform vec3 uOff, uShift;
     varying vec3 vColor;
@@ -937,7 +956,7 @@ function vertSrc(nw, sliceMode) {
             vColor = aIsSub > 0.5 ? vec3(1.0, 0.62, 0.3) : vec3(0.45, 0.7, 1.0);
         } else if (uMode == 5) {
             vColor = hsv2rgb((Pw.z + 1.0) * 0.5 * 0.83, 0.85, 1.0);
-        } else {
+        } else if (uMode == 6) {
             // proper peculiar speed: the comoving speed carried back to
             // physical units by the scale factor sin z
             float vp = v * s;
@@ -949,6 +968,20 @@ function vertSrc(nw, sliceMode) {
                     max(log(max(hi, 1e-5)) - log(max(lo, 1e-6)), 1e-6);
             else
                 t = (vp - lo) / max(hi - lo, 1e-6);
+            vColor = ramp(t);
+        } else {
+            // physical slope |dx/dz| (the w-dictionary speed): peculiar
+            // motion plus the anchor's Hubble recession — dx is already the
+            // physical derivative here
+            float vf = max(max(abs(dx.x), abs(dx.y)), abs(dx.z));
+            float lo = uPecGlobal == 1 ? uGFMin : aPhys.x;
+            float hi = uPecGlobal == 1 ? uGFMax : aPhys.y;
+            float t;
+            if (uLog == 1)
+                t = (log(max(vf, 1e-6)) - log(max(lo, 1e-6))) /
+                    max(log(max(hi, 1e-5)) - log(max(lo, 1e-6)), 1e-6);
+            else
+                t = (vf - lo) / max(hi - lo, 1e-6);
             vColor = ramp(t);
         }
 
@@ -977,7 +1010,7 @@ const FRAG_SRC = `
 /* ---- buffers + GPU objects ---- */
 let sweep = null, cloud = null, sweepMat = null, cloudMat = null, matNW = -1;
 let termTex = null;
-let instSin1, instFsum, instPec, instPecP, instGroup, instSub, instIndex;
+let instSin1, instFsum, instPec, instPecP, instPhys, instGroup, instSub, instIndex;
 let showSweep = true, showCloud = false;
 
 function buildMaterials(nw) {
@@ -1010,6 +1043,7 @@ function buildBuffers() {
     instFsum = new Float32Array(N);
     instPec = new Float32Array(N * 2);
     instPecP = new Float32Array(N * 2);
+    instPhys = new Float32Array(N * 2);
     instGroup = new Float32Array(N);
     instSub = new Float32Array(N);
     instIndex = new Float32Array(N);
@@ -1018,6 +1052,7 @@ function buildBuffers() {
     const tdata = new Float32Array(TERMTEX_W * texH * 4);
     let gmn = Infinity, gmx = -Infinity, fmn = Infinity, fmx = -Infinity;
     let gpmn = Infinity, gpmx = -Infinity;
+    let gfmn = Infinity, gfmx = -Infinity;
     for (let p = 0; p < N; p++) {
         const f = functions[p];
         instSin1[p * 3] = f.ax2; instSin1[p * 3 + 1] = f.ay2; instSin1[p * 3 + 2] = f.aw2;
@@ -1027,10 +1062,13 @@ function buildBuffers() {
         instIndex[p] = p;
         instPec[p * 2] = f.pecMin; instPec[p * 2 + 1] = f.pecMax;
         instPecP[p * 2] = f.pecPMin; instPecP[p * 2 + 1] = f.pecPMax;
+        instPhys[p * 2] = f.physMin; instPhys[p * 2 + 1] = f.physMax;
         if (f.pecMin < gmn) gmn = f.pecMin;
         if (f.pecMax > gmx) gmx = f.pecMax;
         if (f.pecPMin < gpmn) gpmn = f.pecPMin;
         if (f.pecPMax > gpmx) gpmx = f.pecPMax;
+        if (f.physMin < gfmn) gfmn = f.physMin;
+        if (f.physMax > gfmx) gfmx = f.physMax;
         if (f.fsum < fmn) fmn = f.fsum;
         if (f.fsum > fmx) fmx = f.fsum;
         for (let j = 0; j < f.terms.length; j++) {
@@ -1051,6 +1089,8 @@ function buildBuffers() {
     U.uGMax.value = Math.max(gmx, 1e-5);
     U.uGPMin.value = Math.max(gpmn, 1e-6);
     U.uGPMax.value = Math.max(gpmx, 1e-5);
+    U.uGFMin.value = Math.max(gfmn, 1e-6);
+    U.uGFMax.value = Math.max(gfmx, 1e-5);
     U.uFreqMin.value = fmn;
     U.uFreqMax.value = Math.max(fmx, fmn + 1e-6);
     const n = Z_cache.length;
@@ -1072,6 +1112,7 @@ function addInstanced(geo, N) {
     geo.setAttribute('aFsum', new THREE.InstancedBufferAttribute(instFsum, 1));
     geo.setAttribute('aPec', new THREE.InstancedBufferAttribute(instPec, 2));
     geo.setAttribute('aPecP', new THREE.InstancedBufferAttribute(instPecP, 2));
+    geo.setAttribute('aPhys', new THREE.InstancedBufferAttribute(instPhys, 2));
     geo.setAttribute('aGroup', new THREE.InstancedBufferAttribute(instGroup, 1));
     geo.setAttribute('aIsSub', new THREE.InstancedBufferAttribute(instSub, 1));
     geo.setAttribute('aIndex', new THREE.InstancedBufferAttribute(instIndex, 1));
@@ -1554,8 +1595,27 @@ function cpuHsv(h, s, v) {
     }
     return rgb;
 }
-function sliceColor(f, pos, vel, s) {
+function sliceColor(f, pos, vel, s, raw, cz) {
     const mode = U.uMode.value;
+    if (mode === 7) {
+        // physical slope: d(X sin z)/dz = s*dX/dz + cos(z)*X on the
+        // UNWRAPPED offset-free coordinates (wrapping would corrupt the
+        // Hubble term)
+        const vf = Math.max(
+            Math.abs(s * vel[0] + cz * raw[0]),
+            Math.abs(s * vel[1] + cz * raw[1]),
+            Math.abs(s * vel[2] + cz * raw[2])
+        );
+        const lo = U.uPecGlobal.value === 1 ? U.uGFMin.value : f.physMin;
+        const hi = U.uPecGlobal.value === 1 ? U.uGFMax.value : f.physMax;
+        let t;
+        if (U.uLog.value === 1)
+            t = (Math.log(Math.max(vf, 1e-6)) - Math.log(Math.max(lo, 1e-6))) /
+                Math.max(Math.log(Math.max(hi, 1e-5)) - Math.log(Math.max(lo, 1e-6)), 1e-6);
+        else
+            t = (vf - lo) / Math.max(hi - lo, 1e-6);
+        return cpuRamp(t);
+    }
     if (mode === 6) {
         // proper peculiar speed: comoving Chebyshev speed × scale factor
         const vp = Math.max(Math.abs(vel[0]), Math.abs(vel[1]), Math.abs(vel[2])) * s;
@@ -1612,7 +1672,8 @@ function drawMini() {
     for (const p of miniPanels) p.ctx.clearRect(0, 0, p.canvas.width, p.canvas.height);
     for (const f of functions) {
         const raw = comovXYW(f, z);
-        const needVel = U.uMode.value === 2 || U.uMode.value === 6;
+        const needVel = U.uMode.value === 2 || U.uMode.value === 6 ||
+            U.uMode.value === 7;
         const vel = needVel ? comovVelXYW(f, z) : [0, 0, 0];
         const pos = [
             wrapComov(raw[0] + off.x),
@@ -1620,7 +1681,7 @@ function drawMini() {
             wrapComov(raw[2] + off.w),
         ];
         const draw = geoLocal ? pos : pos.map(function (c) { return c * s; });
-        const col = sliceColor(f, pos, vel, s);
+        const col = sliceColor(f, pos, vel, s, raw, Math.cos(z));
         let alpha = 0.55, sz = size;
         if (seedHl) {
             if (f.isSub) { alpha = 0.25; sz = size * 0.8; }
