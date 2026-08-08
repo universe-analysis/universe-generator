@@ -132,6 +132,12 @@
             <div class="row" title="Volume jam: stop after this many consecutive accepted subpaths that claim zero new volume">
                 <span>Vol jam hits</span><input type="number" id="volAcceptsInput" value="200" min="10">
             </div>
+            <div class="row" title="During the subpath phase, a candidate touching NOTHING is admitted as a brand-new unique (its own group) instead of rejected">
+                <label><input type="checkbox" id="mixedChk"> Uniques in sub phase</label>
+            </div>
+            <div class="row" title="Each candidate draws its own term count at random in [2, Freq terms] — a live few-term/full-spectrum mixture">
+                <label><input type="checkbox" id="randTermsChk"> Random term count (2..K)</label>
+            </div>
             <div class="row" title="Max cloud samples per path (time-steps are strided down to this; higher = denser cloud, more draw cost)">
                 <span>Cloud res</span><input type="number" id="cloudResInput" value="100" min="2">
                 <button id="cloudResBtn">Regenerate</button>
@@ -399,7 +405,7 @@
 
     // Shown in the lower right of the 2D slice HUD. Bump before every commit
     // that touches this file (see CLAUDE.md).
-    const VIEWER_VERSION = 'v38';
+    const VIEWER_VERSION = 'v39';
 
     let functions = [];
     let Z_cache = [];
@@ -410,6 +416,9 @@
     let subCount = 0, subSaturated = false, subReason = '', consecZeroVol = 0;
     let subJamFails = 500, volJamAccepts = 200;   // sub-phase jam thresholds (Generation panel)
     let skipPhase = false;                        // Skip button: end the current phase early
+    // generation options (Kevin 2026-08-08): admit brand-new uniques during
+    // the subpath phase; draw each candidate's term count at random in [2, K]
+    let mixedPhase = false, randTerms = false;
     // Generation epoch: every Generate (or Import) bumps this, and any
     // make_groups round or finalize callback from an older epoch bails out.
     // Without it, an import mid-generation would still get its status line and
@@ -546,7 +555,7 @@
                     if (Math.abs(dX) <= CELL && Math.abs(dY) <= CELL) {
                         const g = arr[j+2];
                         if (gid < 0) gid = g;
-                        else if (g !== gid) return -1;   // spans two groups
+                        else if (g !== gid) return -2;   // spans two groups
                     }
                 }
             }
@@ -613,7 +622,9 @@
     // One candidate path (parameters only — no collision test yet). Uniques
     // and subpaths draw from exactly the same model.
     function makeCandidate() {
-        const NW = freqTerms - 1;                             // wiggle terms per axis
+        // random term count: each candidate draws its own K in [2, freqTerms]
+        const NW = randTerms ? 1 + Math.floor(Math.random() * (freqTerms - 1))
+                             : freqTerms - 1;         // wiggle terms per axis
         const fqx = drawUniqueFreqs(NW), fqy = drawUniqueFreqs(NW);
         const tx = makeAxisTerms(fqx), ty = makeAxisTerms(fqy);
         const terms = tx.map((t, j) => ({ ax: t.a, bx: t.b, fx: t.f,
@@ -645,11 +656,13 @@
         for (let attempt = 0; attempt < maxAttemptsPerFunction; attempt++) {
             const f = makeCandidate();
             const traj = comovingTraj(f);
-            const gid = subGroupOf(traj);
+            let gid = subGroupOf(traj);
+            const isNewUnique = mixedPhase && gid === -1;   // touched nothing
+            if (isNewUnique) gid = groupIDcount;
             if (gid >= 0) {
                 f.newCells = insertTraj(traj, gid);
                 f.pecMin = traj.pecMin; f.pecMax = traj.pecMax; f.pecPMin = traj.pecPMin; f.pecPMax = traj.pecPMax; f.physMin = traj.physMin; f.physMax = traj.physMax;
-                f.groupID = gid; f.isSub = true;
+                f.groupID = gid; f.isSub = !isNewUnique;
                 return f;
             }
         }
@@ -713,7 +726,8 @@
                 }
                 const nf = generateSubFunction();
                 if (nf) {
-                    functions.push(nf); subCount++; consecFails = 0;
+                    functions.push(nf); consecFails = 0;
+                    if (nf.isSub) subCount++; else groupIDcount++;
                     if (nf.newCells === 0) {
                         if (++consecZeroVol > volJamAccepts) { subSaturated = true; subReason = 'volume jam'; }
                     } else consecZeroVol = 0;
@@ -1403,6 +1417,8 @@
         genPhase = 'unique'; subCount = 0; subSaturated = false; subReason = '';
         consecZeroVol = 0; skipPhase = false;
         maxUniques = Math.max(0, parseInt(document.getElementById('maxUniquesInput').value) || 0);
+        mixedPhase = document.getElementById('mixedChk').checked;
+        randTerms = document.getElementById('randTermsChk').checked;
         readSubConfig();
         genSubBudgetMs = parseFloat(subTimeRange.value) * 1000;
         time_steps = parseInt(timeInput.value);
@@ -1442,6 +1458,8 @@
         abort_gen = false; saturated = false; subSaturated = false; subReason = '';
         consecFails = 0; consecZeroVol = 0; skipPhase = false;
         genPhase = 'sub';
+        mixedPhase = document.getElementById('mixedChk').checked;
+        randTerms = document.getElementById('randTermsChk').checked;
         modulation_Max = Math.max(2, Math.floor(time_steps/2));
         freqTerms = Math.min(Math.max(2, parseInt(termsInput.value) || 2), modulation_Max + 1);
         termsInput.value = freqTerms;

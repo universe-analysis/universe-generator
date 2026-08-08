@@ -119,6 +119,8 @@
         <div class="row"><label>Vol jam hits <input type="number" id="volAcceptsInput" value="200" min="10"></label></div>
         <div class="row"><label>Cloud res <input type="number" id="cloudResInput" value="48" min="2" max="400"></label>
             <button id="cloudResBtn">Regenerate</button></div>
+        <div class="row"><label><input type="checkbox" id="mixedChk"> Uniques in sub phase</label></div>
+        <div class="row"><label><input type="checkbox" id="randTermsChk"> Random term count (2..K)</label></div>
     </details>
     <details>
         <summary>Playback</summary>
@@ -232,7 +234,7 @@
  * THREE texels per term (one per axis), trajectories evaluated analytically
  * in the vertex shader with the term count baked in as a shader constant.
  */
-const VIEWER_VERSION = 'box3d-v5';
+const VIEWER_VERSION = 'box3d-v6';
 document.getElementById('version').textContent = VIEWER_VERSION;
 const statusEl = document.getElementById('status');
 
@@ -361,6 +363,9 @@ let genBudgetMs = 6000, genStart = 0, consecFails = 0, lastLiveUpload = 0;
 let genPhase = 'unique', genSubBudgetMs = 4000, subStart = 0, maxUniques = 0;
 let subSaturated = false, subReason = '', consecZeroVol = 0;
 let subJamFails = 500, volJamAccepts = 200, skipPhase = false, abort_gen = false;
+// generation options (Kevin 2026-08-08): admit brand-new uniques during the
+// subpath phase, and draw each candidate's term count at random in [2, K]
+let mixedPhase = false, randTerms = false;
 const maxAttemptsPerFunction = 50;
 
 const wrapCell = function (c) { return ((c % NCELL) + NCELL) % NCELL; };
@@ -415,7 +420,7 @@ function subGroupOf(traj) {
                 if (Math.abs(dX) <= CELL && Math.abs(dY) <= CELL && Math.abs(dW) <= CELL) {
                     const g = arr[j + 3];
                     if (gid < 0) gid = g;
-                    else if (g !== gid) return -1;   // spans two groups
+                    else if (g !== gid) return -2;   // spans two groups
                 }
             }
         }
@@ -470,7 +475,11 @@ function makeAxisTerms(freqs) {
     });
 }
 function makeCandidate() {
-    const NW = freqTerms - 1;
+    // random term count: each candidate draws its own K in [2, freqTerms],
+    // i.e. NW in [1, freqTerms-1] — a live few-term/full-spectrum mixture
+    const NW = randTerms
+        ? 1 + Math.floor(Math.random() * (freqTerms - 1))
+        : freqTerms - 1;
     const tx = makeAxisTerms(drawUniqueFreqs(NW));
     const ty = makeAxisTerms(drawUniqueFreqs(NW));
     const tw = makeAxisTerms(drawUniqueFreqs(NW));
@@ -508,12 +517,14 @@ function generateSubFunction() {
         const f = makeCandidate();
         const traj = comovingTraj(f);
         const gid = subGroupOf(traj);
-        if (gid >= 0) {
-            f.newCells = insertTraj(traj, gid);
+        const isNewUnique = mixedPhase && gid === -1;   // touched nothing
+        if (gid >= 0 || isNewUnique) {
+            const useGid = isNewUnique ? groupIDcount : gid;
+            f.newCells = insertTraj(traj, useGid);
             f.pecMin = traj.pecMin; f.pecMax = traj.pecMax;
             f.pecPMin = traj.pecPMin; f.pecPMax = traj.pecPMax;
             f.physMin = traj.physMin; f.physMax = traj.physMax;
-            f.groupID = gid; f.isSub = true;
+            f.groupID = useGid; f.isSub = !isNewUnique;
             return f;
         }
     }
@@ -553,7 +564,8 @@ function make_groups(epoch) {
             }
             const nf = generateSubFunction();
             if (nf) {
-                functions.push(nf); subCount++; consecFails = 0;
+                functions.push(nf); consecFails = 0;
+                if (nf.isSub) subCount++; else groupIDcount++;
                 if (nf.newCells === 0) {
                     if (++consecZeroVol > volJamAccepts) { subSaturated = true; subReason = 'volume jam'; }
                 } else consecZeroVol = 0;
@@ -1320,6 +1332,8 @@ document.getElementById('generateBtn').addEventListener('click', function () {
     genPhase = 'unique'; subCount = 0; subSaturated = false; subReason = '';
     consecZeroVol = 0; skipPhase = false;
     maxUniques = Math.max(0, parseInt(document.getElementById('maxUniquesInput').value, 10) || 0);
+    mixedPhase = document.getElementById('mixedChk').checked;
+    randTerms = document.getElementById('randTermsChk').checked;
     readSubConfig();
     genSubBudgetMs = parseFloat(document.getElementById('subTimeRange').value) * 1000;
     time_steps = Math.max(4, parseInt(document.getElementById('timeInput').value, 10) || 40);
@@ -1356,6 +1370,8 @@ document.getElementById('subsBtn').addEventListener('click', function () {
     abort_gen = false; saturated = false; subSaturated = false; subReason = '';
     consecFails = 0; consecZeroVol = 0; skipPhase = false;
     genPhase = 'sub';
+    mixedPhase = document.getElementById('mixedChk').checked;
+    randTerms = document.getElementById('randTermsChk').checked;
     modulation_Max = Math.max(2, time_steps - 1);
     freqTerms = Math.min(
         Math.max(2, parseInt(document.getElementById('termsInput').value, 10) || 2),
