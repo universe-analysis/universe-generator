@@ -120,6 +120,17 @@
             NEW uniques during the subpath phase) and random per-candidate
             term count K &isin; [2, max] &mdash; a live few-term/full-spectrum
             mixture (<a href="https://github.com/universe-analysis/universe-generator/commit/b1d6277">b1d6277</a>)</li>
+        <li><strong>box3d-v7</strong> &middot; 2026-08-08 &middot;
+            performance round for many-term packs (Chris's report): a GPGPU
+            compute pass evaluates every trajectory ONCE per frame into
+            float textures &mdash; the slice and all 26 ghost draws fetch
+            precomputed positions/colors, cutting per-frame term-summation
+            27&times; with ghosts on; plus render-on-demand when idle
+            (~40&times; less busy-work paused), ghost-cell frustum culling,
+            minimap throttling + 4k-path cap, and a global cloud point
+            budget; automatic direct-evaluation fallback where float render
+            targets are unavailable
+            (<a href="https://github.com/universe-analysis/universe-generator/commit/d2000e1">d2000e1</a>)</li>
       </ul>
 
       <h3>2+1 wrapped torus &mdash; <code>twoplusone_2torus_wrapped.html</code></h3>
