@@ -234,9 +234,11 @@
  * THREE texels per term (one per axis), trajectories evaluated analytically
  * in the vertex shader with the term count baked in as a shader constant.
  */
-const VIEWER_VERSION = 'box3d-v6';
+const VIEWER_VERSION = 'box3d-v7';
 document.getElementById('version').textContent = VIEWER_VERSION;
 const statusEl = document.getElementById('status');
+let sceneDirty = true;   // render-on-demand: skip renders when idle
+let hudDirty = true;
 
 /* ================= worldline data + math ================= */
 
@@ -585,7 +587,7 @@ function make_groups(epoch) {
         }
         if (performance.now() - lastLiveUpload > 800) {
             lastLiveUpload = performance.now();
-            buildBuffers(); rebuildGPU(); hudDirty = true;
+            buildBuffers(); rebuildGPU(); hudDirty = true; sceneDirty = true;
         }
         setTimeout(function () { make_groups(epoch); }, 0);
     } else {
@@ -597,7 +599,7 @@ function make_groups(epoch) {
             if (epoch !== genEpoch) return;
             buildBuffers(); rebuildGPU();
             gridByT = [];                            // the page's only O(N·T) storage
-            hudDirty = true;
+            hudDirty = true; sceneDirty = true;
             const subTxt = subCount ? groupIDcount + ' uniques + ' + subCount + ' subs'
                                     : functions.length + ' paths';
             statusEl.textContent = subTxt + note + ' · T=' + time_steps +
@@ -697,7 +699,7 @@ function applyImportedDump(parsed, T) {
     }
     framePos = (Z_cache.length - 1) / 2;
     buildBuffers(); rebuildGPU();
-    hudDirty = true;
+    hudDirty = true; sceneDirty = true;
     updateHud();
 }
 
@@ -754,6 +756,7 @@ function rebuildControls() {
     const tgt = controls ? controls.target.clone() : new THREE.Vector3();
     if (controls) controls.dispose();
     controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.addEventListener('change', function () { sceneDirty = true; });
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.autoRotate = autoRotateOn;
@@ -765,6 +768,7 @@ function setView(mode) { viewMode = mode; camera = makeCamera(); rebuildControls
 camera = makeCamera(); rebuildControls();
 
 function resize() {
+    sceneDirty = true;
     const w = window.innerWidth, h = window.innerHeight;
     renderer.setSize(w, h);
     const aspect = w / h;
@@ -839,6 +843,12 @@ const U = {
     uIsGhost: { value: 0 },
     uGhostDim: { value: 1 },
     uGhostDepth: { value: 0.35 },
+    // GPGPU fast path (v7): instance count, RT row count, and the two
+    // per-frame compute targets (position+rate, finished color)
+    uN: { value: 0 },
+    uRTH: { value: 1 },
+    uPosTex: { value: null },
+    uColTex: { value: null },
 };
 
 /* ---- term texture + shader source generators ----
@@ -848,46 +858,100 @@ const U = {
 const TERMTEX_W = 2048;
 const PAINT_ORDER = ['mono', 'freq', 'pec', 'group', 'role', 'whue', 'pecp', 'phys'];
 
-function termFetchGLSL(nw) {
+/* ---- performance architecture (v7) ----
+   With ghost images on, the naive path evaluates every worldline's full
+   term sum once per draw call — 27 times per frame — which is what buries
+   large many-term imports. Instead, a GPGPU compute pass evaluates each
+   trajectory ONCE per frame into two float render targets (position+speed,
+   and the finished paint color), and the present-slice draw plus all 26
+   ghost draws just fetch those texels. The cloud layer keeps the direct
+   evaluation path (its vertices live at many different z values).
+
+   Per-instance static data (sin1 amps, paint scalars, term table) lives in
+   one DataTexture packed WHOLE-INSTANCES-PER-ROW: with tpi texels per
+   instance, each texture row holds floor(2048/tpi) complete instances, so
+   texel addresses never exceed float32's exact-integer range. Layout per
+   instance: texel 0 = (ax2, ay2, aw2, isSub); texel 1 = (fsum, gid,
+   pecMin, pecMax); texel 2 = (pecPMin, pecPMax, physMin, physMax);
+   texel 3+3j+k = wiggle term j of axis k as (a, b, f, 0). */
+
+let sweep = null, cloud = null, sweepMat = null, cloudMat = null, matNW = -1;
+let termTex = null;
+let instSub, instIndex;                       // sweep-shader attributes
+let showSweep = true, showCloud = false;
+let posRT = null, colRT = null, rtRows = 1;
+let computeScene = null, computeCam = null, computeMesh = null;
+let matComputePos = null, matComputeCol = null;
+
+// GPGPU needs renderable float textures; without them we fall back to
+// direct evaluation everywhere (the pre-v7 behavior).
+const FAST_OK = (function () {
+    const gl = renderer.getContext();
+    const webgl2 = typeof WebGL2RenderingContext !== 'undefined' &&
+        gl instanceof WebGL2RenderingContext;
+    if (webgl2) return !!gl.getExtension('EXT_color_buffer_float');
+    return !!gl.getExtension('OES_texture_float') &&
+           !!gl.getExtension('WEBGL_color_buffer_float');
+})();
+
+function tpiOf(nw) { return 3 + 3 * nw; }
+function iprOf(nw) { return Math.max(1, Math.floor(TERMTEX_W / tpiOf(nw))); }
+
+/* GLSL: fetch static texel o of instance idx (whole-instances-per-row
+   layout — every intermediate stays small enough to be float-exact). */
+function staticFetchGLSL(nw) {
+    const tpi = tpiOf(nw), ipr = iprOf(nw);
     return `
     uniform sampler2D uTerms;
     uniform float uTexH;
-    vec4 termTexel(float k) {
-        float fi = aIndex * float(${3 * nw}) + k;
-        float u = (mod(fi, ${TERMTEX_W}.0) + 0.5) / ${TERMTEX_W}.0;
-        float v = (floor(fi / ${TERMTEX_W}.0) + 0.5) / uTexH;
-        return texture2D(uTerms, vec2(u, v));
+    vec4 staticTexel(float idx, float o) {
+        float row = floor(idx / ${ipr}.0);
+        float col = (idx - row * ${ipr}.0) * ${tpi}.0 + o;
+        return texture2D(uTerms, vec2((col + 0.5) / ${TERMTEX_W}.0,
+                                      (row + 0.5) / uTexH));
     }`;
 }
 
-// sliceMode 1 = present slice (z from uZ); 0 = cloud (z from the vertex's
-// time index in position.x, via uZ0/uStep).
-function vertSrc(nw, sliceMode) {
+/* GLSL: full kinematics of instance idx at conformal time z.
+   Sets: P (wrapped comoving position incl. offset), vPec (Chebyshev
+   comoving rate), vPhys (Chebyshev physical slope), sOut = sin z. */
+function trajGLSL(nw) {
     return `
-    precision highp float;
-    uniform mat4 modelViewMatrix, projectionMatrix;
-    attribute vec3 position;
-    attribute vec3 aSin1;        // ax2, ay2, aw2
-    attribute float aFsum;       // amplitude-weighted mean wiggle frequency
-    attribute vec2 aPec;         // per-path comoving speed min, max
-    attribute vec2 aPecP;        // per-path PROPER peculiar speed min, max
-    attribute vec2 aPhys;        // per-path physical-slope min, max
-    attribute float aGroup;      // group ID
-    attribute float aIsSub;      // 0 = seed (unique), 1 = subpath
-    attribute float aIndex;      // instance index (term-texture row)
-    uniform float uZ, uZ0, uStep, uT, uSize, uCloudSize, uGMin, uGMax,
-                  uGPMin, uGPMax, uGFMin, uGFMax, uFreqMin, uFreqMax,
-                  uOrthoScale, uGhostDim, uGhostDepth;
-    uniform int uMode, uLog, uPecGlobal, uSeedHl, uGeoLocal, uIsGhost;
-    uniform vec3 uOff, uShift;
-    varying vec3 vColor;
-    ${termFetchGLSL(nw)}
+    ${staticFetchGLSL(nw)}
+    uniform vec3 uOff;
+    vec3 wrap3(vec3 c) { return fract((c + 1.0) * 0.5) * 2.0 - 1.0; }
+    void evalTraj(float idx, float z,
+                  out vec3 P, out float vPec, out float vPhys, out float sOut) {
+        float s = sin(z);
+        float c = cos(z);
+        vec3 sin1 = staticTexel(idx, 0.0).xyz;
+        vec3 x = sin1 * s;
+        vec3 dx = sin1 * c;
+        for (int j = 0; j < ${nw}; j++) {
+            vec4 tx = staticTexel(idx, float(3 + 3 * j));
+            vec4 ty = staticTexel(idx, float(3 + 3 * j + 1));
+            vec4 tw = staticTexel(idx, float(3 + 3 * j + 2));
+            x.x  += tx.x * (sin(tx.y * z + tx.z) - sin(tx.z));
+            x.y  += ty.x * (sin(ty.y * z + ty.z) - sin(ty.z));
+            x.z  += tw.x * (sin(tw.y * z + tw.z) - sin(tw.z));
+            dx.x += tx.x * tx.y * cos(tx.y * z + tx.z);
+            dx.y += ty.x * ty.y * cos(ty.y * z + ty.z);
+            dx.z += tw.x * tw.y * cos(tw.y * z + tw.z);
+        }
+        vec3 X = x / s;
+        vec3 dX = (dx * s - x * c) / (s * s);
+        P = wrap3(X + uOff);
+        vPec = max(max(abs(dX.x), abs(dX.y)), abs(dX.z));
+        vPhys = max(max(abs(dx.x), abs(dx.y)), abs(dx.z));
+        sOut = s;
+    }`;
+}
 
+const COLOR_HELPERS_GLSL = `
     vec3 hsv2rgb(float h, float s, float v) {
         vec3 p = abs(fract(h + vec3(0.0, 2.0/3.0, 1.0/3.0)) * 6.0 - 3.0);
         return v * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), s);
     }
-    vec3 wrap3(vec3 c) { return fract((c + 1.0) * 0.5) * 2.0 - 1.0; }
     vec3 ramp(float t) {
         t = clamp(t, 0.0, 1.0);
         vec3 c0 = vec3(0.10, 0.18, 0.55), c1 = vec3(0.30, 0.55, 0.95),
@@ -903,36 +967,115 @@ function vertSrc(nw, sliceMode) {
         if (t < 0.5) return mix(vec3(1.0, 0.35, 0.25), vec3(1.0), t / 0.5);
         return mix(vec3(1.0), vec3(0.35, 0.55, 1.0), (t - 0.5) / 0.5);
     }
+    float speedRamp(float v, float lo, float hi, int useLog) {
+        if (useLog == 1)
+            return (log(max(v, 1e-6)) - log(max(lo, 1e-6))) /
+                   max(log(max(hi, 1e-5)) - log(max(lo, 1e-6)), 1e-6);
+        return (v - lo) / max(hi - lo, 1e-6);
+    }`;
 
-    void main() {
-        float z = ${sliceMode === 1 ? 'uZ' : 'uZ0 + position.x * uStep'};
-        float s = sin(z);
-        float c = cos(z);
-        vec3 x = aSin1 * s;
-        vec3 dx = aSin1 * c;
-        for (int j = 0; j < ${nw}; j++) {
-            vec4 tx = termTexel(float(3 * j));
-            vec4 ty = termTexel(float(3 * j + 1));
-            vec4 tw = termTexel(float(3 * j + 2));
-            x.x  += tx.x * (sin(tx.y * z + tx.z) - sin(tx.z));
-            x.y  += ty.x * (sin(ty.y * z + ty.z) - sin(ty.z));
-            x.z  += tw.x * (sin(tw.y * z + tw.z) - sin(tw.z));
-            dx.x += tx.x * tx.y * cos(tx.y * z + tx.z);
-            dx.y += ty.x * ty.y * cos(ty.y * z + ty.z);
-            dx.z += tw.x * tw.y * cos(tw.y * z + tw.z);
+/* GLSL: the paint-mode switch, shared verbatim by the compute-color pass
+   and the direct-evaluation (cloud/fallback) vertex shader. */
+const PAINT_GLSL = `
+    vec3 paintColor(vec3 P, float vPec, float vPhys, float s,
+                    float fsum, float gid, float isSub,
+                    vec4 pecRange, vec4 auxRange) {
+        vec3 col;
+        if (uMode == 0) {
+            col = vec3(0.65, 0.78, 1.0);
+        } else if (uMode == 1) {
+            float t = (fsum - uFreqMin) / max(uFreqMax - uFreqMin, 1e-6);
+            if (uLog == 1)
+                t = log(1.0 + 9.0 * clamp(t, 0.0, 1.0)) / log(10.0);
+            col = hotCold(t);
+        } else if (uMode == 2) {
+            float lo = uPecGlobal == 1 ? uGMin : pecRange.z;
+            float hi = uPecGlobal == 1 ? uGMax : pecRange.w;
+            col = ramp(speedRamp(vPec, lo, hi, uLog));
+        } else if (uMode == 3) {
+            col = hsv2rgb(fract(gid * 0.6180339887), 0.8, 1.0);
+        } else if (uMode == 4) {
+            col = isSub > 0.5 ? vec3(1.0, 0.62, 0.3) : vec3(0.45, 0.7, 1.0);
+        } else if (uMode == 5) {
+            col = hsv2rgb((P.z + 1.0) * 0.5 * 0.83, 0.85, 1.0);
+        } else if (uMode == 6) {
+            float lo = uPecGlobal == 1 ? uGPMin : auxRange.x;
+            float hi = uPecGlobal == 1 ? uGPMax : auxRange.y;
+            col = ramp(speedRamp(vPec * s, lo, hi, uLog));
+        } else {
+            float lo = uPecGlobal == 1 ? uGFMin : auxRange.z;
+            float hi = uPecGlobal == 1 ? uGFMax : auxRange.w;
+            col = ramp(speedRamp(vPhys, lo, hi, uLog));
         }
-        vec3 X = x / s;
-        vec3 dX = (dx * s - x * c) / (s * s);
-        // uShift places this pass's periodic image (0 for the main cell;
-        // ghost passes use the 26 neighbour offsets in {-2, 0, 2}^3).
-        // Pw is the in-cell position — colors come from it so an image
-        // keeps its source point's paint.
-        vec3 Pw = wrap3(X + uOff);
-        vec3 P = Pw + uShift;
+        if (uSeedHl == 1) col *= isSub > 0.5 ? 0.45 : 1.15;
+        return col;
+    }`;
+
+const COMPUTE_VERT = `
+    precision highp float;
+    attribute vec3 position;
+    void main() { gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+
+// pass A: RT texel i = (wrapped position, comoving Chebyshev rate)
+function computePosFrag(nw) {
+    return `
+    precision highp float;
+    uniform float uZ, uN;
+    ${trajGLSL(nw)}
+    void main() {
+        float idx = floor(gl_FragCoord.y) * ${TERMTEX_W}.0 + floor(gl_FragCoord.x);
+        if (idx >= uN) { gl_FragColor = vec4(0.0); return; }
+        vec3 P; float vPec, vPhys, s;
+        evalTraj(idx, uZ, P, vPec, vPhys, s);
+        gl_FragColor = vec4(P, vPec);
+    }`;
+}
+
+// pass B: RT texel i = finished paint color under the current mode
+function computeColFrag(nw) {
+    return `
+    precision highp float;
+    uniform float uZ, uN, uGMin, uGMax, uGPMin, uGPMax, uGFMin, uGFMax,
+                  uFreqMin, uFreqMax;
+    uniform int uMode, uLog, uPecGlobal, uSeedHl;
+    ${trajGLSL(nw)}
+    ${COLOR_HELPERS_GLSL}
+    ${PAINT_GLSL}
+    void main() {
+        float idx = floor(gl_FragCoord.y) * ${TERMTEX_W}.0 + floor(gl_FragCoord.x);
+        if (idx >= uN) { gl_FragColor = vec4(0.0); return; }
+        vec3 P; float vPec, vPhys, s;
+        evalTraj(idx, uZ, P, vPec, vPhys, s);
+        vec4 pecRange = staticTexel(idx, 1.0);
+        vec4 auxRange = staticTexel(idx, 2.0);
+        gl_FragColor = vec4(paintColor(P, vPec, vPhys, s, pecRange.x,
+                                       pecRange.y, staticTexel(idx, 0.0).w,
+                                       pecRange, auxRange), 1.0);
+    }`;
+}
+
+/* Fast present-slice vertex shader: everything expensive was precomputed —
+   fetch position + color by instance index, apply ghost fog if this draw
+   is a periodic image. */
+const VERT_FAST = `
+    precision highp float;
+    uniform mat4 modelViewMatrix, projectionMatrix;
+    attribute vec3 position;
+    attribute float aIsSub;
+    attribute float aIndex;
+    uniform sampler2D uPosTex, uColTex;
+    uniform float uRTH, uZ, uSize, uOrthoScale, uGhostDim, uGhostDepth;
+    uniform int uIsGhost, uSeedHl, uGeoLocal;
+    uniform vec3 uShift;
+    varying vec3 vColor;
+    void main() {
+        float row = floor(aIndex / ${TERMTEX_W}.0);
+        vec2 uv = vec2((aIndex - row * ${TERMTEX_W}.0 + 0.5) / ${TERMTEX_W}.0,
+                       (row + 0.5) / uRTH);
+        vec3 P = texture2D(uPosTex, uv).xyz + uShift;
+        vColor = texture2D(uColTex, uv).rgb;
         float ghostFog = 1.0;
         if (uIsGhost == 1) {
-            // fog band: keep only the sliver within uGhostDepth of the seam,
-            // fading to nothing across it — the wraparound as a soft halo
             float over = max(max(abs(P.x), abs(P.y)), abs(P.z)) - 1.0;
             if (over > uGhostDepth) {
                 gl_Position = vec4(0.0, 0.0, -1e5, 1.0);
@@ -942,67 +1085,58 @@ function vertSrc(nw, sliceMode) {
             }
             ghostFog = uGhostDim * (1.0 - smoothstep(0.0, uGhostDepth, over));
         }
-        if (uGeoLocal == 0) P *= s;                  // global (raw) geometry
+        if (uGeoLocal == 0) P *= sin(uZ);
+        vColor *= ghostFog;
+        float sz = uSize * 1.7;
+        if (uSeedHl == 1) sz *= aIsSub > 0.5 ? 0.8 : 1.6;
+        vec4 mv = modelViewMatrix * vec4(P, 1.0);
+        gl_Position = projectionMatrix * mv;
+        float base = uOrthoScale > 0.0 ? uOrthoScale : 8.0 / max(-mv.z, 0.1);
+        gl_PointSize = clamp(sz * base, 0.5, 60.0);
+    }`;
 
-        float v = max(max(abs(dX.x), abs(dX.y)), abs(dX.z));   // Chebyshev speed
-        if (uMode == 0) {
-            vColor = vec3(0.65, 0.78, 1.0);
-        } else if (uMode == 1) {
-            float t = (aFsum - uFreqMin) / max(uFreqMax - uFreqMin, 1e-6);
-            if (uLog == 1)
-                t = log(1.0 + 9.0 * clamp(t, 0.0, 1.0)) / log(10.0);
-            vColor = hotCold(t);
-        } else if (uMode == 2) {
-            float lo = uPecGlobal == 1 ? uGMin : aPec.x;
-            float hi = uPecGlobal == 1 ? uGMax : aPec.y;
-            float t;
-            if (uLog == 1)
-                t = (log(max(v, 1e-6)) - log(max(lo, 1e-6))) /
-                    max(log(max(hi, 1e-5)) - log(max(lo, 1e-6)), 1e-6);
-            else
-                t = (v - lo) / max(hi - lo, 1e-6);
-            vColor = ramp(t);
-        } else if (uMode == 3) {
-            vColor = hsv2rgb(fract(aGroup * 0.6180339887), 0.8, 1.0);
-        } else if (uMode == 4) {
-            vColor = aIsSub > 0.5 ? vec3(1.0, 0.62, 0.3) : vec3(0.45, 0.7, 1.0);
-        } else if (uMode == 5) {
-            vColor = hsv2rgb((Pw.z + 1.0) * 0.5 * 0.83, 0.85, 1.0);
-        } else if (uMode == 6) {
-            // proper peculiar speed: the comoving speed carried back to
-            // physical units by the scale factor sin z
-            float vp = v * s;
-            float lo = uPecGlobal == 1 ? uGPMin : aPecP.x;
-            float hi = uPecGlobal == 1 ? uGPMax : aPecP.y;
-            float t;
-            if (uLog == 1)
-                t = (log(max(vp, 1e-6)) - log(max(lo, 1e-6))) /
-                    max(log(max(hi, 1e-5)) - log(max(lo, 1e-6)), 1e-6);
-            else
-                t = (vp - lo) / max(hi - lo, 1e-6);
-            vColor = ramp(t);
-        } else {
-            // physical slope |dx/dz| (the w-dictionary speed): peculiar
-            // motion plus the anchor's Hubble recession — dx is already the
-            // physical derivative here
-            float vf = max(max(abs(dx.x), abs(dx.y)), abs(dx.z));
-            float lo = uPecGlobal == 1 ? uGFMin : aPhys.x;
-            float hi = uPecGlobal == 1 ? uGFMax : aPhys.y;
-            float t;
-            if (uLog == 1)
-                t = (log(max(vf, 1e-6)) - log(max(lo, 1e-6))) /
-                    max(log(max(hi, 1e-5)) - log(max(lo, 1e-6)), 1e-6);
-            else
-                t = (vf - lo) / max(hi - lo, 1e-6);
-            vColor = ramp(t);
+/* Direct-evaluation vertex shader (cloud layer, and everything when the
+   float-texture fast path is unavailable). sliceMode 1 = present slice
+   (z from uZ); 0 = cloud (z from the vertex's time index). */
+function vertSlow(nw, sliceMode) {
+    return `
+    precision highp float;
+    uniform mat4 modelViewMatrix, projectionMatrix;
+    attribute vec3 position;
+    attribute float aIsSub;
+    attribute float aIndex;
+    uniform float uZ, uZ0, uStep, uSize, uCloudSize, uGMin, uGMax,
+                  uGPMin, uGPMax, uGFMin, uGFMax, uFreqMin, uFreqMax,
+                  uOrthoScale, uGhostDim, uGhostDepth;
+    uniform int uMode, uLog, uPecGlobal, uSeedHl, uGeoLocal, uIsGhost;
+    uniform vec3 uShift;
+    varying vec3 vColor;
+    ${trajGLSL(nw)}
+    ${COLOR_HELPERS_GLSL}
+    ${PAINT_GLSL}
+    void main() {
+        float z = ${sliceMode === 1 ? 'uZ' : 'uZ0 + position.x * uStep'};
+        vec3 Pw; float vPec, vPhys, s;
+        evalTraj(aIndex, z, Pw, vPec, vPhys, s);
+        vec3 P = Pw + uShift;
+        float ghostFog = 1.0;
+        if (uIsGhost == 1) {
+            float over = max(max(abs(P.x), abs(P.y)), abs(P.z)) - 1.0;
+            if (over > uGhostDepth) {
+                gl_Position = vec4(0.0, 0.0, -1e5, 1.0);
+                gl_PointSize = 0.0;
+                vColor = vec3(0.0);
+                return;
+            }
+            ghostFog = uGhostDim * (1.0 - smoothstep(0.0, uGhostDepth, over));
         }
-
+        if (uGeoLocal == 0) P *= s;
+        vec4 pecRange = staticTexel(aIndex, 1.0);
+        vec4 auxRange = staticTexel(aIndex, 2.0);
+        vColor = paintColor(Pw, vPec, vPhys, s, pecRange.x, pecRange.y,
+                            aIsSub, pecRange, auxRange) * ghostFog;
         float sz = ${sliceMode === 1 ? 'uSize * 1.7' : 'uCloudSize'};
-        if (uSeedHl == 1) {
-            if (aIsSub > 0.5) { sz *= 0.8; vColor *= 0.45; }
-            else { sz *= 1.6; vColor *= 1.15; }
-        }
-        vColor *= ghostFog;                          // 1.0 on the main cell
+        if (uSeedHl == 1) sz *= aIsSub > 0.5 ? 0.8 : 1.6;
         vec4 mv = modelViewMatrix * vec4(P, 1.0);
         gl_Position = projectionMatrix * mv;
         float base = uOrthoScale > 0.0 ? uOrthoScale : 8.0 / max(-mv.z, 0.1);
@@ -1019,28 +1153,69 @@ const FRAG_SRC = `
         gl_FragColor = vec4(vColor, t.a * 0.75);
     }`;
 
-/* ---- buffers + GPU objects ---- */
-let sweep = null, cloud = null, sweepMat = null, cloudMat = null, matNW = -1;
-let termTex = null;
-let instSin1, instFsum, instPec, instPecP, instPhys, instGroup, instSub, instIndex;
-let showSweep = true, showCloud = false;
+function pointMaterial(vertexShader, extra) {
+    return new THREE.RawShaderMaterial({
+        uniforms: extra ? Object.assign({}, U, extra) : U,
+        vertexShader: vertexShader,
+        fragmentShader: FRAG_SRC,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+}
 
 function buildMaterials(nw) {
     if (sweepMat) sweepMat.dispose();
     if (cloudMat) cloudMat.dispose();
-    sweepMat = new THREE.RawShaderMaterial({
-        uniforms: U,
-        vertexShader: vertSrc(nw, 1),
-        fragmentShader: FRAG_SRC,
-        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    });
-    cloudMat = new THREE.RawShaderMaterial({
-        uniforms: U,
-        vertexShader: vertSrc(nw, 0),
-        fragmentShader: FRAG_SRC,
-        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    });
+    if (matComputePos) matComputePos.dispose();
+    if (matComputeCol) matComputeCol.dispose();
+    sweepMat = pointMaterial(FAST_OK ? VERT_FAST : vertSlow(nw, 1), null);
+    cloudMat = pointMaterial(vertSlow(nw, 0), null);
+    if (FAST_OK) {
+        matComputePos = new THREE.RawShaderMaterial({
+            uniforms: U, vertexShader: COMPUTE_VERT,
+            fragmentShader: computePosFrag(nw),
+        });
+        matComputeCol = new THREE.RawShaderMaterial({
+            uniforms: U, vertexShader: COMPUTE_VERT,
+            fragmentShader: computeColFrag(nw),
+        });
+    }
     matNW = nw;
+}
+
+function ensureComputeTargets(n) {
+    rtRows = Math.max(1, Math.ceil(n / TERMTEX_W));
+    const opts = {
+        type: THREE.FloatType, format: THREE.RGBAFormat,
+        minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+        depthBuffer: false, stencilBuffer: false,
+    };
+    if (posRT) { posRT.dispose(); colRT.dispose(); }
+    posRT = new THREE.WebGLRenderTarget(TERMTEX_W, rtRows, opts);
+    colRT = new THREE.WebGLRenderTarget(TERMTEX_W, rtRows, opts);
+    U.uRTH.value = rtRows;
+    if (!computeScene) {
+        computeScene = new THREE.Scene();
+        computeCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.BufferAttribute(
+            new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
+        computeMesh = new THREE.Mesh(g, null);
+        computeMesh.frustumCulled = false;
+        computeScene.add(computeMesh);
+    }
+}
+
+function runCompute() {
+    if (!FAST_OK || !functions.length || !matComputePos) return;
+    computeMesh.material = matComputePos;
+    renderer.setRenderTarget(posRT);
+    renderer.render(computeScene, computeCam);
+    computeMesh.material = matComputeCol;
+    renderer.setRenderTarget(colRT);
+    renderer.render(computeScene, computeCam);
+    renderer.setRenderTarget(null);
+    U.uPosTex.value = posRT.texture;
+    U.uColTex.value = colRT.texture;
 }
 
 function buildBuffers() {
@@ -1051,30 +1226,31 @@ function buildBuffers() {
         if (functions[p].terms.length > nw) nw = functions[p].terms.length;
     if (nw !== matNW) buildMaterials(nw);
 
-    instSin1 = new Float32Array(N * 3);
-    instFsum = new Float32Array(N);
-    instPec = new Float32Array(N * 2);
-    instPecP = new Float32Array(N * 2);
-    instPhys = new Float32Array(N * 2);
-    instGroup = new Float32Array(N);
     instSub = new Float32Array(N);
     instIndex = new Float32Array(N);
-    const tpi = 3 * nw;
-    const texH = Math.max(1, Math.ceil(N * tpi / TERMTEX_W));
+    const tpi = tpiOf(nw), ipr = iprOf(nw);
+    const texH = Math.max(1, Math.ceil(N / ipr));
     const tdata = new Float32Array(TERMTEX_W * texH * 4);
     let gmn = Infinity, gmx = -Infinity, fmn = Infinity, fmx = -Infinity;
-    let gpmn = Infinity, gpmx = -Infinity;
-    let gfmn = Infinity, gfmx = -Infinity;
+    let gpmn = Infinity, gpmx = -Infinity, gfmn = Infinity, gfmx = -Infinity;
     for (let p = 0; p < N; p++) {
         const f = functions[p];
-        instSin1[p * 3] = f.ax2; instSin1[p * 3 + 1] = f.ay2; instSin1[p * 3 + 2] = f.aw2;
-        instFsum[p] = f.fsum;
-        instGroup[p] = f.groupID;
         instSub[p] = f.isSub ? 1 : 0;
         instIndex[p] = p;
-        instPec[p * 2] = f.pecMin; instPec[p * 2 + 1] = f.pecMax;
-        instPecP[p * 2] = f.pecPMin; instPecP[p * 2 + 1] = f.pecPMax;
-        instPhys[p * 2] = f.physMin; instPhys[p * 2 + 1] = f.physMax;
+        const row = Math.floor(p / ipr);
+        const base = (row * TERMTEX_W + (p - row * ipr) * tpi) * 4;
+        tdata[base] = f.ax2; tdata[base + 1] = f.ay2; tdata[base + 2] = f.aw2;
+        tdata[base + 3] = f.isSub ? 1 : 0;
+        tdata[base + 4] = f.fsum; tdata[base + 5] = f.groupID;
+        tdata[base + 6] = f.pecMin; tdata[base + 7] = f.pecMax;
+        tdata[base + 8] = f.pecPMin; tdata[base + 9] = f.pecPMax;
+        tdata[base + 10] = f.physMin; tdata[base + 11] = f.physMax;
+        for (let j = 0; j < f.terms.length; j++) {
+            const t = f.terms[j], tb = base + (3 + 3 * j) * 4;
+            tdata[tb]     = t.ax; tdata[tb + 1] = t.bx; tdata[tb + 2]  = t.fx;
+            tdata[tb + 4] = t.ay; tdata[tb + 5] = t.by; tdata[tb + 6]  = t.fy;
+            tdata[tb + 8] = t.aw; tdata[tb + 9] = t.bw; tdata[tb + 10] = t.fw;
+        }
         if (f.pecMin < gmn) gmn = f.pecMin;
         if (f.pecMax > gmx) gmx = f.pecMax;
         if (f.pecPMin < gpmn) gpmn = f.pecPMin;
@@ -1083,12 +1259,6 @@ function buildBuffers() {
         if (f.physMax > gfmx) gfmx = f.physMax;
         if (f.fsum < fmn) fmn = f.fsum;
         if (f.fsum > fmx) fmx = f.fsum;
-        for (let j = 0; j < f.terms.length; j++) {
-            const t = f.terms[j], base = (p * tpi + 3 * j) * 4;
-            tdata[base]     = t.ax; tdata[base + 1] = t.bx; tdata[base + 2]  = t.fx;
-            tdata[base + 4] = t.ay; tdata[base + 5] = t.by; tdata[base + 6]  = t.fy;
-            tdata[base + 8] = t.aw; tdata[base + 9] = t.bw; tdata[base + 10] = t.fw;
-        }
     }
     if (termTex) termTex.dispose();
     termTex = new THREE.DataTexture(tdata, TERMTEX_W, texH, THREE.RGBAFormat, THREE.FloatType);
@@ -1097,49 +1267,40 @@ function buildBuffers() {
     termTex.needsUpdate = true;
     U.uTerms.value = termTex;
     U.uTexH.value = texH;
+    U.uN.value = N;
     U.uGMin.value = Math.max(gmn, 1e-6);
     U.uGMax.value = Math.max(gmx, 1e-5);
     U.uGPMin.value = Math.max(gpmn, 1e-6);
     U.uGPMax.value = Math.max(gpmx, 1e-5);
     U.uGFMin.value = Math.max(gfmn, 1e-6);
     U.uGFMax.value = Math.max(gfmx, 1e-5);
-    U.uFreqMin.value = fmn;
-    U.uFreqMax.value = Math.max(fmx, fmn + 1e-6);
     const n = Z_cache.length;
     U.uZ0.value = Z_cache[0];
     U.uStep.value = n > 1 ? (Z_cache[n - 1] - Z_cache[0]) / (n - 1) : 1;
     U.uT.value = n;
+    if (FAST_OK) ensureComputeTargets(N);
 }
 
-// Cloud base geometry: strided time indices, capped at Cloud res samples/path.
+// Cloud base geometry: strided time indices, capped per path AND by a
+// global point budget (large imports get strided down harder).
 function cloudSamples(n) {
-    const cap = Math.max(2, parseInt(document.getElementById('cloudResInput').value, 10) || 48);
+    let cap = Math.max(2, parseInt(document.getElementById('cloudResInput').value, 10) || 48);
+    const CLOUD_BUDGET = 1200000;
+    const perPath = Math.max(2, Math.floor(CLOUD_BUDGET / Math.max(functions.length, 1)));
+    cap = Math.min(cap, perPath);
     const stride = Math.max(1, Math.ceil(n / cap));
     const count = Math.ceil(n / stride);
     return { stride: stride, count: count };
 }
 
 function addInstanced(geo, N) {
-    geo.setAttribute('aSin1', new THREE.InstancedBufferAttribute(instSin1, 3));
-    geo.setAttribute('aFsum', new THREE.InstancedBufferAttribute(instFsum, 1));
-    geo.setAttribute('aPec', new THREE.InstancedBufferAttribute(instPec, 2));
-    geo.setAttribute('aPecP', new THREE.InstancedBufferAttribute(instPecP, 2));
-    geo.setAttribute('aPhys', new THREE.InstancedBufferAttribute(instPhys, 2));
-    geo.setAttribute('aGroup', new THREE.InstancedBufferAttribute(instGroup, 1));
     geo.setAttribute('aIsSub', new THREE.InstancedBufferAttribute(instSub, 1));
     geo.setAttribute('aIndex', new THREE.InstancedBufferAttribute(instIndex, 1));
     geo.instanceCount = N;
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 6);
 }
 
-/* ---- ghost images: fogged periodic neighbours past the wrap seams ----
-   The 26 neighbour cells of the 3-torus in {-2,0,2}^3 \ {0}: 6 face images
-   (one-axis shifts), 12 edge images (two-axis diagonals), 8 corner images.
-   Each ghost is another Points object SHARING the instanced geometry, with
-   a material that shares every uniform of U except its own uShift/uIsGhost/
-   uGhostDim — same shader source, so the program is compiled once. The
-   shader clips each image to a fog band uGhostDepth past its seam and fades
-   it to nothing across the band. */
+/* ---- ghost images: fogged periodic neighbours past the wrap seams ---- */
 let ghostObjs = [];
 let ghostOn = true, ghostReach = 'all', ghostDepth = 0.35, ghostFade = 0.55;
 let ghostCloud = false;
@@ -1149,7 +1310,7 @@ function ghostShifts() {
     for (let sx = -2; sx <= 2; sx += 2)
     for (let sy = -2; sy <= 2; sy += 2)
     for (let sw = -2; sw <= 2; sw += 2) {
-        const cls = (sx !== 0) + (sy !== 0) + (sw !== 0);   // 1 face, 2 edge, 3 corner
+        const cls = (sx !== 0) + (sy !== 0) + (sw !== 0);
         if (cls === 0) continue;
         if (ghostReach === 'faces' && cls > 1) continue;
         if (ghostReach === 'edges' && cls > 2) continue;
@@ -1161,23 +1322,18 @@ function ghostShifts() {
 function disposeGhosts() {
     for (const g of ghostObjs) {
         scene.remove(g.obj);
-        g.obj.material.dispose();                    // geometry is shared, keep it
+        g.obj.material.dispose();
     }
     ghostObjs = [];
 }
 
 function ghostMaterial(nw, sliceMode, shift, cls) {
-    // deeper image classes fade harder: dim = fade^cls
     const dim = Math.pow(ghostFade, cls);
-    return new THREE.RawShaderMaterial({
-        uniforms: Object.assign({}, U, {
-            uShift: { value: new THREE.Vector3(shift[0], shift[1], shift[2]) },
-            uIsGhost: { value: 1 },
-            uGhostDim: { value: dim },
-        }),
-        vertexShader: vertSrc(nw, sliceMode),
-        fragmentShader: FRAG_SRC,
-        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    const vert = (sliceMode === 1 && FAST_OK) ? VERT_FAST : vertSlow(nw, sliceMode);
+    return pointMaterial(vert, {
+        uShift: { value: new THREE.Vector3(shift[0], shift[1], shift[2]) },
+        uIsGhost: { value: 1 },
+        uGhostDim: { value: dim },
     });
 }
 
@@ -1191,14 +1347,16 @@ function rebuildGhosts() {
             o.frustumCulled = false;
             o.visible = showSweep;
             scene.add(o);
-            ghostObjs.push({ obj: o, layer: 'sweep' });
+            ghostObjs.push({ obj: o, layer: 'sweep',
+                             shift: new THREE.Vector3(s.shift[0], s.shift[1], s.shift[2]) });
         }
         if (cloud && ghostCloud) {
             const o = new THREE.Points(cloud.geometry, ghostMaterial(matNW, 0, s.shift, s.cls));
             o.frustumCulled = false;
             o.visible = showCloud;
             scene.add(o);
-            ghostObjs.push({ obj: o, layer: 'cloud' });
+            ghostObjs.push({ obj: o, layer: 'cloud',
+                             shift: new THREE.Vector3(s.shift[0], s.shift[1], s.shift[2]) });
         }
     }
     updateGhostWire();
@@ -1206,6 +1364,25 @@ function rebuildGhosts() {
 function setGhostVisibility() {
     for (const g of ghostObjs)
         g.obj.visible = g.layer === 'sweep' ? showSweep : showCloud;
+}
+
+// Per-frame ghost-cell culling: a neighbour cell outside the camera
+// frustum skips its whole draw call.
+const _ghostFrustum = new THREE.Frustum();
+const _ghostMat4 = new THREE.Matrix4();
+const _ghostSphere = new THREE.Sphere();
+function cullGhosts() {
+    if (!ghostObjs.length) return;
+    _ghostMat4.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    _ghostFrustum.setFromProjectionMatrix(_ghostMat4);
+    const scale = U.uGeoLocal.value === 1 ? 1 : Math.sin(zAt(framePos));
+    _ghostSphere.radius = Math.sqrt(3) * (1 + ghostDepth) * scale + 0.2;
+    for (const g of ghostObjs) {
+        const layerOn = g.layer === 'sweep' ? showSweep : showCloud;
+        if (!layerOn) { g.obj.visible = false; continue; }
+        _ghostSphere.center.copy(g.shift).multiplyScalar(scale);
+        g.obj.visible = _ghostFrustum.intersectsSphere(_ghostSphere);
+    }
 }
 
 function rebuildGPU() {
@@ -1237,11 +1414,8 @@ function rebuildGPU() {
     rebuildGhosts();
 }
 
-/* ================= playback ================= */
-
 let playing = true, playSpeed = 1, framePos = 0;
-let timeMin = 0, timeMax = Math.PI;
-let hudDirty = true;
+let timeMin = 0, timeMax = Math.PI; sceneDirty = true;
 
 function zAt(pos) {
     const n = Z_cache.length;
@@ -1265,7 +1439,7 @@ timeScrub.addEventListener('input', function (e) {
     playBtn.classList.remove('on');
     playBtn.textContent = 'Paused';
     if (Z_cache.length) framePos = parseFloat(e.target.value) * (Z_cache.length - 1);
-    hudDirty = true;
+    hudDirty = true; sceneDirty = true;
 });
 
 /* speed knob: normalized 0..1, mapped onto [speedMin, speedMax] */
@@ -1307,7 +1481,7 @@ function applyTimeBounds() {
     const hi = Math.max(lo + 0.05, parseFloat(timeMaxInput.value) || 1);
     timeMinInput.value = lo; timeMaxInput.value = hi;
     timeMin = lo * Math.PI; timeMax = hi * Math.PI;
-    hudDirty = true;
+    hudDirty = true; sceneDirty = true;
 }
 timeMinInput.addEventListener('change', applyTimeBounds);
 timeMaxInput.addEventListener('change', applyTimeBounds);
@@ -1464,7 +1638,7 @@ onCheck('spinChk', function (v) { autoRotateOn = v; controls.autoRotate = v; });
 onCheck('sweepChk', function (v) { showSweep = v; if (sweep) sweep.visible = v; setGhostVisibility(); });
 onCheck('cloudChk', function (v) { showCloud = v; if (cloud) cloud.visible = v; setGhostVisibility(); });
 onCheck('boxChk', function (v) { boxWire.visible = v; updateGhostWire(); });
-onCheck('ghostChk', function (v) { ghostOn = v; rebuildGhosts(); hudDirty = true; });
+onCheck('ghostChk', function (v) { ghostOn = v; rebuildGhosts(); hudDirty = true; sceneDirty = true; });
 document.getElementById('ghostReachSel').addEventListener('change', function (e) {
     ghostReach = e.target.value;
     rebuildGhosts();
@@ -1474,26 +1648,28 @@ document.getElementById('ghostDepthRange').addEventListener('input', function (e
     document.getElementById('ghostDepthVal').textContent = ghostDepth.toFixed(2);
     U.uGhostDepth.value = ghostDepth;
     updateGhostWire();
-    hudDirty = true;
+    hudDirty = true; sceneDirty = true;
 });
 document.getElementById('ghostFadeRange').addEventListener('input', function (e) {
     ghostFade = parseFloat(e.target.value);
     document.getElementById('ghostFadeVal').textContent = ghostFade.toFixed(2);
     // per-ghost dim depends on image class: rebuild the set
     rebuildGhosts();
-    hudDirty = true;
+    hudDirty = true; sceneDirty = true;
 });
 onCheck('ghostCloudChk', function (v) { ghostCloud = v; rebuildGhosts(); });
 onCheck('miniChk', function (v) {
     document.getElementById('miniBox').style.display = v ? 'flex' : 'none';
-    hudDirty = true;
+    hudDirty = true; sceneDirty = true;
 });
-onCheck('seedHlChk', function (v) { U.uSeedHl.value = v ? 1 : 0; hudDirty = true; });
+onCheck('seedHlChk', function (v) { U.uSeedHl.value = v ? 1 : 0; hudDirty = true; sceneDirty = true; });
 document.getElementById('sizeRange').addEventListener('input', function (e) {
     U.uSize.value = parseFloat(e.target.value);
+    sceneDirty = true;
 });
 document.getElementById('cloudSizeRange').addEventListener('input', function (e) {
     U.uCloudSize.value = parseFloat(e.target.value);
+    sceneDirty = true;
 });
 
 /* offsets + drift */
@@ -1508,7 +1684,7 @@ function applyOffset(axis, v) {
     offEls[axis][0].value = off[axis].toFixed(2);
     offEls[axis][1].textContent = off[axis].toFixed(2);
     U.uOff.value.set(off.x, off.y, off.w);
-    hudDirty = true;
+    hudDirty = true; sceneDirty = true;
 }
 for (const axis of ['x', 'y', 'w']) {
     offEls[axis][0].addEventListener('input', function (e) {
@@ -1522,10 +1698,10 @@ const drift = {
 };
 
 /* coloring */
-onRadio('paintMode', function (v) { U.uMode.value = PAINT_ORDER.indexOf(v); hudDirty = true; });
-onRadio('normMode', function (v) { U.uPecGlobal.value = v === 'global' ? 1 : 0; hudDirty = true; });
-onCheck('logChk', function (v) { U.uLog.value = v ? 1 : 0; hudDirty = true; });
-onCheck('localChk', function (v) { U.uGeoLocal.value = v ? 1 : 0; hudDirty = true; });
+onRadio('paintMode', function (v) { U.uMode.value = PAINT_ORDER.indexOf(v); hudDirty = true; sceneDirty = true; });
+onRadio('normMode', function (v) { U.uPecGlobal.value = v === 'global' ? 1 : 0; hudDirty = true; sceneDirty = true; });
+onCheck('logChk', function (v) { U.uLog.value = v ? 1 : 0; hudDirty = true; sceneDirty = true; });
+onCheck('localChk', function (v) { U.uGeoLocal.value = v ? 1 : 0; hudDirty = true; sceneDirty = true; });
 onRadio('speedScale', function (v) { speedLogScale = (v === 'log'); applySpeedBounds(); });
 applySpeedBounds();
 
@@ -1669,8 +1845,11 @@ function sliceColor(f, pos, vel, s, raw, cz) {
     return cpuHsv((pos[2] + 1) * 0.5 * 0.83, 0.85, 1);
 }
 
+const MINI_MAX_PATHS = 4000;   // CPU cap: the minimap is a density chart,
+                               // a strided subset reads the same
 function drawMini() {
     if (!functions.length || !Z_cache.length) return;
+    const miniStride = Math.max(1, Math.ceil(functions.length / MINI_MAX_PATHS));
     const z = zAt(framePos);
     const s = Math.sin(z);
     const geoLocal = U.uGeoLocal.value === 1;
@@ -1686,7 +1865,8 @@ function drawMini() {
                 if (a !== 0 || b !== 0) shifts2.push([a, b]);
     }
     for (const p of miniPanels) p.ctx.clearRect(0, 0, p.canvas.width, p.canvas.height);
-    for (const f of functions) {
+    for (let fi = 0; fi < functions.length; fi += miniStride) {
+        const f = functions[fi];
         const raw = comovXYW(f, z);
         const needVel = U.uMode.value === 2 || U.uMode.value === 6 ||
             U.uMode.value === 7;
@@ -1733,7 +1913,10 @@ function drawMini() {
     }
     document.getElementById('miniBar').textContent =
         (geoLocal ? 'local (comoving)' : 'global (raw)') +
-        ' · t = ' + (z / Math.PI).toFixed(3) + 'π · a = ' + s.toFixed(3);
+        ' · t = ' + (z / Math.PI).toFixed(3) + 'π · a = ' + s.toFixed(3) +
+        (miniStride > 1
+            ? ' · showing 1/' + miniStride + ' of ' + functions.length
+            : '');
 }
 
 /* ================= HUD ================= */
@@ -1785,6 +1968,7 @@ function renderOnce() {
     U.uZ.value = zAt(framePos);
     if (camera.isOrthographicCamera) U.uOrthoScale.value = 9.0 * camera.zoom;
     else U.uOrthoScale.value = 0;
+    runCompute();               // no-op on the fallback path
     renderer.render(scene, camera);
 }
 document.getElementById('expPngBtn').addEventListener('click', function () {
@@ -1872,6 +2056,7 @@ document.getElementById('expWebmBtn').addEventListener('click', function () {
 /* ================= render loop ================= */
 
 let lastFrame = performance.now();
+let lastMini = 0, lastHudText = 0;
 function tick(now) {
     requestAnimationFrame(tick);
     const dt = Math.min((now - lastFrame) / 1000, 0.1);
@@ -1879,19 +2064,31 @@ function tick(now) {
     const dtNorm = dt * 60;                          // 60 Hz-normalized frames
     if (playing && Z_cache.length > 1 && !exportState) {
         framePos = (framePos + playSpeed * dtNorm) % (Z_cache.length - 1);
-        timeScrub.value = (framePos / (Z_cache.length - 1)).toFixed(4);
-        updateHud();
+        // slider + HUD text writes cost layout — 10 Hz is visually identical
+        if (now - lastHudText > 100) {
+            lastHudText = now;
+            timeScrub.value = (framePos / (Z_cache.length - 1)).toFixed(4);
+            updateHud();
+        }
     }
     for (const axis of ['x', 'y', 'w']) {
         if (drift[axis].chk.checked) {
             applyOffset(axis, off[axis] + parseFloat(drift[axis].spd.value) * dt);
         }
     }
-    if (!exportState) renderOnce();
-    controls.update();
+    // render on demand: skip the draw entirely when paused and nothing moved
+    const controlsMoved = controls.update();
+    if (!exportState && (playing || controlsMoved || sceneDirty)) {
+        cullGhosts();
+        renderOnce();
+        sceneDirty = false;
+    }
     const miniOn = document.getElementById('miniChk').checked;
-    if (miniOn && functions.length && (playing || hudDirty)) {
+    // the minimap is a CPU O(N x terms) pass — 5 Hz while playing is plenty
+    if (miniOn && functions.length &&
+        (hudDirty || (playing && now - lastMini > 200))) {
         drawMini();
+        lastMini = now;
         hudDirty = false;
     }
 }
