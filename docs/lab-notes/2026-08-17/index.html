@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-08-17</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-08-17</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="ricci-readings">
+      <h2>The Ricci scalar of the sin-scale-factor cosmos: Chris's
+      R&nbsp;=&nbsp;6/a&sup2;&nbsp;&minus;&nbsp;12 is right &mdash; for a
+      cosmic-time clock the model doesn't use</h2>
+      <p class="meta">
+        Derivation check, no campaign. New chart script
+        <code>plots/plot_ricci_readings.py</code> (commit
+        <a href="https://github.com/universe-analysis/universe-generator/commit/2ad0028">2ad0028</a>).
+        Question from Chris: for the flat 3-torus with a(t)&nbsp;=&nbsp;sin&nbsp;t
+        (singularities at 0 and &pi;, turnaround at &pi;/2 with a&nbsp;=&nbsp;1)
+        he derives R&nbsp;=&nbsp;6/a&sup2;&nbsp;&minus;&nbsp;12, negative from
+        &pi;/4 to 3&pi;/4, versus a closed 3-sphere
+        a(t)&nbsp;=&nbsp;2&nbsp;sin(t/2) with
+        R&nbsp;=&nbsp;12/a&sup2;&nbsp;&minus;&nbsp;3&nbsp;&ge;&nbsp;0 &mdash;
+        so does the model's Ricci scalar really change sign mid-history?
+      </p>
+      <ul>
+        <li><strong>Both of Chris's formulas verify</strong> under the reading
+            that t is COSMIC (proper) time: for (d+1)-dimensional flat FRW,
+            R = 2d&nbsp;&auml;/a + d(d&minus;1)(&#7729;/a)&sup2;, and
+            a(t)&nbsp;=&nbsp;sin&nbsp;t gives R =
+            d(d&minus;1)/a&sup2;&nbsp;&minus;&nbsp;d(d+1): 6/a&sup2;&minus;12 in
+            3+1 (sign change at exactly t/&pi; = 1/4, 3/4) and
+            2/a&sup2;&minus;6 in 2+1 (a wider window, t/&pi; = 0.196 to 0.804).
+            The k=1 comparison a(t)&nbsp;=&nbsp;2&nbsp;sin(t/2) gives
+            12/a&sup2;&minus;3 in 3+1, non-negative with a zero only at
+            turnaround. (One aside: that sphere is a kinematically imposed
+            profile, not the matter-dominated closed FRW &mdash; the dust
+            cycloid has R = 6/a&sup3;.)</li>
+        <li><strong>But the model's clock is conformal, and then R never
+            changes sign.</strong> The ground-truth definition
+            (<code>PHYSICS_FINDINGS.md</code>) is z&nbsp;&isin;&nbsp;(0,&nbsp;&pi;)
+            CONFORMAL time with a(z)&nbsp;=&nbsp;sin&nbsp;z &mdash; that is the
+            chart where the |a&middot;b|&nbsp;=&nbsp;1 budget means unit light
+            speed and the causal cones are 45&deg;. Under that reading
+            R&nbsp;=&nbsp;&minus;6/a&sup2; in 3+1 (in 2+1:
+            &minus;4/a&sup2;&nbsp;&minus;&nbsp;2cos&sup2;z/a&#8308;): negative
+            for the entire history, &minus;2d at the turnaround,
+            &minus;&infin; at the Bang and Crunch.</li>
+        <li><strong>The two readings are different spacetimes, not different
+            coordinates on one.</strong> The cosmic-time sin universe has
+            infinite conformal time (&eta; = ln&nbsp;tan(t/2) spans
+            &plusmn;&infin;), so it cannot carry the closed
+            z&nbsp;&isin;&nbsp;(0,&nbsp;&pi;) worldline loop at all; conversely
+            the model's conformal sin universe has total proper duration 2,
+            with proper-time scale factor a(t) = &radic;(t(2&minus;t)) &mdash;
+            a semicircle, not a sine.</li>
+        <li><strong>What survives either convention</strong> &mdash; the robust
+            core of Chris's observation: at a turnaround H&nbsp;=&nbsp;0, so a
+            FLAT universe that turns around has R = 2d&nbsp;&auml;/a &lt; 0
+            there regardless of parametrization (both flat readings meet at
+            exactly R&nbsp;=&nbsp;&minus;2d), while the closed 3-sphere stays
+            &ge;&nbsp;0 through its cycle. Via the trace
+            R&nbsp;=&nbsp;8&pi;G(&rho;&minus;3p), negative R at the top demands
+            a fluid stiffer than radiation (w&nbsp;&gt;&nbsp;1/3) near
+            turnaround &mdash; and the measured w(z) is DUST-like there
+            (w&nbsp;=&nbsp;d/(6T)). This is the same tension already recorded
+            as the flat-Friedmann turnaround caveat in the two-fluid notes
+            (&rho;&nbsp;&rarr;&nbsp;0 at the top forces either restored
+            k&nbsp;&gt;&nbsp;0 curvature or reading flatness as an
+            approximation away from the turnaround), now seen from the
+            curvature side.</li>
+      </ul>
+      <figure class="plot">
+        <img src="ricci_readings.png"
+             alt="Two panels, 3+1 and 2+1, of Ricci scalar versus loop fraction. In each, the red cosmic-time-reading curve dips negative through a shaded middle window (0.25 to 0.75 in 3+1) and diverges positive at the ends; the navy conformal-reading curve stays negative everywhere, peaking at minus 6 (3+1) or minus 4 (2+1) at the turnaround where the two flat readings meet at a marked point; the dashed green closed-sphere curve stays at or above zero in 3+1 and dips only slightly negative in 2+1." />
+        <figcaption>
+          R over the cycle under the two readings of the loop coordinate, plus
+          the closed-sphere comparison. Red: a(t)&nbsp;=&nbsp;sin&nbsp;t in
+          cosmic time (Chris's formula; sign change shaded). Navy:
+          a(z)&nbsp;=&nbsp;sin&nbsp;z in conformal time (the model; never
+          positive). Both flat readings pass through R&nbsp;=&nbsp;&minus;2d at
+          the turnaround &mdash; the parametrization-independent fact.
+        </figcaption>
+      </figure>
+      <p>
+        Takeaway: &ldquo;R runs negative from &pi;/4 to 3&pi;/4&rdquo; is a
+        true statement about a cosmic-time sin universe that cannot host the
+        model's conformal loop; in the model's own convention the scalar
+        curvature is negative from Bang to Crunch with no sign change. The
+        convention-free statement worth keeping is <em>flat + turnaround
+        &rArr; R&nbsp;&lt;&nbsp;0 at the top</em>, which is the known
+        pressure-at-turnaround tension in curvature language.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
