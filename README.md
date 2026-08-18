@@ -4,7 +4,9 @@
 
 # Universe Generator
 This project is centered around discrete generation and analysis of a model universe. Our model universe has n spatial dimensions, and one dimension for time, it is flat and contains a torus submanifold, therefore describing a slightly modified generalized Minkowski spacetime. Worldlines are defined within this spacetime, and a discrete analysis with a Random-Sequential-Adsorption (RSA) technique is used to pack the universe according to rules of intersection and non-intersection. This model therefore describes n spatial dimensions on an expanding and collapsing n-torus (usually displayed as a comoving n-torus).
-[`2+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/twoplusone_2torus_wrapped.html)
+[`2+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/twoplusone_2torus_wrapped.html) [`3+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/threeplusone_box.html)
+
+
 ## Worldlines
 A worldline in this model is represented per-axis, using parametric form, as expansion of sine terms. The generic `a * sin(b * T+f) - a * sin(f)` where f is allowed to be between 0 and π if b (the frequency) is even - if b is odd then f must be 0 (or π, but a is already allowed to be inverted which accomplishes the same thing.) The critical constraints on these worldlines are as follows:
 
@@ -63,7 +65,9 @@ The second phase still has the previous non-intersection requirement, but only f
 Note that this discrete method does not explicitly force that two paths ever perfectly intersect or non-intersect, however as frequency and timestep approach infinity, and the comoving intersection box shrinks, the intersections approach true intersections, therefore this analysis is an approximation that can be measured as the limit of the maxfreq (or the timestep resolution, same thing) approaches infinity.
 
 ### Comoving visualizer  / n-torus
-Our interactive viewers include a 2+1 generator / visualizer, viewing as a true 2-torus in 3d space (with a causal frame map whose front is the closed-form wiggle-budget reach), and a braid viewer rendering worldlines as 3D strands. All are published from [`docs/`](docs/) via GitHub Pages. [`2+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/twoplusone_2torus_wrapped.html)
+Our interactive viewers include a 2+1 generator / visualizer, viewing as a true 2-torus in 3d space (with a causal frame map whose front is the closed-form wiggle-budget reach), and a braid viewer rendering worldlines as 3D strands. All are published from [`docs/`](docs/) via GitHub Pages. [`2+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/twoplusone_2torus_wrapped.html) 
+
+We also have a 3+1 viewer too. [`3+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/threeplusone_box.html)
 
 ## Analysis and measurements
 
