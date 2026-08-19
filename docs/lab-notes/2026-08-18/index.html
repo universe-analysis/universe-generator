@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lab notes &mdash; 2026-08-18</title>
+  <link rel="stylesheet" href="../notes.css" />
+</head>
+<body>
+  <div class="wrap">
+    <p class="crumb"><a href="../">&larr; Lab notes</a></p>
+    <h1>2026-08-18</h1>
+
+    <!-- ENTRIES: chronological, newest appended at the bottom. -->
+
+    <article class="entry" id="ricci-imaginary">
+      <h2>Scale factor i: the imaginary continuation of yesterday's Ricci
+      calculation turns sin into sinh &mdash; and reveals the &minus;12 was a
+      negative cosmological constant</h2>
+      <p class="meta">
+        Derivation, no campaign; the follow-up Chris requested to
+        <a href="../2026-08-17/#ricci-readings">yesterday's Ricci-scalar
+        check</a>: repeat the same calculation with the turnaround scale
+        factor 1 replaced by i&nbsp;=&nbsp;&radic;&minus;1. New chart script
+        <code>plots/plot_ricci_sinh.py</code> (commit
+        <a href="https://github.com/universe-analysis/universe-generator/commit/d77f944">d77f944</a>).
+      </p>
+      <ul>
+        <li><strong>&ldquo;Scale factor i&rdquo; means sinh.</strong>
+            Yesterday's flat cosmos was the A&nbsp;=&nbsp;1 member of the
+            family a(t)&nbsp;=&nbsp;A&nbsp;sin(t/A), which turns around at
+            t&nbsp;=&nbsp;A&pi;/2 with a&nbsp;=&nbsp;A. Setting
+            A&nbsp;=&nbsp;i gives i&nbsp;sin(t/i)&nbsp;=&nbsp;sinh&nbsp;t
+            &mdash; a real, monotonically growing scale factor. The
+            turnaround has moved to imaginary time t&nbsp;=&nbsp;i&pi;/2,
+            where a&nbsp;=&nbsp;sinh(i&pi;/2)&nbsp;=&nbsp;i: exactly
+            Chris's phrasing. The Bang at t&nbsp;=&nbsp;0 survives; the
+            Crunch does not &mdash; the closed loop opens into a
+            half-infinite, forever-expanding history.</li>
+        <li><strong>The closed form flips one sign.</strong> For flat
+            (d+1)-dimensional FRW the family gives R =
+            d(d&minus;1)/a&sup2;&nbsp;&minus;&nbsp;d(d+1)/A&sup2;, so
+            A&nbsp;=&nbsp;1&nbsp;&rarr;&nbsp;6/a&sup2;&nbsp;&minus;&nbsp;12
+            becomes A&nbsp;=&nbsp;i&nbsp;&rarr;
+            <strong>R&nbsp;=&nbsp;6/a&sup2;&nbsp;+&nbsp;12</strong> in 3+1
+            (2/a&sup2;&nbsp;+&nbsp;6 in 2+1): positive everywhere, no sign
+            change, settling onto the de Sitter value
+            R&nbsp;=&nbsp;12 as a&nbsp;&rarr;&nbsp;&infin;. At the complex
+            turnaround R&nbsp;=&nbsp;&minus;6/A&sup2;&nbsp;=&nbsp;+6
+            (yesterday: &minus;6); in general the meeting value
+            &minus;2d becomes +2d.</li>
+        <li><strong>Physical reading: the constant term is a cosmological
+            constant, and i flips its sign.</strong> Via the trace, the
+            &minus;12/A&sup2; term is R<sub>&Lambda;</sub> = 4&Lambda; with
+            &Lambda; = &minus;3/A&sup2;. So Chris's original sin universe is
+            precisely the flat cosmos with
+            <strong>&Lambda;&nbsp;=&nbsp;&minus;3</strong> plus a
+            curvature-like w&nbsp;=&nbsp;&minus;1/3 fluid
+            (&rho;&nbsp;&prop;&nbsp;1/a&sup2;) &mdash; its recollapse is
+            driven by negative &Lambda; &mdash; and the i-continuation keeps
+            the fluid unchanged while flipping to
+            <strong>&Lambda;&nbsp;=&nbsp;+3</strong>: eternal inflation
+            instead of a Crunch. Recollapse and inflation are Wick partners
+            (sinh&nbsp;t = &minus;i&nbsp;sin(it)).</li>
+        <li><strong>The other two curves continue just as cleanly.</strong>
+            The model-convention conformal reading a(z)&nbsp;=&nbsp;sin&nbsp;z
+            &rarr; sinh&nbsp;z flips R&nbsp;=&nbsp;&minus;6/a&sup2; to
+            <strong>R&nbsp;=&nbsp;+6/a&sup2;</strong> in 3+1 (an exact
+            mirror), though in 2+1 a single sign change survives: R =
+            2(sinh&sup2;z&nbsp;&minus;&nbsp;1)/a&#8308;, negative until
+            z&nbsp;=&nbsp;ln(1+&radic;2)&nbsp;&asymp;&nbsp;0.881. And the
+            closed-sphere comparison a&nbsp;=&nbsp;2&nbsp;sin(t/2),
+            k&nbsp;=&nbsp;+1 continues (A&nbsp;&rarr;&nbsp;2i,
+            k&nbsp;&rarr;&nbsp;&minus;1) to
+            a&nbsp;=&nbsp;2&nbsp;sinh(t/2), k&nbsp;=&nbsp;&minus;1 &mdash;
+            which is literally de Sitter space in its open-slicing chart:
+            R&nbsp;=&nbsp;3 constant (3/2 in 2+1). Yesterday's
+            &ldquo;R&nbsp;&ge;&nbsp;0 sphere&rdquo; becomes constant
+            positive curvature exactly.</li>
+        <li><strong>Consistency with yesterday's invariant.</strong> The
+            convention-free fact was <em>flat + turnaround &rArr;
+            R&nbsp;&lt;&nbsp;0 at the top</em>. The continued universe
+            evades it honestly: with A imaginary the turnaround condition
+            cos(t/A)&nbsp;=&nbsp;0 has no real solution, so nothing forces R
+            negative &mdash; and indeed it never is (in the 3+1 readings).
+            Neither reading hosts the model's closed z&nbsp;&isin;&nbsp;(0,&nbsp;&pi;)
+            loop (there is no Crunch to close onto), so like yesterday this
+            is an interpretation result, not a change to the model.</li>
+      </ul>
+      <figure class="plot">
+        <img src="ricci_sinh.png"
+             alt="Two panels, 3+1 and 2+1, of Ricci scalar versus time in units of pi for the sinh continuation. The red cosmic-reading curve descends from plus infinity at the Bang toward a dotted de Sitter asymptote at 12 (3+1) or 6 (2+1); the navy conformal-reading curve descends toward zero, staying positive in 3+1 but crossing zero once at z equals ln(1 plus root 2) in 2+1; the dashed green open-sphere curve is exactly constant at 3 or 1.5. A text box in the 3+1 panel notes the turnaround moved to imaginary time with a equals i and R equals plus 6." />
+        <figcaption>
+          The A&nbsp;&rarr;&nbsp;i continuation of yesterday's three curves,
+          over the old (0,&nbsp;&pi;) window of the now-infinite history.
+          Red: a(t)&nbsp;=&nbsp;sinh&nbsp;t cosmic, R = 6/a&sup2;&nbsp;+&nbsp;12
+          &rarr; de Sitter. Navy: a(z)&nbsp;=&nbsp;sinh&nbsp;z conformal,
+          the sign-mirror of the model's &minus;6/a&sup2;. Green: the open
+          sphere = de Sitter in the open chart, R constant. Compare the
+          same panels for A&nbsp;=&nbsp;1 in
+          <a href="../2026-08-17/#ricci-readings">yesterday's entry</a>.
+        </figcaption>
+      </figure>
+      <p>
+        Takeaway for Chris: replacing the turnaround scale factor 1 by i
+        replaces sin by sinh, and every formula continues analytically
+        &mdash; R&nbsp;=&nbsp;6/a&sup2;&nbsp;&minus;&nbsp;12 becomes
+        R&nbsp;=&nbsp;6/a&sup2;&nbsp;+&nbsp;12. The deeper point the
+        continuation exposes is what the constant &minus;12 <em>was</em>: a
+        negative cosmological constant &Lambda;&nbsp;=&nbsp;&minus;3. The
+        sign-changing Ricci scalar of the cosmic-time sin universe, and its
+        recollapse, are both the signature of &Lambda;&nbsp;&lt;&nbsp;0;
+        multiplying the scale factor by i is exactly the
+        &Lambda;&nbsp;&rarr;&nbsp;&minus;&Lambda; switch.
+      </p>
+    </article>
+
+    <!-- NEW ENTRIES APPEND ABOVE THIS LINE -->
+
+  </div>
+
+  <!-- Full-size overlay shown when a plot is clicked. -->
+  <div class="lightbox" id="lightbox">
+    <img id="lightbox-img" alt="" />
+    <div class="caption" id="lightbox-caption"></div>
+  </div>
+  <script src="../notes.js"></script>
+</body>
+</html>
