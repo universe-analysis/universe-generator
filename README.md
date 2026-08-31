@@ -138,6 +138,9 @@ The ability to form a stable knot of n unique paths depends on the dimension, th
 
 ## Predictions / Theory
 
+### Circle-in-the-sky
+Based on current understanding, most people who are familiar with the circles-in-the-sky search for a toroidal signature in the sky seem to assume a spherical observable universe inside of a 3-torus box, as opposed to the observable universe being the box itself. Therefore, any circle-in-the-sky correlations likely do not apply to this model. There should still be correlations in the CMB however not as large obvious circles. 
+
 ### Gravity and it's role in spacetime
 One core feature of this model is it's flat space, it does contain a torus submanifold, but the space itself does not warp due to any force such as gravity. Therefore, given this model does have a thermodynamic ~.33 to ~0 evolution and seems to have a flow of entropy associated, we would likely assign gravity as entropic in nature. Furthermore, if photons are modeled by these paths, and photons wiggle due to gravity over long distances, they would not be taking the fastest path as a curved spacetime would imply. Therefore we assume that paths which are straighter over longer distances and don't appear as effected by gravity are neutrinos. 
 
