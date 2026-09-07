@@ -476,6 +476,9 @@ function makeAxisTerms(freqs) {
         };
     });
 }
+
+var make_sphere=true;
+    
 function makeCandidate() {
     // random term count: each candidate draws its own K in [2, freqTerms],
     // i.e. NW in [1, freqTerms-1] — a live few-term/full-spectrum mixture
@@ -490,12 +493,42 @@ function makeCandidate() {
                  ay: ty[j].a, by: ty[j].b, fy: ty[j].f,
                  aw: tw[j].a, bw: tw[j].b, fw: tw[j].f };
     });
-    const f = {
+
+    var f={};
+    
+    if(make_sphere){
+        var t_ax=0;
+        var t_ay=0;
+        var t_aw=0;
+
+        while (t_ax==0&&t_ay==0&&t_aw==0){
+            var tt_ax=Math.random() * 2 - 1;
+            var tt_ay=Math.random() * 2 - 1;
+            var tt_aw=Math.random() * 2 - 1;
+            if (((tt_ax*tt_ax)+(tt_ay*tt_ay)+(tt_aw*tt_aw))<=1){
+                t_ax=tt_ax;
+                t_ay=tt_ay;
+                t_aw=tt_aw;
+            }
+        }
+
+    var scale=(Math.max(Math.max(Math.abs(t_ax),Math.abs(t_ay)),Math.abs(t_aw)))/(Math.sqrt((t_ax*t_ax)+(t_ay*t_ay)+(t_aw*t_aw)));
+
+    f = {
+        ax2: t_ax/scale,
+        ay2: t_ay/scale,
+        aw2: t_aw/scale,
+        terms: terms,
+    };
+    }else{
+    f = {
         ax2: Math.random() * 2 - 1,
         ay2: Math.random() * 2 - 1,
         aw2: Math.random() * 2 - 1,
         terms: terms,
     };
+
+    }
     f.fsum = freqSum(terms);
     return f;
 }
@@ -1073,10 +1106,24 @@ const VERT_FAST = `
         vec2 uv = vec2((aIndex - row * ${TERMTEX_W}.0 + 0.5) / ${TERMTEX_W}.0,
                        (row + 0.5) / uRTH);
         vec3 P = texture2D(uPosTex, uv).xyz + uShift;
+
+        float oax=0.0+P.x;
+        float oay=0.0+P.y;
+        float oaz=0.0+P.z;
+        
+        float m=max(max(abs(P.x),abs(P.y)),abs(P.z));
+        float r=sqrt((P.x * P.x)+(P.y * P.y)+(P.z * P.z));
+        
+        float scale=m/r;
+        P.x *= scale;
+        P.y *= scale;
+        P.z *= scale;
+
+        
         vColor = texture2D(uColTex, uv).rgb;
         float ghostFog = 1.0;
         if (uIsGhost == 1) {
-            float over = max(max(abs(P.x), abs(P.y)), abs(P.z)) - 1.0;
+            float over = max(max(abs(oax), abs(oay)), abs(oaz)) - 1.0;
             if (over > uGhostDepth) {
                 gl_Position = vec4(0.0, 0.0, -1e5, 1.0);
                 gl_PointSize = 0.0;
@@ -1119,9 +1166,22 @@ function vertSlow(nw, sliceMode) {
         vec3 Pw; float vPec, vPhys, s;
         evalTraj(aIndex, z, Pw, vPec, vPhys, s);
         vec3 P = Pw + uShift;
+
+        float oax=0.0+P.x;
+        float oay=0.0+P.y;
+        float oaz=0.0+P.z;
+        
+        float m=max(max(abs(P.x),abs(P.y)),abs(P.z));
+        float r=sqrt((P.x * P.x)+(P.y * P.y)+(P.z * P.z));
+        
+        float scale=m/r;
+        P.x *= scale;
+        P.y *= scale;
+        P.z *= scale;
+        
         float ghostFog = 1.0;
         if (uIsGhost == 1) {
-            float over = max(max(abs(P.x), abs(P.y)), abs(P.z)) - 1.0;
+            float over = max(max(abs(oax), abs(oay)), abs(oaz)) - 1.0;
             if (over > uGhostDepth) {
                 gl_Position = vec4(0.0, 0.0, -1e5, 1.0);
                 gl_PointSize = 0.0;
