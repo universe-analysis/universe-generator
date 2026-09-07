@@ -4,7 +4,9 @@
 
 # Universe Generator
 This project is centered around discrete generation and analysis of a model universe. Our model universe has n spatial dimensions, and one dimension for time, it is flat and contains a torus submanifold, therefore describing a slightly modified generalized Minkowski spacetime. Worldlines are defined within this spacetime, and a discrete analysis with a Random-Sequential-Adsorption (RSA) technique is used to pack the universe according to rules of intersection and non-intersection. This model therefore describes n spatial dimensions on an expanding and collapsing n-torus (usually displayed as a comoving n-torus).
-[`2+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/twoplusone_2torus_wrapped.html)
+[`2+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/twoplusone_2torus_wrapped.html) [`3+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/threeplusone_box.html)
+
+
 ## Worldlines
 A worldline in this model is represented per-axis, using parametric form, as expansion of sine terms. The generic `a * sin(b * T+f) - a * sin(f)` where f is allowed to be between 0 and π if b (the frequency) is even - if b is odd then f must be 0 (or π, but a is already allowed to be inverted which accomplishes the same thing.) The critical constraints on these worldlines are as follows:
 
@@ -63,7 +65,9 @@ The second phase still has the previous non-intersection requirement, but only f
 Note that this discrete method does not explicitly force that two paths ever perfectly intersect or non-intersect, however as frequency and timestep approach infinity, and the comoving intersection box shrinks, the intersections approach true intersections, therefore this analysis is an approximation that can be measured as the limit of the maxfreq (or the timestep resolution, same thing) approaches infinity.
 
 ### Comoving visualizer  / n-torus
-Our interactive viewers include a 2+1 generator / visualizer, viewing as a true 2-torus in 3d space (with a causal frame map whose front is the closed-form wiggle-budget reach), and a braid viewer rendering worldlines as 3D strands. All are published from [`docs/`](docs/) via GitHub Pages. [`2+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/twoplusone_2torus_wrapped.html)
+Our interactive viewers include a 2+1 generator / visualizer, viewing as a true 2-torus in 3d space (with a causal frame map whose front is the closed-form wiggle-budget reach), and a braid viewer rendering worldlines as 3D strands. All are published from [`docs/`](docs/) via GitHub Pages. [`2+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/twoplusone_2torus_wrapped.html) 
+
+We also have a 3+1 viewer too. [`3+1 Browser Demo`](https://universe-analysis.github.io/universe-generator/viewers/threeplusone_box.html)
 
 ## Analysis and measurements
 
@@ -133,6 +137,9 @@ The ability to form a stable knot of n unique paths depends on the dimension, th
 *Status (2026-07-18, B₃ braid census in 2+1): 1+1 and 3+1 possibly are 2 and 24 respectively, unverified still.*
 
 ## Predictions / Theory
+
+### Circles-in-the-sky
+Based on current understanding, many people who are familiar with the circles-in-the-sky search for a toroidal signature in the sky seem to assume a spherical observable universe inside of a 3-torus box, as opposed to the observable universe being the box itself. Therefore, any circle-in-the-sky correlations likely do not apply to this model. There should still be correlations in the CMB however not as large obvious circles. 
 
 ### Gravity and it's role in spacetime
 One core feature of this model is it's flat space, it does contain a torus submanifold, but the space itself does not warp due to any force such as gravity. Therefore, given this model does have a thermodynamic ~.33 to ~0 evolution and seems to have a flow of entropy associated, we would likely assign gravity as entropic in nature. Furthermore, if photons are modeled by these paths, and photons wiggle due to gravity over long distances, they would not be taking the fastest path as a curved spacetime would imply. Therefore we assume that paths which are straighter over longer distances and don't appear as effected by gravity are neutrinos. 
