@@ -25,3 +25,8 @@ __pycache__/
 CLAUDE.local.md
 *.local.md
 /archive/
+
+# secrets
+.env
+.env.local
+.claude/skills/vast-gpu-workspace/
